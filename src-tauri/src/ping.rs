@@ -30,6 +30,7 @@ pub fn ping(ip: &str) -> PingResult {
 
     // Build platform-specific ping command
     // macOS: -W is in milliseconds, Linux: -W is in seconds
+    // Windows: -n (count) and -w (timeout ms), no -c flag
     #[cfg(target_os = "macos")]
     let output = Command::new("ping")
         .args(["-c", "1", "-W", "3000", ip])
@@ -40,7 +41,12 @@ pub fn ping(ip: &str) -> PingResult {
         .args(["-c", "1", "-W", "3", ip])
         .output();
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    let output = Command::new("ping")
+        .args(["-n", "1", "-w", "3000", ip])
+        .output();
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     let output = Command::new("ping")
         .args(["-c", "1", ip])
         .output();
@@ -81,7 +87,9 @@ pub fn ping(ip: &str) -> PingResult {
 }
 
 fn parse_latency(output: &str) -> Option<f64> {
-    // Handles: "time=12.4 ms", "time=12.4ms", "time < 1ms"
+    // Handles:
+    //   Unix:    "time=12.4 ms", "time=12.4ms"
+    //   Windows: "time=14ms", "time<1ms" (no space)
     for line in output.lines() {
         if let Some(pos) = line.find("time=") {
             let after = &line[pos + 5..];
@@ -92,8 +100,8 @@ fn parse_latency(output: &str) -> Option<f64> {
                 return Some(ms);
             }
         }
-        // "time < 1 ms" pattern (Windows-style)
-        if line.contains("time <") {
+        // "time < 1 ms" (Unix) or "time<1ms" (Windows)
+        if line.contains("time <") || line.contains("time<") {
             return Some(0.5);
         }
     }
@@ -103,15 +111,24 @@ fn parse_latency(output: &str) -> Option<f64> {
 fn parse_error(stdout: &str, stderr: &str, _ip: &str, private: bool) -> (String, String) {
     let combined = format!("{} {}", stdout, stderr).to_lowercase();
 
-    if combined.contains("network is unreachable") || combined.contains("no route to host") {
+    // Unreachable — Unix + Windows variants
+    if combined.contains("network is unreachable")
+        || combined.contains("no route to host")
+        || combined.contains("destination host unreachable")
+        || combined.contains("destination net unreachable")
+    {
         let detail = if private {
             "No route to this private address — check VPN connection or local network".to_string()
         } else {
             "No route to host — the network path to this address doesn't exist".to_string()
         };
-        ("no_route".to_string(), detail)
-    } else if combined.contains("100% packet loss")
+        return ("no_route".to_string(), detail);
+    }
+
+    // Timeout — Unix + Windows variants
+    if combined.contains("100% packet loss")
         || combined.contains("request timeout")
+        || combined.contains("request timed out")
         || combined.contains("time out")
         || combined.contains("0 received")
     {
@@ -120,16 +137,29 @@ fn parse_error(stdout: &str, stderr: &str, _ip: &str, private: bool) -> (String,
         } else {
             "Host did not respond within timeout — it may be offline, behind a firewall, or blocking ICMP".to_string()
         };
-        ("timeout".to_string(), detail)
-    } else if combined.contains("name or service not known")
+        return ("timeout".to_string(), detail);
+    }
+
+    // DNS failure — Unix + Windows variants
+    if combined.contains("name or service not known")
         || combined.contains("cannot resolve")
         || combined.contains("nodename nor servname provided")
         || combined.contains("could not resolve")
+        || combined.contains("ping request could not find host")
     {
-        ("dns_failed".to_string(), "DNS resolution failed — the hostname couldn't be resolved. Check your DNS settings.".to_string())
-    } else if combined.contains("permission denied") || combined.contains("operation not permitted") {
-        ("permission_denied".to_string(), "Permission denied — ping may require elevated privileges on this system".to_string())
-    } else {
+        return ("dns_failed".to_string(), "DNS resolution failed — the hostname couldn't be resolved. Check your DNS settings.".to_string());
+    }
+
+    // Permission — Unix + Windows variants
+    if combined.contains("permission denied")
+        || combined.contains("operation not permitted")
+        || combined.contains("general failure")
+        || combined.contains("transmit failed")
+    {
+        return ("permission_denied".to_string(), "Permission denied — ping may require elevated privileges on this system".to_string());
+    }
+
+    {
         let raw = stdout.trim();
         let msg = if raw.is_empty() { stderr.trim() } else { raw };
         ("unknown".to_string(), format!("Ping failed: {}", &msg[..msg.len().min(200)]))

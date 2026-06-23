@@ -22,6 +22,11 @@ pub fn detect_vpn() -> VpnStatus {
         detect_vpn_linux(&mut interfaces, &mut names);
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        detect_vpn_windows(&mut interfaces, &mut names);
+    }
+
     VpnStatus {
         active: !interfaces.is_empty() || !names.is_empty(),
         interfaces,
@@ -139,6 +144,91 @@ fn detect_vpn_linux(interfaces: &mut Vec<String>, names: &mut Vec<String>) {
                         names.push(name);
                     }
                 }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn detect_vpn_windows(interfaces: &mut Vec<String>, names: &mut Vec<String>) {
+    // 1. Check active RAS/VPN connections via rasdial (no args = list connected)
+    // Output format:
+    //   Connected connections:
+    //   MyVPN
+    //   Command completed successfully.
+    if let Ok(output) = Command::new("rasdial").output() {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let mut in_connections = false;
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.to_lowercase().contains("connected connections") {
+                in_connections = true;
+                continue;
+            }
+            if in_connections {
+                if trimmed.is_empty() || trimmed.to_lowercase().contains("command completed") {
+                    continue;
+                }
+                let name = trimmed.to_string();
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+        }
+    }
+
+    // 2. Scan ipconfig /all for VPN-like adapters that have an assigned IP.
+    // Matches TAP (OpenVPN), WAN Miniport (built-in VPN), Cisco AnyConnect,
+    // Palo Alto GlobalProtect, WireGuard, and anything named "VPN".
+    if let Ok(output) = Command::new("ipconfig").args(["/all"]).output() {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let mut current_adapter = String::new();
+        let mut is_vpn = false;
+        let mut has_ip = false;
+
+        for line in stdout.lines() {
+            // Adapter header lines are not indented and end with ':'
+            if !line.starts_with(' ') && !line.starts_with('\t') && line.trim_end().ends_with(':') {
+                // Flush the previous adapter
+                if is_vpn && has_ip && !current_adapter.is_empty() {
+                    if !interfaces.contains(&current_adapter) {
+                        interfaces.push(current_adapter.clone());
+                    }
+                }
+                // "Ethernet adapter My VPN:" → strip the trailing ':'
+                current_adapter = line.trim_end_matches(':').trim().to_string();
+                // Strip the leading category ("Ethernet adapter ", "PPP adapter ", etc.)
+                for prefix in &["Ethernet adapter ", "PPP adapter ", "Tunnel adapter ", "Wireless LAN adapter "] {
+                    if let Some(rest) = current_adapter.strip_prefix(prefix) {
+                        current_adapter = rest.to_string();
+                        break;
+                    }
+                }
+                let lower = current_adapter.to_lowercase();
+                is_vpn = lower.contains("tap")
+                    || lower.contains("vpn")
+                    || lower.contains("ppp")
+                    || lower.contains("wan miniport")
+                    || lower.contains("cisco")
+                    || lower.contains("anyconnect")
+                    || lower.contains("globalprotect")
+                    || lower.contains("wireguard")
+                    || lower.contains("openvpn")
+                    || lower.contains("nordvpn")
+                    || lower.contains("expressvpn")
+                    || lower.contains("tunnelbear");
+                has_ip = false;
+            } else {
+                let trimmed = line.trim_start().to_lowercase();
+                if trimmed.starts_with("ipv4 address") || trimmed.starts_with("ip address") {
+                    has_ip = true;
+                }
+            }
+        }
+        // Flush last adapter
+        if is_vpn && has_ip && !current_adapter.is_empty() {
+            if !interfaces.contains(&current_adapter) {
+                interfaces.push(current_adapter);
             }
         }
     }
