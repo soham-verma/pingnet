@@ -1,0 +1,112 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use tauri::{AppHandle, Manager};
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandEntry {
+    pub command: String,     // full command line as typed
+    pub base_cmd: String,    // first word, e.g. "git", "docker"
+    pub count: u32,          // times used
+    pub first_seen: u64,     // ms since epoch
+    pub last_seen: u64,      // ms since epoch
+    pub help_summary: Option<String>,
+}
+
+type HistoryMap = HashMap<String, CommandEntry>;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn history_path(app: &AppHandle, host: &str) -> std::path::PathBuf {
+    let dir = app.path().app_data_dir().expect("no app data dir");
+    // Sanitise host string for use as a filename
+    let safe: String = host
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' { c } else { '_' })
+        .collect();
+    dir.join("history").join(format!("{}.json", safe))
+}
+
+fn load_raw(app: &AppHandle, host: &str) -> HistoryMap {
+    let path = history_path(app, host);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_raw(app: &AppHandle, host: &str, map: &HistoryMap) {
+    let path = history_path(app, host);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(map) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+// ── Commands ──────────────────────────────────────────────────────────────────
+
+/// Load all saved commands for a host, sorted most-recent first.
+#[tauri::command]
+pub fn load_command_history(app: AppHandle, host: String) -> Vec<CommandEntry> {
+    let mut entries: Vec<CommandEntry> = load_raw(&app, &host).into_values().collect();
+    entries.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+    entries
+}
+
+/// Persist a command for a host.
+///
+/// Returns `true` if this is the first time the *base command* (e.g. "git")
+/// has ever been seen for this host — useful to trigger a "new tool detected"
+/// notification on the frontend.
+#[tauri::command]
+pub fn save_command(
+    app: AppHandle,
+    host: String,
+    command: String,
+    help_summary: Option<String>,
+) -> bool {
+    let cmd = command.trim().to_string();
+    if cmd.is_empty() {
+        return false;
+    }
+
+    let base_cmd = cmd
+        .split_whitespace()
+        .next()
+        .unwrap_or(&cmd)
+        .to_string();
+
+    let mut map = load_raw(&app, &host);
+
+    // Is this the very first time we've seen this base command for this host?
+    let is_new_base = !map.values().any(|e| e.base_cmd == base_cmd);
+
+    let ts = now_ms();
+    let entry = map.entry(cmd.clone()).or_insert_with(|| CommandEntry {
+        command: cmd.clone(),
+        base_cmd: base_cmd.clone(),
+        count: 0,
+        first_seen: ts,
+        last_seen: ts,
+        help_summary: None,
+    });
+    entry.count += 1;
+    entry.last_seen = ts;
+    // Only store help once — never overwrite a stored description
+    if entry.help_summary.is_none() {
+        entry.help_summary = help_summary;
+    }
+
+    save_raw(&app, &host, &map);
+    is_new_base
+}
