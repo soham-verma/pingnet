@@ -8,6 +8,14 @@ A cross-platform network diagnostics desktop app for developers and sysadmins. B
 
 ---
 
+## Demo
+
+![Pingnet demo — history-powered autosuggestions](demo.gif)
+
+> Full walkthrough video: see the [latest release](../../releases/latest) for a downloadable demo.
+
+---
+
 ## Features
 
 ### Ping & Diagnostics
