@@ -3,7 +3,7 @@
 A cross-platform network diagnostics desktop app for developers and sysadmins. Built with [Tauri 2](https://tauri.app), React, and Rust.
 
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
-![Platform: macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
+![Platform: macOS | Linux | Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB)
 
 ---
