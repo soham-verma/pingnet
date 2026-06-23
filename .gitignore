@@ -28,7 +28,8 @@ src-tauri/WixTools/
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon?
+Icon
+Icon
 ._*
 .Spotlight-V100
 .Trashes
