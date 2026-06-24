@@ -13,7 +13,7 @@ Only the latest release receives security fixes.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Email [soham@fliight.com.au](mailto:soham@fliight.com.au) with:
+Email [contact@sohamverma.com](mailto:contact@sohamverma.com) with:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a proof-of-concept

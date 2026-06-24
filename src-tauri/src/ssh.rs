@@ -3,11 +3,11 @@ use ssh2::{Channel, Session};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 // ── Public types sent over IPC ────────────────────────────────────────────────
 
@@ -72,8 +72,8 @@ impl SshState {
 
 // ── Known-hosts TOFU store ────────────────────────────────────────────────────
 
-fn known_hosts_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    app.path().app_data_dir().ok().map(|d| d.join("known_hosts.json"))
+fn known_hosts_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d: PathBuf| d.join("known_hosts.json"))
 }
 
 fn load_known_hosts(app: &tauri::AppHandle) -> HashMap<String, String> {
