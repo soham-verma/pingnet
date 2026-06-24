@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use ssh2::{Channel, Session};
+use ssh2::{Channel, MethodType, Session};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -145,8 +145,48 @@ fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, String> {
         .map_err(|e| format!("TCP connect failed: {}", e))
 }
 
+/// libssh2 defaults can fail against modern OpenSSH (incl. Windows OpenSSH) which
+/// prefers curve25519 / ssh-ed25519. Set explicit prefs before handshake.
+fn configure_session_algorithms(session: &Session) {
+    // Must include OpenSSH strict-KEX indicators when overriding defaults — without
+    // these, OpenSSH 10.x servers reject the handshake (libssh2 #1326).
+    let _ = session.method_pref(
+        MethodType::Kex,
+        "ext-info-c,kex-strict-c-v00@openssh.com,\
+         curve25519-sha256,curve25519-sha256@libssh.org,\
+         ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,\
+         diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,\
+         diffie-hellman-group18-sha512,diffie-hellman-group14-sha256",
+    );
+    let _ = session.method_pref(
+        MethodType::HostKey,
+        "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa",
+    );
+    let _ = session.method_pref(
+        MethodType::CryptCs,
+        "chacha20-poly1305@openssh.com,aes128-ctr,aes256-ctr,\
+         aes128-gcm@openssh.com,aes256-gcm@openssh.com",
+    );
+    let _ = session.method_pref(
+        MethodType::CryptSc,
+        "chacha20-poly1305@openssh.com,aes128-ctr,aes256-ctr,\
+         aes128-gcm@openssh.com,aes256-gcm@openssh.com",
+    );
+    let _ = session.method_pref(
+        MethodType::MacCs,
+        "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,\
+         hmac-sha2-256,hmac-sha2-512",
+    );
+    let _ = session.method_pref(
+        MethodType::MacSc,
+        "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,\
+         hmac-sha2-256,hmac-sha2-512",
+    );
+}
+
 fn make_session(stream: TcpStream, host: &str, port: u16, app: &tauri::AppHandle) -> Result<Session, String> {
     let mut session = Session::new().map_err(|e| format!("Session init failed: {}", e))?;
+    configure_session_algorithms(&session);
     session.set_tcp_stream(stream);
     session.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
     verify_host_key(&session, host, port, app)?;
