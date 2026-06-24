@@ -561,10 +561,51 @@ pub async fn sftp_download(
         }
 
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let local_path = format!("{}/Downloads/{}", home, filename);
+        let downloads = std::path::PathBuf::from(&home).join("Downloads");
+
+        // Resolve a unique download path — never overwrite an existing file
+        // and never follow a symlink that could redirect writes outside Downloads.
+        let local_path = {
+            let stem = Path::new(&filename)
+                .file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let ext  = Path::new(&filename)
+                .extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+
+            let mut candidate = downloads.join(&filename);
+            let mut counter = 1u32;
+            loop {
+                // Reject symlinks — a remote-controlled filename could redirect
+                // e.g. "../../.bashrc" even after stripping separators above.
+                if let Ok(meta) = candidate.symlink_metadata() {
+                    if meta.file_type().is_symlink() {
+                        candidate = downloads.join(format!("{} ({}).{}", stem, counter, ext.trim_start_matches('.')));
+                        counter += 1;
+                        continue;
+                    }
+                }
+                // Use create_new so there is no TOCTOU window between the exists
+                // check and the open — if another file races us we increment.
+                match std::fs::OpenOptions::new()
+                    .write(true).create_new(true).open(&candidate)
+                {
+                    Ok(f) => break (candidate, f),
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        let new_name = if ext.is_empty() {
+                            format!("{} ({})", stem, counter)
+                        } else {
+                            format!("{} ({}){}", stem, counter, ext)
+                        };
+                        candidate = downloads.join(new_name);
+                        counter += 1;
+                    }
+                    Err(e) => return Err(format!("Cannot create download file: {}", e)),
+                }
+            }
+        };
+        let (local_path, mut local_file) = local_path;
+        let local_path = local_path.to_string_lossy().to_string();
 
         let mut remote_file = sftp.open(Path::new(&remote_path)).map_err(|e| e.to_string())?;
-        let mut local_file = std::fs::File::create(&local_path).map_err(|e| e.to_string())?;
 
         let mut buf = [0u8; 65536];
         let mut bytes_done = 0u64;
@@ -605,78 +646,12 @@ pub async fn sftp_download(
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-pub async fn sftp_upload(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, SshState>,
-    session_id: String,
-    local_path: String,
-    remote_path: String,
-    transfer_id: String,
-) -> Result<(), String> {
-    // Guard against path traversal from a compromised webview
-    if local_path.contains("..") {
-        return Err("Path traversal not permitted".to_string());
-    }
-
-    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let session = conn.sftp_session.lock().unwrap();
-        let sftp = session.sftp().map_err(|e| e.to_string())?;
-
-        let filename = Path::new(&local_path)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        let total_bytes = std::fs::metadata(&local_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
-
-        let mut local_file = std::fs::File::open(&local_path)
-            .map_err(|e| format!("Cannot open local file: {}", e))?;
-        let mut remote_file = sftp
-            .create(Path::new(&remote_path))
-            .map_err(|e| format!("Cannot create remote file: {}", e))?;
-
-        let mut buf = [0u8; 65536];
-        let mut bytes_done = 0u64;
-
-        loop {
-            match local_file.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    remote_file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
-                    bytes_done += n as u64;
-                    app.emit("transfer-progress", TransferProgress {
-                        id: transfer_id.clone(),
-                        name: filename.clone(),
-                        kind: "upload".to_string(),
-                        bytes_done,
-                        total_bytes,
-                        status: "running".to_string(),
-                        error: None,
-                    }).ok();
-                }
-                Err(e) => return Err(e.to_string()),
-            }
-        }
-
-        app.emit("transfer-progress", TransferProgress {
-            id: transfer_id,
-            name: filename,
-            kind: "upload".to_string(),
-            bytes_done,
-            total_bytes,
-            status: "done".to_string(),
-            error: None,
-        }).ok();
-
-        Ok(())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
+// sftp_upload (path-based) has been removed.
+// It accepted an arbitrary local_path from the webview which could exfiltrate
+// ~/.ssh/id_rsa or any other file readable by the app if the webview were
+// compromised.  All uploads now go through sftp_upload_bytes which receives
+// file content directly from the Tauri file-picker dialog — the filesystem
+// path never crosses the IPC boundary.
 
 #[tauri::command]
 pub async fn sftp_mkdir(

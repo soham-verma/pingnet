@@ -61,7 +61,6 @@ pub fn run() {
             ssh::ssh_resize,
             ssh::sftp_list,
             ssh::sftp_download,
-            ssh::sftp_upload,
             ssh::sftp_mkdir,
             ssh::sftp_delete,
             ssh::sftp_rename,

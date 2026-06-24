@@ -82,16 +82,82 @@ pub fn save_command(
 
     // Don't persist commands that likely carry inline secrets (passwords, tokens, etc.)
     // to avoid plaintext credential exposure in the history JSON files.
+    //
+    // Patterns checked (case-insensitive on the full command string):
+    //   1. Long-form CLI flags:  --password, --token, etc.
+    //   2. Short password flags: -p<value> used by mysql, sshpass, etc.
+    //   3. Assignment-style:     PASSWORD=..., TOKEN=..., AWS_SECRET=...
+    //   4. URL userinfo:         https://user:pass@host  (any scheme)
+    //   5. curl -u user:pass
+    //   6. sshpass wrapper
     let lower = cmd.to_lowercase();
-    let secret_patterns = [
+
+    // Long-form flag patterns
+    let flag_patterns = [
         "--password", "--passwd", "--pass",
         "--token", "--secret", "--api-key", "--apikey",
         "--auth-token", "--access-token", "--private-key",
-        "sshpass",       // sshpass -p <password> ssh ...
-        ":// ",          // URL with embedded credentials: user:pass@host
+        "--client-secret", "--aws-secret",
     ];
-    if secret_patterns.iter().any(|p| lower.contains(p)) {
-        return false; // silently skip — no error, nothing saved
+    if flag_patterns.iter().any(|p| lower.contains(p)) {
+        return false;
+    }
+
+    // sshpass / ssh-pass wrapper
+    if lower.starts_with("sshpass") || lower.contains(" sshpass ") {
+        return false;
+    }
+
+    // curl -u user:pass  (short -u flag followed by non-whitespace containing colon)
+    if lower.contains("curl") {
+        // Look for "-u " or "-u:" followed by something with a colon (basic-auth)
+        let has_curl_u = lower.contains(" -u ") || lower.contains("\t-u ");
+        if has_curl_u {
+            return false;
+        }
+    }
+
+    // Short -p<value> flag used by mysql, mysqldump, sshpass, etc.
+    // Match: -p followed immediately by a non-whitespace, non-hyphen char.
+    // This catches `-pmysecret` but not `-port` or `--pass`.
+    {
+        let bytes = lower.as_bytes();
+        for i in 0..bytes.len().saturating_sub(2) {
+            if bytes[i] == b' ' || i == 0 {
+                let off = if i == 0 { 0 } else { i + 1 };
+                if bytes.get(off) == Some(&b'-')
+                    && bytes.get(off + 1) == Some(&b'p')
+                    && bytes.get(off + 2).map(|&c| c != b' ' && c != b'-' && c != b'\t').unwrap_or(false)
+                {
+                    return false;
+                }
+            }
+        }
+    }
+
+    // Environment-variable-style secrets: KEY=value at the start of a word.
+    // Catches: TOKEN=abc, PASSWORD=..., SECRET=..., AWS_SECRET_ACCESS_KEY=...
+    let secret_env_substrings = [
+        "password=", "passwd=", "pass=", "token=", "secret=",
+        "apikey=", "api_key=", "authtoken=", "auth_token=",
+        "access_token=", "private_key=", "client_secret=",
+        "aws_secret", "aws_access_key",
+    ];
+    if secret_env_substrings.iter().any(|p| lower.contains(p)) {
+        return false;
+    }
+
+    // URL userinfo: scheme://user:pass@host
+    // Look for "://" followed anywhere by "@" with a ":" between them.
+    if let Some(scheme_end) = lower.find("://") {
+        let after = &lower[scheme_end + 3..];
+        if let Some(at_pos) = after.find('@') {
+            let before_at = &after[..at_pos];
+            // If there's a colon before the @, there are credentials in the URL
+            if before_at.contains(':') {
+                return false;
+            }
+        }
     }
 
     let base_cmd = cmd
