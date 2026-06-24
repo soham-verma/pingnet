@@ -312,6 +312,28 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
             <path d="M11 8h10M11 13h10M11 18H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
+
+        {/* Open in JetBrains Gateway */}
+        <button
+          onClick={() => {
+            const params = new URLSearchParams({
+              type: "ssh",
+              host,
+              port: String(port),
+              user: username,
+              projectPath: path,
+            });
+            open(`jetbrains-gateway://connect#${params.toString()}`);
+          }}
+          className="w-7 h-7 flex items-center justify-center rounded text-[#4b5563] hover:text-[#fe315d] hover:bg-[#1e1e35] transition-all"
+          title={`Open in JetBrains Gateway (${path})`}
+        >
+          {/* JetBrains "diamond" mark */}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="currentColor" opacity="0.15"/>
+            <path d="M5 19V5h3l4 9 4-9h3v14h-3V10l-3.5 7.5h-1L8 10v9H5z" fill="currentColor" opacity="0.9"/>
+          </svg>
+        </button>
       </div>
 
       {/* New folder input */}

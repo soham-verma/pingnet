@@ -10,7 +10,8 @@
       "allow": [
         { "url": "https://github.com/**" },
         { "url": "vscode://**" },
-        { "url": "cursor://**" }
+        { "url": "cursor://**" },
+        { "url": "jetbrains-gateway://**" }
       ]
     },
     "notification:default",
