@@ -477,6 +477,9 @@ export default function SSHSessionView({
             style={{ display: viewTab === "files" ? "block" : "none" }}>
             <SFTPBrowser
               sessionId={primarySessionId}
+              host={ip}
+              username={storedCreds?.config.username ?? ""}
+              port={storedCreds?.config.port ?? 22}
               onUploadStart={(id, name, totalBytes) =>
                 setTransfers((p) => [...p, { id, name, kind: "upload", bytes_done: 0, total_bytes: totalBytes, status: "running" }])
               }

@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
 import { FileEntry } from "../../types";
 
 interface Props {
   sessionId: string;
+  host: string;
+  username: string;
+  port: number;
   onUploadStart: (id: string, name: string, totalBytes: number) => void;
   onDownloadStart: (id: string, name: string) => void;
 }
@@ -54,7 +58,7 @@ function FileIcon({ entry }: { entry: FileEntry }) {
   );
 }
 
-export default function SFTPBrowser({ sessionId, onUploadStart, onDownloadStart }: Props) {
+export default function SFTPBrowser({ sessionId, host, username, port, onUploadStart, onDownloadStart }: Props) {
   const [path, setPath] = useState("/");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -274,6 +278,40 @@ export default function SFTPBrowser({ sessionId, onUploadStart, onDownloadStart 
           </svg>
         </button>
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileInputChange} />
+
+        {/* Divider */}
+        <div className="w-px h-4 bg-[#1e1e35] mx-0.5 flex-shrink-0" />
+
+        {/* Open in VS Code */}
+        <button
+          onClick={() => {
+            const authority = port !== 22 ? `${username}@${host}:${port}` : `${username}@${host}`;
+            open(`vscode://vscode-remote/ssh-remote+${authority}${path}`);
+          }}
+          className="w-7 h-7 flex items-center justify-center rounded text-[#4b5563] hover:text-[#0098ff] hover:bg-[#1e1e35] transition-all"
+          title={`Open in VS Code (${path})`}
+        >
+          {/* VS Code icon */}
+          <svg width="14" height="14" viewBox="0 0 100 100" fill="none">
+            <path d="M74.9 4.3L51.5 27l-23-17.6L17 15.5l28.4 34.5L17 84.5l11.5 6.1 23-17.5 23.4 22.6 10-5.2V9.5z" fill="currentColor" opacity="0.85"/>
+          </svg>
+        </button>
+
+        {/* Open in Cursor */}
+        <button
+          onClick={() => {
+            const authority = port !== 22 ? `${username}@${host}:${port}` : `${username}@${host}`;
+            open(`cursor://vscode-remote/ssh-remote+${authority}${path}`);
+          }}
+          className="w-7 h-7 flex items-center justify-center rounded text-[#4b5563] hover:text-[#9b5cf6] hover:bg-[#1e1e35] transition-all"
+          title={`Open in Cursor (${path})`}
+        >
+          {/* Cursor icon — simplified "C" mark */}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M3 3l8 5-8 5V3z" fill="currentColor"/>
+            <path d="M11 8h10M11 13h10M11 18H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
       </div>
 
       {/* New folder input */}
