@@ -19,15 +19,18 @@ pub struct KeyInfo {
 
 // ── Key index (names + public keys stored on disk, private keys in keychain) ──
 
-fn key_index_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+fn key_index_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     app.path()
         .app_data_dir()
-        .expect("app data dir")
-        .join("ssh_keys.json")
+        .map(|d| d.join("ssh_keys.json"))
+        .map_err(|e| format!("Cannot resolve app data dir: {}", e))
 }
 
 fn load_key_index(app: &tauri::AppHandle) -> Vec<KeyInfo> {
-    let path = key_index_path(app);
+    let path = match key_index_path(app) {
+        Ok(p) => p,
+        Err(_) => return vec![],
+    };
     if !path.exists() {
         return vec![];
     }
@@ -37,11 +40,12 @@ fn load_key_index(app: &tauri::AppHandle) -> Vec<KeyInfo> {
         .unwrap_or_default()
 }
 
-fn save_key_index(app: &tauri::AppHandle, keys: &[KeyInfo]) {
-    let path = key_index_path(app);
-    if let Ok(json) = serde_json::to_string_pretty(keys) {
-        let _ = fs::write(path, json);
-    }
+fn save_key_index(app: &tauri::AppHandle, keys: &[KeyInfo]) -> Result<(), String> {
+    let path = key_index_path(app)?;
+    let json = serde_json::to_string_pretty(keys)
+        .map_err(|e| format!("Failed to serialise key index: {}", e))?;
+    fs::write(&path, json)
+        .map_err(|e| format!("Failed to write key index to {}: {}", path.display(), e))
 }
 
 fn now_ms() -> u64 {
@@ -102,7 +106,7 @@ pub fn generate_ssh_key(
         comment: comment.trim().to_string(),
         created_at: now_ms(),
     });
-    save_key_index(&app, &keys);
+    save_key_index(&app, &keys)?;
 
     Ok(public_openssh)
 }
@@ -116,7 +120,7 @@ pub fn delete_ssh_key(app: tauri::AppHandle, name: String) -> Result<(), String>
 
     let mut keys = load_key_index(&app);
     keys.retain(|k| k.name != name.trim());
-    save_key_index(&app, &keys);
+    save_key_index(&app, &keys)?;
     Ok(())
 }
 

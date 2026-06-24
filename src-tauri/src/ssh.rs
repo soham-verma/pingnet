@@ -54,15 +54,10 @@ enum ShellMsg {
 }
 
 pub struct SshConnection {
-    pub shell_tx: mpsc::SyncSender<ShellMsg>,
+    shell_tx: mpsc::SyncSender<ShellMsg>,
     /// Separate session kept for SFTP — accessed only inside spawn_blocking
-    pub sftp_session: Mutex<Session>,
-    pub stop_flag: Arc<AtomicBool>,
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-    // kept to recreate sftp session if needed
-    auth: SshAuth,
+    sftp_session: Mutex<Session>,
+    stop_flag: Arc<AtomicBool>,
 }
 
 pub struct SshState {
@@ -417,10 +412,6 @@ pub async fn ssh_connect(
         shell_tx,
         sftp_session: Mutex::new(sftp_session),
         stop_flag,
-        host,
-        port,
-        username,
-        auth,
     });
 
     state.sessions.lock().await.insert(session_id, conn);
@@ -560,8 +551,11 @@ pub async fn sftp_download(
             return Err("Remote filename is invalid".to_string());
         }
 
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let downloads = std::path::PathBuf::from(&home).join("Downloads");
+        let downloads = dirs::download_dir()
+            .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&downloads)
+            .map_err(|e| format!("Cannot create downloads directory: {}", e))?;
 
         // Resolve a unique download path — never overwrite an existing file
         // and never follow a symlink that could redirect writes outside Downloads.
@@ -578,7 +572,12 @@ pub async fn sftp_download(
                 // e.g. "../../.bashrc" even after stripping separators above.
                 if let Ok(meta) = candidate.symlink_metadata() {
                     if meta.file_type().is_symlink() {
-                        candidate = downloads.join(format!("{} ({}).{}", stem, counter, ext.trim_start_matches('.')));
+                        let new_name = if ext.is_empty() {
+                            format!("{} ({})", stem, counter)
+                        } else {
+                            format!("{} ({}){}", stem, counter, ext)
+                        };
+                        candidate = downloads.join(new_name);
                         counter += 1;
                         continue;
                     }
@@ -988,22 +987,12 @@ pub struct SpeedtestResult {
     pub error:       Option<String>,
 }
 
-/// Run a single timed SSH exec and return the first line of stdout.
-/// Each call acquires and releases the session for its own short channel,
-/// so concurrent metrics polls are not blocked between phases.
-fn speedtest_exec(session: &Session, cmd: &str) -> Result<String, String> {
-    let mut ch = session.channel_session().map_err(|e| format!("channel: {}", e))?;
-    ch.exec(cmd).map_err(|e| format!("exec: {}", e))?;
-    let mut out = String::new();
-    ch.read_to_string(&mut out).map_err(|e| e.to_string())?;
-    let _ = ch.close();
-    Ok(out.lines().next().unwrap_or("").trim().to_string())
-}
-
 fn run_speedtest_ssh(session: &Session) -> SpeedtestResult {
-    // Helper: run a command in its own channel (released immediately after).
-    // Each phase opens/closes independently so concurrent metrics polls
-    // can interleave between phases without waiting 45 s for the mutex.
+    // NOTE: the caller holds the sftp_session Mutex for the duration of this
+    // function (~45 s). This is intentional — libssh2 sessions are not
+    // thread-safe, so the Mutex serialises all access. During a speedtest,
+    // get_metrics calls will queue behind it. Each phase below opens/closes
+    // its own SSH channel, but that does NOT release the Mutex.
     fn phase(session: &Session, cmd: &str) -> Result<String, String> {
         let mut ch = session.channel_session().map_err(|e| format!("channel: {}", e))?;
         ch.exec(cmd).map_err(|e| format!("exec: {}", e))?;
@@ -1073,15 +1062,12 @@ pub async fn run_speedtest(
 ) -> Result<SpeedtestResult, String> {
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        // Acquire and immediately release the Mutex to clone the Arc;
-        // run_speedtest_ssh opens its own short-lived channels and does NOT
-        // hold the Mutex across the multi-phase 45-second test.
+        // The Mutex is held for the full ~45 s duration. libssh2 is not
+        // thread-safe, so this serialises all session access correctly.
+        // get_metrics calls will block until the speedtest completes.
         let session_guard = conn.sftp_session.lock()
             .unwrap_or_else(|e| e.into_inner());
-        // SAFETY: session is Send; we hold the guard for each individual
-        // channel_session() call inside run_speedtest_ssh, releasing between
-        // phases so concurrent metrics polls are not blocked for 45 s.
-        let result = run_speedtest_ssh(&*session_guard);
+        let result = run_speedtest_ssh(&session_guard);
         Ok(result)
     })
     .await

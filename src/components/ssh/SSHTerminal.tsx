@@ -257,16 +257,27 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
     });
 
     // ── Listen for terminal output from Rust ─────────────────────────────────
+    // Use a cancelled flag so that if the component unmounts before the listen()
+    // promise resolves, we call the returned unlisten immediately rather than
+    // storing it — otherwise the listener leaks permanently.
+    let cleanedUp = false;
+
     listen<string>(`ssh-output-${sessionId}`, (event) => {
       term.write(event.payload);
-    }).then((ul) => { unlistenOutputRef.current = ul; });
+    }).then((ul) => {
+      if (cleanedUp) { ul(); return; }
+      unlistenOutputRef.current = ul;
+    });
 
     // ── Listen for connection closed ─────────────────────────────────────────
     listen<void>(`ssh-closed-${sessionId}`, () => {
       term.writeln("\r\n\x1b[33m[Connection closed]\x1b[0m");
       hideGhost();
       inputBufRef.current = "";
-    }).then((ul) => { unlistenCloseRef.current = ul; });
+    }).then((ul) => {
+      if (cleanedUp) { ul(); return; }
+      unlistenCloseRef.current = ul;
+    });
 
     // ── ResizeObserver ────────────────────────────────────────────────────────
     const ro = new ResizeObserver(() => {
@@ -277,6 +288,7 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
     if (containerRef.current) ro.observe(containerRef.current);
 
     return () => {
+      cleanedUp = true;
       unlistenOutputRef.current?.();
       unlistenCloseRef.current?.();
       ro.disconnect();

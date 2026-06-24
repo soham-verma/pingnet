@@ -43,7 +43,9 @@ export interface GrafanaConfig {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function uid(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  // crypto.randomUUID() provides full RFC 4122 UUID entropy — much safer than
+  // Math.random() (~30 bits) for IDs used as Tauri event listener names.
+  return crypto.randomUUID();
 }
 
 function defaultName(existing: TerminalTab[]): string {
@@ -752,7 +754,9 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
             <button
               onClick={async () => {
                 await onTrustNewKey(hkc.host, port, hkc.current);
-                onRetry();
+                // Host was already reachable (we just got a key-changed error from it)
+                // — skip the redundant preflight ping and go straight to SSH.
+                onRetrySkipPing();
               }}
               className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
               style={{ background: "#f59e0b", color: "#000", boxShadow: "0 0 16px #f59e0b30" }}>

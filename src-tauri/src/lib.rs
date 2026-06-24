@@ -43,6 +43,53 @@ fn save_hosts(app: tauri::AppHandle, hosts: Vec<HostConfig>) -> Result<(), Strin
     storage::save_hosts(&app, &hosts)
 }
 
+/// Write arbitrary text content to a caller-specified absolute path.
+/// Used by the metrics export — the frontend opens a save dialog via
+/// tauri-plugin-dialog, gets back a path, then calls this to write the JSON.
+/// Only the dialog-issued path is accepted; the frontend never constructs paths.
+#[tauri::command]
+fn write_text_file(path: String, content: String) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    let p = PathBuf::from(path);
+    if !p.is_absolute() {
+        return Err("Write path must be absolute".to_string());
+    }
+
+    let parent = p
+        .parent()
+        .ok_or_else(|| "Write path has no parent directory".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+
+    // Refuse writes outside the user's home directory. Canonicalise the parent
+    // after creating it so symlinked directories cannot redirect the write.
+    let home = dirs::home_dir().ok_or_else(|| "Cannot resolve home directory".to_string())?;
+    let home = home.canonicalize().map_err(|e| e.to_string())?;
+    let parent = parent.canonicalize().map_err(|e| e.to_string())?;
+    if !parent.starts_with(&home) {
+        return Err("Write path must be inside your home directory".to_string());
+    }
+
+    if let Ok(meta) = std::fs::symlink_metadata(&p) {
+        if meta.file_type().is_symlink() {
+            return Err("Refusing to write through a symlink".to_string());
+        }
+        if meta.is_dir() {
+            return Err("Write path points to a directory".to_string());
+        }
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&p)
+        .map_err(|e| e.to_string())?;
+    file.write_all(content.as_bytes()).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -79,6 +126,7 @@ pub fn run() {
             keys::generate_ssh_key,
             keys::delete_ssh_key,
             keys::regenerate_ssh_key,
+            write_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");

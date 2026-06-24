@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MetricsSnapshot, Capabilities,
@@ -1052,25 +1053,33 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
           )}
           {!logging && logCount > 0 && (
             <div className="flex items-center gap-1">
-              <button onClick={() => {
-                const blob = new Blob([JSON.stringify(logBufRef.current, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `pingnet-metrics-${sessionId}-${Date.now()}.json`;
-                a.click();
-                // Delay revoke so the browser has time to start the download
-                // (task #9: revoking synchronously can cancel the download in some engines)
-                setTimeout(() => URL.revokeObjectURL(url), 10_000);
+              <button onClick={async () => {
+                // Tauri WebView doesn't support anchor-click downloads.
+                // Open a native Save dialog, then write via Rust.
+                const defaultName = `pingnet-metrics-${sessionId}-${Date.now()}.json`;
+                const path = await save({
+                  defaultPath: defaultName,
+                  filters: [{ name: "JSON", extensions: ["json"] }],
+                }).catch(() => null);
+                if (!path) return; // user cancelled
+                const json = JSON.stringify(logBufRef.current, null, 2);
+                try {
+                  await invoke("write_text_file", { path, content: json });
+                  setError(null);
+                } catch (e) {
+                  setError(`Export failed: ${String(e)}`);
+                }
               }}
                 className="text-[9px] font-medium px-2 py-1 rounded transition-all"
                 style={{ color: "#00c8a8", background: "#00c8a812", border: "1px solid #00c8a830" }}>
                 ↓ Export {logCount}
               </button>
-              <button onClick={() => { logBufRef.current = []; setLogCount(0); setLogging(true); }}
+              <button
+                onClick={() => { logBufRef.current = []; setLogCount(0); setLogging(true); }}
                 className="text-[9px] font-medium px-2 py-1 rounded transition-all text-[#374151] hover:text-[#ef4444]"
-                style={{ border: "1px solid #1e1e35" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#374151]" />
+                style={{ border: "1px solid #1e1e35" }}
+                title="Discard and re-record">
+                ↺ Re-record
               </button>
             </div>
           )}

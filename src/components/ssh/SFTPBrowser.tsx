@@ -179,9 +179,6 @@ export default function SFTPBrowser({ sessionId, onUploadStart, onDownloadStart 
     try {
       const arrayBuf = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuf);
-      // Write to temp location via Tauri FS
-      const tempPath = `/tmp/pingnet_upload_${file.name}`;
-      // Use Tauri's writeBinaryFile equivalent via a custom command
       await invoke("sftp_upload_bytes", {
         sessionId,
         bytes: Array.from(bytes),
@@ -189,12 +186,13 @@ export default function SFTPBrowser({ sessionId, onUploadStart, onDownloadStart 
         transferId: id,
         localName: file.name,
       });
+      // Reload immediately — invoke is already awaited so the upload is done
+      load(path);
     } catch (err) {
-      console.error("Upload failed:", err);
+      setError(`Upload failed: ${String(err)}`);
     }
-    // Reset input
+    // Reset input so the same file can be re-uploaded if needed
     e.target.value = "";
-    setTimeout(() => load(path), 500);
   };
 
   const breadcrumbs = ["~", ...path.replace(/^\//, "").split("/").filter(Boolean)];
