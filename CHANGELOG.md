@@ -7,6 +7,55 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.0] — 2026-06-24
+
+### Added
+
+**Ping Alerts**
+- Per-host alert toggles: notify when host goes down, when it recovers, and when latency exceeds a threshold
+- Native desktop notifications (macOS Notification Center, Windows, Linux)
+- 30-second background auto-ping for hosts with any alert enabled — state-transition detection avoids duplicate alerts
+- Alert settings in the Add / Edit Host modal (toggles + latency threshold field)
+
+**Live Server Metrics**
+- New **Metrics** tab in SSH sessions — shows CPU %, memory used/total, disk usage (root), 1-min load average, and uptime
+- Metrics collected over existing SFTP session (no extra TCP connection) by reading `/proc/stat`, `/proc/loadavg`, `/proc/uptime`, `free -m`, `df /`
+- Delta-based CPU percentage (accurate across polls)
+- Auto-refreshes every 3 seconds while the tab is visible; pauses when navigating away
+- Red/amber colour-coding when values exceed 70 % / 90 %
+
+**SSH Key Manager**
+- Generate Ed25519 keypairs inside Pingnet — private keys stored in OS keychain (macOS Keychain, Windows Credential Manager, Linux SecretService)
+- Key list with one-click public-key copy, per-key delete
+- New **Keychain** auth option in the SSH connect modal — pick a managed key, no file path needed
+- In-memory SSH auth via `userauth_pubkey_memory` — private key never written to disk
+
+### Changed
+- SSH connect modal gains a third auth tab ("Keychain") alongside Password and Key File
+- `HostConfig` gains `alert_on_down`, `alert_on_recovery`, `alert_latency_ms` — fully backward-compatible (existing JSON deserialises with defaults `false / null`)
+- Sidebar gets an **SSH Keys** button at the bottom for quick key manager access
+- `usePing` now accepts the host list and manages per-host auto-ping intervals internally
+
+---
+
+## [0.1.1] — 2026-06-24
+
+### Fixed
+- Tab key in SSH terminal no longer shifts focus to the close button
+- Commands from sub-tools (psql, python, etc.) no longer appear in bash history
+- History play button now auto-navigates back to the Terminal tab
+
+### Security
+- SSH TOFU host-key pinning (MD5 fingerprint stored in `known_hosts.json`)
+- Command history redacts secrets (`--password`, `--token`, `--api-key`, etc.)
+- CSP policy added to `tauri.conf.json`
+- SFTP upload rejects paths containing `..`
+- SFTP download sanitises server-supplied filenames
+- Ping validates host input to block leading-dash injection
+- UTF-8 safe truncation in ping output
+
+---
+
 ## [0.1.0] — 2026-06-24
 
 First public release.

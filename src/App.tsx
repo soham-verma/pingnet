@@ -8,13 +8,20 @@ import Sidebar from "./components/Sidebar";
 import HostDetailView from "./components/HostDetailView";
 import AddEditModal from "./components/AddEditModal";
 import SSHSessionView from "./components/ssh/SSHSessionView";
+import KeyManager from "./components/KeyManager";
 
 function genId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 function toHostState(config: HostConfig): HostState {
-  return { ...config, ping_status: "idle", last_result: null, last_pinged_at: null, vpn_at_time_of_failure: null };
+  return {
+    ...config,
+    ping_status: "idle",
+    last_result: null,
+    last_pinged_at: null,
+    vpn_at_time_of_failure: null,
+  };
 }
 
 type ViewMode = "ping" | "ssh";
@@ -24,12 +31,22 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modal, setModal] = useState<{ mode: "add" | "edit"; host?: HostState } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("ping");
-  // SSH config per host (username, port, auth_type saved but not password)
   const [sshConfigs, setSshConfigs] = useState<Record<string, SshConfig>>({});
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [showKeyManager, setShowKeyManager] = useState(false);
   const update = useUpdateCheck();
 
-  const { getSession, ping, clearSession } = usePing();
+  // Pass hosts to usePing so it can schedule auto-ping for hosts with alerts
+  const { getSession, ping, clearSession } = usePing(hosts.map((h) => ({
+    id: h.id,
+    hostname: h.hostname,
+    ip: h.ip,
+    notes: h.notes,
+    created_at: h.created_at,
+    alert_on_down: h.alert_on_down,
+    alert_on_recovery: h.alert_on_recovery,
+    alert_latency_ms: h.alert_latency_ms,
+  })));
 
   // Build sessions map for sidebar
   const allSessions: Record<string, PingSession> = {};
@@ -52,9 +69,18 @@ export default function App() {
   }, []);
 
   const persistHosts = useCallback(async (updated: HostState[]) => {
-    const configs: HostConfig[] = updated.map(({ hostname, ip, notes, id, created_at }) => ({
-      id, hostname, ip, notes, created_at,
-    }));
+    const configs: HostConfig[] = updated.map(
+      ({ hostname, ip, notes, id, created_at, alert_on_down, alert_on_recovery, alert_latency_ms }) => ({
+        id,
+        hostname,
+        ip,
+        notes,
+        created_at,
+        alert_on_down,
+        alert_on_recovery,
+        alert_latency_ms,
+      })
+    );
     try {
       await invoke("save_hosts", { hosts: configs });
     } catch {
@@ -62,7 +88,9 @@ export default function App() {
     }
   }, []);
 
-  function handleAddHost(data: Pick<HostConfig, "hostname" | "ip" | "notes">) {
+  function handleAddHost(
+    data: Pick<HostConfig, "hostname" | "ip" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
+  ) {
     const newHost: HostState = toHostState({
       ...data,
       id: genId(),
@@ -76,7 +104,9 @@ export default function App() {
     persistHosts(updated);
   }
 
-  function handleEditHost(data: Pick<HostConfig, "hostname" | "ip" | "notes">) {
+  function handleEditHost(
+    data: Pick<HostConfig, "hostname" | "ip" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
+  ) {
     if (!modal?.host) return;
     const updated = hosts.map((h) =>
       h.id === modal.host!.id ? { ...h, ...data } : h
@@ -120,8 +150,7 @@ export default function App() {
         <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 text-[13px]"
           style={{ background: "#1a1f35", borderBottom: "1px solid #2d3748" }}>
           <span className="text-[#a5b4fc]">
-            Pingnet {update.latestVersion} is available —
-            {" "}
+            Pingnet {update.latestVersion} is available —{" "}
             <button
               className="underline text-[#818cf8] hover:text-white transition-colors"
               onClick={() => open(update.releaseUrl)}
@@ -140,74 +169,71 @@ export default function App() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar
-        hosts={hosts}
-        selectedId={selectedId}
-        sessions={allSessions}
-        viewMode={viewMode}
-        onSelect={handleSelectHost}
-        onOpenSSH={handleOpenSSH}
-        onAddHost={() => setModal({ mode: "add" })}
-      />
-
-      {/* Main content */}
-      <main className="flex-1 overflow-hidden relative">
-        {!selectedHost && <EmptyState onAdd={() => setModal({ mode: "add" })} />}
-
-        {/*
-          Both Ping and SSH views are always mounted for the selected host.
-          display:none keeps them alive so switching between them loses no state:
-          - Ping: preserves latency history, chart, console logs
-          - SSH: preserves open terminals, SFTP path, transfer queue
-          Switching hosts (selectedId changes) re-mounts via React's key logic.
-        */}
-        {selectedHost && selectedSession && (
-          <>
-            {/* Ping view */}
-            <div
-              className="absolute inset-0"
-              style={{ display: viewMode === "ping" ? "flex" : "none", flexDirection: "column" }}
-            >
-              <HostDetailView
-                host={selectedHost}
-                session={selectedSession}
-                onPing={() => handlePing(selectedHost)}
-                onEdit={() => setModal({ mode: "edit", host: selectedHost })}
-                onRefresh={() => clearSession(selectedHost.id)}
-                onOpenSSH={() => handleOpenSSH(selectedHost.id)}
-              />
-            </div>
-
-            {/* SSH view */}
-            <div
-              className="absolute inset-0"
-              style={{ display: viewMode === "ssh" ? "flex" : "none", flexDirection: "column" }}
-            >
-              <SSHSessionView
-                hostname={selectedHost.hostname}
-                ip={selectedHost.ip}
-                hostId={selectedHost.id}
-                savedConfig={sshConfigs[selectedHost.id] ?? null}
-                onSaveConfig={(config) =>
-                  setSshConfigs((prev) => ({ ...prev, [selectedHost.id]: config }))
-                }
-              />
-            </div>
-          </>
-        )}
-      </main>
-
-      {/* Add/Edit modal */}
-      {modal && (
-        <AddEditModal
-          existing={modal.mode === "edit" ? modal.host : null}
-          onSave={modal.mode === "add" ? handleAddHost : handleEditHost}
-          onClose={() => setModal(null)}
-          onDelete={modal.mode === "edit" && modal.host ? () => handleDeleteHost(modal.host!.id) : undefined}
+        {/* Sidebar */}
+        <Sidebar
+          hosts={hosts}
+          selectedId={selectedId}
+          sessions={allSessions}
+          viewMode={viewMode}
+          onSelect={handleSelectHost}
+          onOpenSSH={handleOpenSSH}
+          onAddHost={() => setModal({ mode: "add" })}
+          onOpenKeyManager={() => setShowKeyManager(true)}
         />
-      )}
-      </div>  {/* end flex flex-1 */}
+
+        {/* Main content */}
+        <main className="flex-1 overflow-hidden relative">
+          {!selectedHost && <EmptyState onAdd={() => setModal({ mode: "add" })} />}
+
+          {selectedHost && selectedSession && (
+            <>
+              {/* Ping view */}
+              <div
+                className="absolute inset-0"
+                style={{ display: viewMode === "ping" ? "flex" : "none", flexDirection: "column" }}
+              >
+                <HostDetailView
+                  host={selectedHost}
+                  session={selectedSession}
+                  onPing={() => handlePing(selectedHost)}
+                  onEdit={() => setModal({ mode: "edit", host: selectedHost })}
+                  onRefresh={() => clearSession(selectedHost.id)}
+                  onOpenSSH={() => handleOpenSSH(selectedHost.id)}
+                />
+              </div>
+
+              {/* SSH view */}
+              <div
+                className="absolute inset-0"
+                style={{ display: viewMode === "ssh" ? "flex" : "none", flexDirection: "column" }}
+              >
+                <SSHSessionView
+                  hostname={selectedHost.hostname}
+                  ip={selectedHost.ip}
+                  hostId={selectedHost.id}
+                  savedConfig={sshConfigs[selectedHost.id] ?? null}
+                  onSaveConfig={(config) =>
+                    setSshConfigs((prev) => ({ ...prev, [selectedHost.id]: config }))
+                  }
+                />
+              </div>
+            </>
+          )}
+        </main>
+
+        {/* Add/Edit modal */}
+        {modal && (
+          <AddEditModal
+            existing={modal.mode === "edit" ? modal.host : null}
+            onSave={modal.mode === "add" ? handleAddHost : handleEditHost}
+            onClose={() => setModal(null)}
+            onDelete={modal.mode === "edit" && modal.host ? () => handleDeleteHost(modal.host!.id) : undefined}
+          />
+        )}
+
+        {/* Key Manager */}
+        {showKeyManager && <KeyManager onClose={() => setShowKeyManager(false)} />}
+      </div>
     </div>
   );
 }

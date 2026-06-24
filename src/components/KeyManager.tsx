@@ -1,0 +1,208 @@
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { KeyInfo } from "../types";
+
+interface Props {
+  onClose: () => void;
+}
+
+export default function KeyManager({ onClose }: Props) {
+  const [keys, setKeys] = useState<KeyInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Generate form state
+  const [name, setName] = useState("");
+  const [comment, setComment] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [newPubKey, setNewPubKey] = useState<string | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  // Deletion
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Copied flash
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const loadKeys = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await invoke<KeyInfo[]>("list_ssh_keys");
+      setKeys(list);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadKeys();
+  }, [loadKeys]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  async function handleGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setGenerating(true);
+    setGenError(null);
+    setNewPubKey(null);
+    try {
+      const pub = await invoke<string>("generate_ssh_key", {
+        name: name.trim(),
+        comment: comment.trim() || name.trim(),
+      });
+      setNewPubKey(pub);
+      setName("");
+      setComment("");
+      await loadKeys();
+    } catch (e) {
+      setGenError(String(e));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleDelete(keyName: string) {
+    setDeleting(keyName);
+    try {
+      await invoke("delete_ssh_key", { name: keyName });
+      await loadKeys();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  function copyKey(pub: string, id: string) {
+    navigator.clipboard.writeText(pub).then(() => {
+      setCopied(id);
+      setTimeout(() => setCopied(null), 1800);
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center modal-backdrop"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl border border-[#1e1e35] shadow-2xl flex flex-col"
+        style={{ background: "#0f0f1a", maxHeight: "85vh" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#1e1e35] flex-shrink-0">
+          <div>
+            <h2 className="font-semibold text-white text-sm">SSH Key Manager</h2>
+            <p className="text-[11px] text-[#4b5563] mt-0.5">Keys stored in OS keychain (Ed25519)</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#4b5563] hover:text-white transition-colors text-xl"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Generate form */}
+          <form onSubmit={handleGenerate} className="px-6 py-4 border-b border-[#1e1e35] space-y-3">
+            <p className="text-[10px] tracking-widest text-[#4b5563] uppercase">Generate New Key</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Key name (e.g. work-vps)"
+                className="flex-1 px-3 py-2 rounded-lg bg-[#080810] border border-[#1e1e35] text-sm text-white placeholder-[#2d3748] outline-none focus:border-[#6366f1] transition-all"
+              />
+              <input
+                type="text"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Comment (optional)"
+                className="flex-1 px-3 py-2 rounded-lg bg-[#080810] border border-[#1e1e35] text-sm text-white placeholder-[#2d3748] outline-none focus:border-[#6366f1] transition-all"
+              />
+              <button
+                type="submit"
+                disabled={generating || !name.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-[#6366f1] hover:bg-[#818cf8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              >
+                {generating ? "Generating…" : "Generate"}
+              </button>
+            </div>
+            {genError && <p className="text-[#ef4444] text-xs">{genError}</p>}
+            {newPubKey && (
+              <div className="rounded-lg bg-[#080810] border border-[#22c55e30] p-3 space-y-1">
+                <p className="text-[10px] text-[#22c55e] tracking-widest uppercase">Key generated — add this to your server's authorized_keys</p>
+                <pre className="text-[10px] text-[#9ca3af] font-mono break-all whitespace-pre-wrap">{newPubKey}</pre>
+                <button
+                  type="button"
+                  onClick={() => copyKey(newPubKey, "new")}
+                  className="text-xs text-[#6366f1] hover:text-[#818cf8] transition-colors"
+                >
+                  {copied === "new" ? "Copied!" : "Copy to clipboard"}
+                </button>
+              </div>
+            )}
+          </form>
+
+          {/* Key list */}
+          <div className="px-6 py-4 space-y-3">
+            <p className="text-[10px] tracking-widest text-[#4b5563] uppercase">Saved Keys ({keys.length})</p>
+
+            {loading ? (
+              <p className="text-[#4b5563] text-sm py-4 text-center">Loading…</p>
+            ) : error ? (
+              <p className="text-[#ef4444] text-sm">{error}</p>
+            ) : keys.length === 0 ? (
+              <p className="text-[#2d3748] text-sm py-4 text-center">No keys yet — generate one above</p>
+            ) : (
+              keys.map((k) => (
+                <div
+                  key={k.name}
+                  className="bg-[#080810] border border-[#1e1e35] rounded-xl p-4 space-y-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-white text-sm font-medium">{k.name}</p>
+                      {k.comment && (
+                        <p className="text-[11px] text-[#4b5563]">{k.comment}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => copyKey(k.public_key, k.name)}
+                        className="text-[11px] text-[#6366f1] hover:text-[#818cf8] transition-colors"
+                      >
+                        {copied === k.name ? "Copied!" : "Copy pub key"}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(k.name)}
+                        disabled={deleting === k.name}
+                        className="text-[11px] text-[#4b5563] hover:text-[#ef4444] transition-colors disabled:opacity-40"
+                      >
+                        {deleting === k.name ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
+                  </div>
+                  <pre className="text-[9px] text-[#374151] font-mono truncate">{k.public_key}</pre>
+                  <p className="text-[10px] text-[#2d3748]">
+                    Created {new Date(k.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

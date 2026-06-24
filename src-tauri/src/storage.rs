@@ -10,6 +10,13 @@ pub struct HostConfig {
     pub ip: String,
     pub notes: Option<String>,
     pub created_at: u64,
+    // Alert settings — all default to false/None so existing JSON deserialises cleanly
+    #[serde(default)]
+    pub alert_on_down: bool,
+    #[serde(default)]
+    pub alert_on_recovery: bool,
+    #[serde(default)]
+    pub alert_latency_ms: Option<u64>,
 }
 
 fn hosts_file_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {

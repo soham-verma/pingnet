@@ -10,6 +10,7 @@ interface Props {
   onSelect: (id: string) => void;
   onOpenSSH: (id: string) => void;
   onAddHost: () => void;
+  onOpenKeyManager: () => void;
 }
 
 function MiniBar({ history }: { history: { latency: number | null; success: boolean }[] }) {
@@ -36,7 +37,7 @@ function MiniBar({ history }: { history: { latency: number | null; success: bool
   );
 }
 
-export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost }: Props) {
+export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost, onOpenKeyManager }: Props) {
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col h-full border-r border-[#1e1e35]" style={{ background: "#0a0a14" }}>
       {/* Header */}
@@ -158,14 +159,24 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
         })}
       </div>
 
-      {/* Add device */}
-      <div className="p-3 border-t border-[#1e1e35]">
+      {/* Bottom actions */}
+      <div className="p-3 border-t border-[#1e1e35] space-y-2">
         <button
           onClick={onAddHost}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-[#4b5563] hover:text-[#00c8a8] hover:bg-[#0f1920] border border-[#1e1e35] hover:border-[#00c8a820] transition-all text-xs font-medium"
         >
           <span className="text-base leading-none">+</span>
           Add Device
+        </button>
+        <button
+          onClick={onOpenKeyManager}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[#4b5563] hover:text-[#818cf8] hover:bg-[#6366f10a] border border-[#1e1e35] hover:border-[#6366f120] transition-all text-xs font-medium"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <circle cx="3.5" cy="4.5" r="2" stroke="currentColor" strokeWidth="1" />
+            <path d="M5 4.5h4M7.5 3v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+          </svg>
+          SSH Keys
         </button>
       </div>
     </aside>

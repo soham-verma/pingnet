@@ -1,4 +1,6 @@
 mod command_history;
+mod keys;
+mod metrics;
 mod ping;
 mod ssh;
 mod storage;
@@ -33,6 +35,7 @@ fn save_hosts(app: tauri::AppHandle, hosts: Vec<HostConfig>) -> Result<(), Strin
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(SshState::new())
         .invoke_handler(tauri::generate_handler![
             ping_host,
@@ -50,8 +53,14 @@ pub fn run() {
             ssh::sftp_delete,
             ssh::sftp_rename,
             ssh::sftp_upload_bytes,
+            ssh::get_metrics,
+            ssh::probe_capabilities,
+            ssh::invalidate_metrics_cache,
             command_history::load_command_history,
             command_history::save_command,
+            keys::list_ssh_keys,
+            keys::generate_ssh_key,
+            keys::delete_ssh_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");

@@ -7,6 +7,7 @@ import SSHTerminal from "./SSHTerminal";
 import SFTPBrowser from "./SFTPBrowser";
 import TransferQueue from "./TransferQueue";
 import CommandHistory from "./CommandHistory";
+import MetricsPanel from "./MetricsPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ interface Props {
   onSaveConfig: (config: SshConfig) => void;
 }
 
-type ViewTab = "terminal" | "files" | "transfers" | "history";
+type ViewTab = "terminal" | "files" | "transfers" | "history" | "metrics";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -246,6 +247,8 @@ export default function SSHSessionView({
       const authArg =
         creds.config.auth_type === "password"
           ? { type: "Password", password: creds.password }
+          : creds.config.auth_type === "keychain"
+          ? { type: "KeychainKey", key_name: creds.config.key_name ?? "" }
           : { type: "Key", key_path: creds.config.key_path ?? "~/.ssh/id_rsa", passphrase: creds.password || null };
 
       await invoke("ssh_connect", {
@@ -363,7 +366,7 @@ export default function SSHSessionView({
 
         {/* View tabs */}
         <div className="flex items-center gap-1 bg-[#0f0f1a] rounded-lg p-1 border border-[#1e1e35]">
-          {(["terminal", "files", "transfers", "history"] as ViewTab[]).map((t) => (
+          {(["terminal", "files", "transfers", "history", "metrics"] as ViewTab[]).map((t) => (
             <button key={t} onClick={() => setViewTab(t)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
                 viewTab === t ? "bg-[#1e1e35] text-white" : "text-[#4b5563] hover:text-[#8892a4]"
@@ -473,6 +476,22 @@ export default function SSHSessionView({
             onRun={() => setViewTab("terminal")}
           />
         </div>
+
+        {/* Metrics panel — only when connected */}
+        {primarySessionId ? (
+          <div className="absolute inset-0 flex flex-col"
+            style={{ display: viewTab === "metrics" ? "flex" : "none" }}>
+            <MetricsPanel
+              sessionId={primarySessionId}
+              isActive={viewTab === "metrics"}
+            />
+          </div>
+        ) : viewTab === "metrics" ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[#374151]">
+            <p className="text-sm">No active connection</p>
+            <p className="text-[12px] text-[#2d3748]">Open a terminal and connect first</p>
+          </div>
+        ) : null}
       </div>
 
       {showModal && (

@@ -39,7 +39,10 @@ pub struct TransferProgress {
 #[serde(tag = "type")]
 pub enum SshAuth {
     Password { password: String },
+    /// File-path based key (legacy / manual)
     Key { key_path: String, passphrase: Option<String> },
+    /// Key stored in OS keychain via the Pingnet key manager
+    KeychainKey { key_name: String },
 }
 
 enum ShellMsg {
@@ -62,11 +65,15 @@ pub struct SshConnection {
 
 pub struct SshState {
     pub sessions: tokio::sync::Mutex<HashMap<String, Arc<SshConnection>>>,
+    pub metrics:  std::sync::Arc<crate::metrics::MetricsState>,
 }
 
 impl SshState {
     pub fn new() -> Self {
-        Self { sessions: tokio::sync::Mutex::new(HashMap::new()) }
+        Self {
+            sessions: tokio::sync::Mutex::new(HashMap::new()),
+            metrics:  crate::metrics::MetricsState::new(),
+        }
     }
 }
 
@@ -158,6 +165,12 @@ fn auth_session(session: &Session, username: &str, auth: &SshAuth) -> Result<(),
             session
                 .userauth_pubkey_file(username, None, Path::new(key_path), passphrase)
                 .map_err(|e| format!("Key auth failed: {}", e))?;
+        }
+        SshAuth::KeychainKey { key_name } => {
+            let private_pem = crate::keys::get_private_key(key_name)?;
+            session
+                .userauth_pubkey_memory(username, None, &private_pem, None)
+                .map_err(|e| format!("Keychain key auth failed: {}", e))?;
         }
     }
     if !session.authenticated() {
@@ -330,6 +343,8 @@ pub async fn ssh_disconnect(
         conn.stop_flag.store(true, Ordering::Relaxed);
         let _ = conn.shell_tx.try_send(ShellMsg::Stop);
     }
+    // Clear cached probe so reconnect gets a fresh capability scan
+    crate::metrics::invalidate_caps(&session_id, &state.metrics);
     Ok(())
 }
 
@@ -639,6 +654,57 @@ pub async fn sftp_upload_bytes(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Collect metrics from a connected host (CPU, RAM, disk, net, GPU, processes…).
+/// Uses the existing SFTP session — no extra TCP connection needed.
+/// Frontend polls this every 3 s when the metrics tab is visible.
+#[tauri::command]
+pub async fn get_metrics(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+) -> Result<crate::metrics::MetricsSnapshot, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+    let metrics_arc = std::sync::Arc::clone(&state.metrics);
+    tauri::async_runtime::spawn_blocking(move || {
+        let session = conn.sftp_session.lock().unwrap();
+        crate::metrics::collect(&session, &session_id, &metrics_arc)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Return cached capabilities for a session (probed on first get_metrics call).
+/// Frontend can call this after connecting to know what the host supports.
+#[tauri::command]
+pub async fn probe_capabilities(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+) -> Result<crate::metrics::Capabilities, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+    let metrics_arc = std::sync::Arc::clone(&state.metrics);
+    tauri::async_runtime::spawn_blocking(move || {
+        // Force a fresh probe (or return cached)
+        let mut caps_map = metrics_arc.caps.lock().unwrap();
+        if !caps_map.contains_key(&session_id) {
+            let session = conn.sftp_session.lock().unwrap();
+            let c = crate::metrics::probe(&session);
+            caps_map.insert(session_id.clone(), c);
+        }
+        Ok(caps_map.get(&session_id).unwrap().clone())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Clear cached probe + samples for a session (call after reconnect).
+#[tauri::command]
+pub async fn invalidate_metrics_cache(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+) -> Result<(), String> {
+    crate::metrics::invalidate_caps(&session_id, &state.metrics);
+    Ok(())
 }
 
 #[tauri::command]
