@@ -54,6 +54,11 @@ export default function App() {
     alert_on_down: h.alert_on_down,
     alert_on_recovery: h.alert_on_recovery,
     alert_latency_ms: h.alert_latency_ms,
+    ssh_port: h.ssh_port,
+    ssh_username: h.ssh_username,
+    ssh_auth_type: h.ssh_auth_type,
+    ssh_key_path: h.ssh_key_path,
+    ssh_key_name: h.ssh_key_name,
   })));
 
   // Build sessions map for sidebar
@@ -63,13 +68,27 @@ export default function App() {
   const selectedHost = hosts.find((h) => h.id === selectedId) ?? null;
   const selectedSession = selectedId ? getSession(selectedId) : null;
 
-  // Load hosts on mount
+  // Load hosts on mount — also seed sshConfigs from any persisted SSH fields
   useEffect(() => {
     invoke<HostConfig[]>("load_hosts")
       .then((configs) => {
         const states = configs.map(toHostState);
         setHosts(states);
         if (states.length > 0) setSelectedId(states[0].id);
+        // Restore saved SSH config for each host (no passwords — never stored)
+        const restored: Record<string, SshConfig> = {};
+        configs.forEach((c) => {
+          if (c.ssh_username) {
+            restored[c.id] = {
+              port: c.ssh_port ?? 22,
+              username: c.ssh_username,
+              auth_type: (c.ssh_auth_type as SshConfig["auth_type"]) ?? "password",
+              key_path: c.ssh_key_path,
+              key_name: c.ssh_key_name,
+            };
+          }
+        });
+        if (Object.keys(restored).length > 0) setSshConfigs(restored);
       })
       .catch(() => {
         // First launch or error — start empty
@@ -78,15 +97,12 @@ export default function App() {
 
   const persistHosts = useCallback(async (updated: HostState[]) => {
     const configs: HostConfig[] = updated.map(
-      ({ hostname, ip, notes, id, created_at, alert_on_down, alert_on_recovery, alert_latency_ms }) => ({
-        id,
-        hostname,
-        ip,
-        notes,
-        created_at,
-        alert_on_down,
-        alert_on_recovery,
-        alert_latency_ms,
+      ({ hostname, ip, notes, id, created_at,
+         alert_on_down, alert_on_recovery, alert_latency_ms,
+         ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name }) => ({
+        id, hostname, ip, notes, created_at,
+        alert_on_down, alert_on_recovery, alert_latency_ms,
+        ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name,
       })
     );
     try {
@@ -200,9 +216,24 @@ export default function App() {
                   ip={selectedHost.ip}
                   hostId={selectedHost.id}
                   savedConfig={sshConfigs[selectedHost.id] ?? null}
-                  onSaveConfig={(config) =>
-                    setSshConfigs((prev) => ({ ...prev, [selectedHost.id]: config }))
-                  }
+                  onSaveConfig={(config) => {
+                    setSshConfigs((prev) => ({ ...prev, [selectedHost.id]: config }));
+                    // Persist SSH config (no password) into the host record so it survives restarts
+                    setHosts((prev) => {
+                      const updated = prev.map((h) =>
+                        h.id === selectedHost.id
+                          ? { ...h,
+                              ssh_port: config.port,
+                              ssh_username: config.username,
+                              ssh_auth_type: config.auth_type,
+                              ssh_key_path: config.key_path,
+                              ssh_key_name: config.key_name }
+                          : h
+                      );
+                      persistHosts(updated);
+                      return updated;
+                    });
+                  }}
                 />
               </div>
             </>

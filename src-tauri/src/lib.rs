@@ -1,3 +1,4 @@
+mod audit;
 mod command_history;
 mod keys;
 mod metrics;
@@ -127,6 +128,9 @@ pub fn run() {
             keys::delete_ssh_key,
             keys::regenerate_ssh_key,
             write_text_file,
+            audit::append_audit_log,
+            audit::load_audit_log,
+            audit::clear_audit_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");

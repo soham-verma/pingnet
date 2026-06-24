@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { SshConfig, KeyInfo } from "../../types";
@@ -11,17 +11,38 @@ interface Props {
   onClose: () => void;
 }
 
+/** Returns seconds remaining in the current 30-second TOTP window */
+function totpSecondsLeft(): number {
+  return 30 - (Math.floor(Date.now() / 1000) % 30);
+}
+
 export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, onClose }: Props) {
   const [port, setPort] = useState(savedConfig?.port ?? 22);
   const [username, setUsername] = useState(savedConfig?.username ?? "");
-  const [authType, setAuthType] = useState<"password" | "key" | "keychain" | "agent">(
-    savedConfig?.auth_type ?? "password"
+  const [authType, setAuthType] = useState<"password" | "key" | "keychain" | "agent" | "totp">(
+    (savedConfig?.auth_type as "password" | "key" | "keychain" | "agent" | "totp") ?? "password"
   );
   const [password, setPassword] = useState("");
   const [keyPath, setKeyPath] = useState(savedConfig?.key_path ?? "~/.ssh/id_rsa");
   const [keyPassphrase, setKeyPassphrase] = useState("");
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // TOTP state
+  const [totpCode, setTotpCode] = useState("");
+  const [totpSecsLeft, setTotpSecsLeft] = useState(totpSecondsLeft());
+  const totpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (authType !== "totp") return;
+    setTotpSecsLeft(totpSecondsLeft());
+    totpTimerRef.current = setInterval(() => {
+      const s = totpSecondsLeft();
+      setTotpSecsLeft(s);
+      // Warn user when the window is about to expire
+      if (s === 30) setTotpCode(""); // clear stale code on new window
+    }, 1000);
+    return () => { if (totpTimerRef.current) clearInterval(totpTimerRef.current); };
+  }, [authType]);
 
   // Keychain key picker
   const [keychainKeys, setKeychainKeys] = useState<KeyInfo[]>([]);
@@ -42,6 +63,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
 
   const handleConnect = () => {
     if (!username.trim()) return;
+    if (authType === "totp" && totpCode.trim().length < 6) return;
     const config: SshConfig = {
       port,
       username: username.trim(),
@@ -49,11 +71,15 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
       key_path: authType === "key" ? keyPath : undefined,
       key_name: authType === "keychain" ? selectedKeyName : undefined,
     };
+    // For TOTP, the code is passed as the "password" field — SSHSessionView
+    // will wrap it into SshAuth::KbdInt { totp_code } on the Rust side.
     onConnect(
       config,
-      authType === "password" ? password : authType === "key" ? keyPassphrase : ""
+      authType === "password" ? password
+      : authType === "key"      ? keyPassphrase
+      : authType === "totp"     ? totpCode.trim()
+      : ""
     );
-
   };
 
   const inputCls =
@@ -118,7 +144,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
           <div>
             <label className={labelCls}>Authentication</label>
             <div className="flex gap-1 p-1 rounded-lg" style={{ background: "#0a0a14" }}>
-              {(["password", "agent", "key", "keychain"] as const).map((t) => (
+              {(["password", "agent", "key", "keychain", "totp"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setAuthType(t)}
@@ -129,7 +155,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                       : { color: "#4b5563" }
                   }
                 >
-                  {t === "password" ? "Password" : t === "agent" ? "Agent" : t === "key" ? "Key File" : "Keychain"}
+                  {t === "password" ? "Password" : t === "agent" ? "Agent" : t === "key" ? "Key File" : t === "keychain" ? "Keychain" : "TOTP"}
                 </button>
               ))}
             </div>
@@ -245,6 +271,57 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
               )}
             </div>
           )}
+
+          {authType === "totp" && (
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={labelCls} style={{ margin: 0 }}>Verification code</label>
+                  {/* Countdown ring */}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="text-[11px] font-mono font-semibold tabular-nums"
+                      style={{ color: totpSecsLeft <= 5 ? "#ef4444" : totpSecsLeft <= 10 ? "#f59e0b" : "#4b5563" }}
+                    >
+                      {totpSecsLeft}s
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 16 16">
+                      <circle cx="8" cy="8" r="6" fill="none" stroke="#1e1e35" strokeWidth="2" />
+                      <circle
+                        cx="8" cy="8" r="6" fill="none"
+                        stroke={totpSecsLeft <= 5 ? "#ef4444" : totpSecsLeft <= 10 ? "#f59e0b" : "#6366f1"}
+                        strokeWidth="2"
+                        strokeDasharray={`${(totpSecsLeft / 30) * 37.7} 37.7`}
+                        strokeLinecap="round"
+                        transform="rotate(-90 8 8)"
+                        style={{ transition: "stroke-dasharray 0.9s linear, stroke 0.3s" }}
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <input
+                  className={inputCls}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                  autoFocus
+                  style={{ letterSpacing: "0.35em", fontSize: "20px", textAlign: "center" }}
+                />
+              </div>
+              <div className="rounded-lg border border-[#1e1e35] px-4 py-3" style={{ background: "#0a0a14" }}>
+                <p className="text-[11px] text-[#4b5563] leading-relaxed">
+                  Open your authenticator app (Google Authenticator, Authy, etc.) and enter the
+                  6-digit code for this server. The code refreshes every 30 seconds — connect
+                  before the timer expires.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -259,7 +336,8 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
             onClick={handleConnect}
             disabled={
               !username.trim() ||
-              (authType === "keychain" && !selectedKeyName)
+              (authType === "keychain" && !selectedKeyName) ||
+              (authType === "totp" && totpCode.trim().length < 6)
             }
             className="px-5 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50 transition-all"
             style={{ background: "#6366f1", color: "#fff", boxShadow: "0 0 16px #6366f140" }}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { SshConfig, SshConnectionStatus, TransferItem, PingResult, CommandEntry } from "../../types";
+import { SshConfig, SshConnectionStatus, TransferItem, PingResult, CommandEntry, AuditEntry } from "../../types";
 import SSHConnectModal from "./SSHConnectModal";
 import SSHTerminal from "./SSHTerminal";
 import SFTPBrowser from "./SFTPBrowser";
@@ -31,7 +31,7 @@ interface Props {
   onSaveConfig: (config: SshConfig) => void;
 }
 
-type ViewTab = "terminal" | "files" | "transfers" | "history" | "metrics" | "grafana";
+type ViewTab = "terminal" | "files" | "transfers" | "history" | "metrics" | "grafana" | "audit";
 
 // Per-host Grafana configuration (stored in component state, persisted to localStorage)
 export interface GrafanaConfig {
@@ -85,6 +85,8 @@ export default function SSHSessionView({
   const pendingTabId = useRef<string | null>(null);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [commands, setCommands] = useState<CommandEntry[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [auditNewCount, setAuditNewCount] = useState(0);
 
   // ── Grafana config — persisted per host in localStorage ────────────────────
   const grafanaStorageKey = `pingnet_grafana_${hostId}`;
@@ -128,6 +130,24 @@ export default function SSHSessionView({
       helpSummary: null,
     }).catch(() => false);
 
+    // Append to per-host audit log (JSONL file via Rust)
+    const ts = Date.now();
+    const entry: AuditEntry = {
+      ts,
+      host: ip,
+      username: storedCreds?.config.username ?? "",
+      command: cmd.trim(),
+    };
+    invoke("append_audit_log", {
+      hostId,
+      host: entry.host,
+      username: entry.username,
+      command: entry.command,
+      ts,
+    }).catch(() => {});
+    setAuditLog(prev => [entry, ...prev]);
+    setAuditNewCount(prev => prev + 1);
+
     setCommands(prev => {
       const ts = Date.now();
       const idx = prev.findIndex(c => c.command === cmd.trim());
@@ -157,7 +177,7 @@ export default function SSHSessionView({
 
   const [newToolFlash, setNewToolFlash] = useState<string | null>(null);
 
-  // Load persisted history when the first connection goes live
+  // Load persisted history + audit log when the first connection goes live
   const historyLoadedRef = useRef(false);
   useEffect(() => {
     const anyConnected = tabs.some(t => t.status === "connected");
@@ -166,8 +186,11 @@ export default function SSHSessionView({
       invoke<CommandEntry[]>("load_command_history", { host: ip })
         .then(setCommands)
         .catch(() => {});
+      invoke<AuditEntry[]>("load_audit_log", { hostId })
+        .then(entries => setAuditLog([...entries].reverse())) // newest first
+        .catch(() => {});
     }
-  }, [tabs, ip]);
+  }, [tabs, ip, hostId]);
 
   // Suggestions for ghost-text: just the command strings, most-recent first
   const suggestions = commands.map(c => c.command);
@@ -276,6 +299,8 @@ export default function SSHSessionView({
           ? { type: "KeychainKey", key_name: creds.config.key_name ?? "" }
           : creds.config.auth_type === "agent"
           ? { type: "Agent" }
+          : creds.config.auth_type === "totp"
+          ? { type: "KbdInt", totp_code: creds.password }
           : { type: "Key", key_path: creds.config.key_path ?? "~/.ssh/id_rsa", passphrase: creds.password || null };
 
       await invoke("ssh_connect", {
@@ -393,8 +418,12 @@ export default function SSHSessionView({
 
         {/* View tabs */}
         <div className="flex items-center gap-1 bg-[#0f0f1a] rounded-lg p-1 border border-[#1e1e35]">
-          {(["terminal", "files", "transfers", "history", "metrics", "grafana"] as ViewTab[]).map((t) => (
-            <button key={t} onClick={() => setViewTab(t)}
+          {(["terminal", "files", "transfers", "history", "metrics", "grafana", "audit"] as ViewTab[]).map((t) => (
+            <button key={t}
+              onClick={() => {
+                setViewTab(t);
+                if (t === "audit") setAuditNewCount(0);
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
                 viewTab === t ? "bg-[#1e1e35] text-white" : "text-[#4b5563] hover:text-[#8892a4]"
               }`}
@@ -413,6 +442,11 @@ export default function SSHSessionView({
               )}
               {t === "grafana" && grafanaConfig.url && (
                 <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
+              )}
+              {t === "audit" && auditNewCount > 0 && (
+                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#ef4444] text-white">
+                  {auditNewCount > 99 ? "99+" : auditNewCount}
+                </span>
               )}
             </button>
           ))}
@@ -540,6 +574,19 @@ export default function SSHSessionView({
               onSave={saveGrafanaConfig}
             />
           </div>
+        )}
+
+        {/* Audit log panel */}
+        {viewTab === "audit" && (
+          <AuditPanel
+            entries={auditLog}
+            hostId={hostId}
+            onClear={() => {
+              invoke("clear_audit_log", { hostId }).catch(() => {});
+              setAuditLog([]);
+              setAuditNewCount(0);
+            }}
+          />
         )}
       </div>
 
@@ -1089,6 +1136,130 @@ function GrafanaPanel({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── AuditPanel ────────────────────────────────────────────────────────────────
+
+function AuditPanel({
+  entries,
+  hostId,
+  onClear,
+}: {
+  entries: AuditEntry[];
+  hostId: string;
+  onClear: () => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const filtered = filter.trim()
+    ? entries.filter((e) => e.command.toLowerCase().includes(filter.toLowerCase()))
+    : entries;
+
+  function exportLog() {
+    const lines = [...entries].reverse().map((e) =>
+      `${new Date(e.ts).toISOString()}  ${e.username}@${e.host}  ${e.command}`
+    );
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pingnet-audit-${hostId}-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
+  return (
+    <div className="absolute inset-0 flex flex-col" style={{ background: "#08080f" }}>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e1e35] flex-shrink-0"
+        style={{ background: "#0a0a14" }}>
+        <input
+          type="text"
+          placeholder="Filter commands…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="flex-1 bg-[#111120] border border-[#1e1e35] rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-[#374151] focus:outline-none focus:border-[#6366f1] transition-colors font-mono"
+        />
+        <span className="text-[11px] text-[#374151]">{entries.length} entries</span>
+        <button
+          onClick={exportLog}
+          disabled={entries.length === 0}
+          className="text-[11px] font-medium px-3 py-1.5 rounded-lg transition-all disabled:opacity-30"
+          style={{ color: "#00c8a8", background: "#00c8a812", border: "1px solid #00c8a830" }}
+        >
+          ↓ Export
+        </button>
+        {confirmClear ? (
+          <>
+            <button
+              onClick={() => { onClear(); setConfirmClear(false); }}
+              className="text-[11px] font-medium px-3 py-1.5 rounded-lg transition-all"
+              style={{ color: "#ef4444", background: "#ef444412", border: "1px solid #ef444430" }}
+            >
+              Confirm clear
+            </button>
+            <button
+              onClick={() => setConfirmClear(false)}
+              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[#4b5563] hover:text-white transition-all border border-[#1e1e35]"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setConfirmClear(true)}
+            disabled={entries.length === 0}
+            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[#4b5563] hover:text-[#ef4444] transition-all disabled:opacity-30 border border-[#1e1e35]"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Log entries */}
+      {entries.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[#374151]">
+          <p className="text-sm">No commands logged yet</p>
+          <p className="text-[12px] text-[#2d3748]">Every command you run in the terminal is recorded here</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto font-mono text-[12px]">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0" style={{ background: "#0a0a14" }}>
+              <tr className="text-left border-b border-[#1e1e35]">
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[#374151] w-44">Time</th>
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[#374151] w-28">User</th>
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[#374151]">Command</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((e, i) => (
+                <tr
+                  key={i}
+                  className="border-b border-[#0d0d1a] hover:bg-[#0d0d1a] transition-colors"
+                >
+                  <td className="px-4 py-2 text-[#374151] whitespace-nowrap">
+                    {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    <span className="ml-1.5 text-[10px] text-[#2d3748]">
+                      {new Date(e.ts).toLocaleDateString([], { month: "short", day: "numeric" })}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-[#4b5563] whitespace-nowrap">{e.username}</td>
+                  <td className="px-4 py-2 text-[#c9d1d9] break-all">{e.command}</td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-[#374151]">No commands match "{filter}"</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

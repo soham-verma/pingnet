@@ -456,6 +456,21 @@ const ITEMS = [
     icon: "💻", badge: "int", title: "Open in VS Code / Cursor / JetBrains",
     desc: "Three toolbar buttons in SFTP browser open the current remote path in VS Code (vscode://), Cursor (cursor://), or JetBrains Gateway (jetbrains-gateway://). Port-aware authority. All three schemes added to capability allowlist."
   },
+  {
+    id: "ssh-config-persist-shipped", grid: "shipped", shipped: true, version: "v0.3.5",
+    icon: "💾", badge: "core", title: "SSH config persistence",
+    desc: "Username, port, auth type, key path/name saved to the host record and restored on next launch. Passwords and passphrases are never stored. All new HostConfig fields use #[serde(default)] for backward-compat with existing JSON."
+  },
+  {
+    id: "audit-log-shipped", grid: "shipped", shipped: true, version: "v0.3.5",
+    icon: "📋", badge: "sec", title: "Session audit log",
+    desc: "Every command run in a terminal session is appended to a per-host JSONL file (sanitized host_id as filename). Audit panel tab in SSH view shows timestamped history, filter input, new-command badge, export to .txt, and confirm-before-clear."
+  },
+  {
+    id: "totp-shipped", grid: "shipped", shipped: true, version: "v0.3.5",
+    icon: "🔐", badge: "sec", title: "TOTP / 2FA auth",
+    desc: "New KbdInt { totp_code } variant in SshAuth enum feeds the code to SSH keyboard-interactive (ssh2::KeyboardInteractivePrompt). Modal shows a 6-digit input + live countdown ring with colour warning at ≤10s and ≤5s. Code cleared on new 30s window. Connect button disabled until 6 digits entered."
+  },
 
   // ── Git & Code ──
   {
@@ -498,7 +513,7 @@ const ITEMS = [
   // ── Infra & DevOps ──
   {
     id: "docker", grid: "infra", icon: "🐳", badge: "core", title: "Docker manager",
-    desc: "List containers, start/stop/restart, tail logs — all over SSH without typing docker commands"
+    desc: "Full Docker Compose control over SSH — no local Docker install needed. From your dockerctl.sh patterns: build & start, start/stop/restart all or individual services, rebuild single container (with or without image rebuild), tail or follow logs per service, shell exec into running containers, prune containers/images/volumes/build cache, flush database (manage.py flush), reload .env without rebuilding. Multi-environment support (dev/prod), compose file selection. Basically Docker Desktop but for remote servers you don't physically touch."
   },
   {
     id: "k8s", grid: "infra", icon: "☸️", badge: "core", title: "Kubernetes viewer",
@@ -511,6 +526,10 @@ const ITEMS = [
   {
     id: "cloudflare", grid: "infra", icon: "🌤️", badge: "int", title: "Cloudflare tunnels",
     desc: "Create / manage tunnels to expose local services. Replaces ngrok for most dev scenarios."
+  },
+  {
+    id: "api-client", grid: "infra", icon: "⚡", badge: "core", title: "API client (Postman killer)",
+    desc: "Free, built-in HTTP client — no SaaS, no paywalls, no account required. Collections of saved requests per host, environment variables, response viewer with syntax highlighting and diff. The killer feature: SSH tunnel mode — hit internal APIs (localhost:8000, 127.0.0.1:5432) on a remote server directly from Pingnet without exposing any port publicly. Send a request to a service running inside a Docker container on your server, see the response, iterate. Postman can't do that."
   },
 
   // ── Security ──

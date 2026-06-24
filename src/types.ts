@@ -8,6 +8,12 @@ export interface HostConfig {
   alert_on_down: boolean;
   alert_on_recovery: boolean;
   alert_latency_ms: number | null;
+  // Persisted SSH config — passwords are never stored here
+  ssh_port?: number;
+  ssh_username?: string;
+  ssh_auth_type?: string;
+  ssh_key_path?: string;
+  ssh_key_name?: string;
 }
 
 export type PingErrorKind =
@@ -46,7 +52,7 @@ export interface HostState extends HostConfig {
 export interface SshConfig {
   port: number;
   username: string;
-  auth_type: "password" | "key" | "keychain" | "agent";
+  auth_type: "password" | "key" | "keychain" | "agent" | "totp";
   key_path?: string;
   key_name?: string;  // for keychain keys
 }
@@ -235,4 +241,11 @@ export interface KeyInfo {
   public_key: string;
   comment: string;
   created_at: number;
+}
+
+export interface AuditEntry {
+  ts: number;         // Unix ms
+  host: string;
+  username: string;
+  command: string;
 }

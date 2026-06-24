@@ -45,6 +45,9 @@ pub enum SshAuth {
     KeychainKey { key_name: String },
     /// Delegate to the running SSH agent (SSH_AUTH_SOCK) — works with any key type
     Agent,
+    /// Keyboard-interactive auth — responds with a TOTP code to every server prompt.
+    /// Used for Google Authenticator / any TOTP-based two-factor SSH auth.
+    KbdInt { totp_code: String },
 }
 
 enum ShellMsg {
@@ -260,6 +263,25 @@ fn auth_session(session: &Session, username: &str, auth: &SshAuth) -> Result<(),
             session
                 .userauth_agent(username)
                 .map_err(|e| format!("SSH agent auth failed: {}", e))?;
+        }
+        SshAuth::KbdInt { totp_code } => {
+            // Keyboard-interactive: respond with the TOTP code to every server prompt.
+            // Most TOTP-protected servers send a single "Verification code:" prompt.
+            struct TotpResponder(String);
+            impl ssh2::KeyboardInteractivePrompt for TotpResponder {
+                fn prompt(
+                    &mut self,
+                    _username: &str,
+                    _instructions: &str,
+                    prompts: &[ssh2::Prompt<'_>],
+                ) -> Vec<String> {
+                    // Return the TOTP code for every prompt (typically just one).
+                    prompts.iter().map(|_| self.0.clone()).collect()
+                }
+            }
+            session
+                .userauth_keyboard_interactive(username, &mut TotpResponder(totp_code.clone()))
+                .map_err(|e| format!("TOTP/keyboard-interactive auth failed: {}", e))?;
         }
     }
     if !session.authenticated() {

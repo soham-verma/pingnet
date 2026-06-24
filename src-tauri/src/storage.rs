@@ -17,6 +17,19 @@ pub struct HostConfig {
     pub alert_on_recovery: bool,
     #[serde(default)]
     pub alert_latency_ms: Option<u64>,
+    // SSH connection config — persisted so the user doesn't re-enter on every launch.
+    // All optional so existing hosts.json deserialises without migration.
+    // Passwords and key passphrases are NEVER stored here.
+    #[serde(default)]
+    pub ssh_port: Option<u16>,
+    #[serde(default)]
+    pub ssh_username: Option<String>,
+    #[serde(default)]
+    pub ssh_auth_type: Option<String>,   // "password" | "key" | "keychain" | "agent" | "totp"
+    #[serde(default)]
+    pub ssh_key_path: Option<String>,
+    #[serde(default)]
+    pub ssh_key_name: Option<String>,
 }
 
 fn hosts_file_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
