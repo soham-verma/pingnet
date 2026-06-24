@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
 import { HostConfig, HostState, SshConfig } from "./types";
 import { usePing, PingSession } from "./hooks/usePing";
+import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import Sidebar from "./components/Sidebar";
 import HostDetailView from "./components/HostDetailView";
 import AddEditModal from "./components/AddEditModal";
@@ -24,6 +26,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("ping");
   // SSH config per host (username, port, auth_type saved but not password)
   const [sshConfigs, setSshConfigs] = useState<Record<string, SshConfig>>({});
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const update = useUpdateCheck();
 
   const { getSession, ping, clearSession } = usePing();
 
@@ -109,7 +113,33 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "#08080f" }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#08080f" }}>
+
+      {/* Update banner */}
+      {update.available && !updateDismissed && (
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 text-[13px]"
+          style={{ background: "#1a1f35", borderBottom: "1px solid #2d3748" }}>
+          <span className="text-[#a5b4fc]">
+            Pingnet {update.latestVersion} is available —
+            {" "}
+            <button
+              className="underline text-[#818cf8] hover:text-white transition-colors"
+              onClick={() => open(update.releaseUrl)}
+            >
+              Download from GitHub
+            </button>
+          </span>
+          <button
+            onClick={() => setUpdateDismissed(true)}
+            className="ml-4 text-[#4b5563] hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
       {/* Sidebar */}
       <Sidebar
         hosts={hosts}
@@ -177,6 +207,7 @@ export default function App() {
           onDelete={modal.mode === "edit" && modal.host ? () => handleDeleteHost(modal.host!.id) : undefined}
         />
       )}
+      </div>  {/* end flex flex-1 */}
     </div>
   );
 }

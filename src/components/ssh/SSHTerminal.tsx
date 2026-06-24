@@ -45,6 +45,13 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
   const onCommandRef = useRef(onCommand);
   useEffect(() => { onCommandRef.current = onCommand; }, [onCommand]);
 
+  // isConnected via ref — avoids stale closure in the useEffect onData handler
+  const isConnectedRef = useRef(isConnected);
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+
+  // Commands that exit / restart the shell — never ghost-suggest these
+  const SKIP_SUGGEST = new Set(["exit", "logout", "bye", "quit", "reboot", "shutdown", "halt", "poweroff"]);
+
   // What the user has typed since the last prompt — used ONLY for ghost-text matching.
   // Tab completions from bash arrive as SSH output, not as key presses, so this
   // buffer deliberately does NOT represent the true command line — we read that
@@ -86,9 +93,18 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
     // Don't suggest until user has typed at least 2 chars
     if (buf.length < 2) { hideGhost(); return; }
 
-    const match = suggestionsRef.current.find(s => s !== buf && s.startsWith(buf));
+    const match = suggestionsRef.current.find(s => {
+      if (!s.startsWith(buf) || s === buf) return false;
+      // Never suggest commands that would close the shell
+      const baseCmd = s.trim().split(/\s+/)[0];
+      return !SKIP_SUGGEST.has(baseCmd);
+    });
+
     if (match) {
-      showGhost(match.slice(buf.length));
+      // Strip any control characters from the suffix before showing
+      const suffix = match.slice(buf.length).replace(/[\r\n\x00-\x1f\x7f]/g, "");
+      if (suffix) showGhost(suffix);
+      else hideGhost();
     } else {
       hideGhost();
     }
@@ -105,17 +121,19 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
   const extractCommandFromLine = (term: Terminal): string => {
     const cy = term.buffer.active.cursorY;
     const line = term.buffer.active.getLine(cy);
-    if (!line) return inputBufRef.current.trim(); // fallback
+    if (!line) return "";
 
     // translateToString(true) trims trailing whitespace automatically
     const text = line.translateToString(true);
 
-    // Strip everything up to and including the last prompt terminator + space
+    // Only record if the line starts with a recognisable shell prompt.
+    // This prevents saving commands typed inside sub-tools (python REPL,
+    // mysql, psql, node, etc.) which have different prompt styles.
     const match = text.match(/(?:[$#%❯›])\s+(.+)$/);
     if (match) return match[1].trim();
 
-    // No recognisable prompt — fall back to the typed buffer
-    return inputBufRef.current.trim();
+    // Not at a shell prompt — return empty so nothing gets saved to history
+    return "";
   };
 
   // ── Terminal setup ─────────────────────────────────────────────────────────
@@ -164,13 +182,28 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
 
       const hasCompletion = !!ghostCompletionRef.current;
 
-      if (hasCompletion && (event.key === "Tab" || event.key === "ArrowRight")) {
-        // Accept ghost suggestion: send the completion suffix to SSH
+      // Always prevent Tab from moving DOM focus away from the terminal.
+      // Without this, the browser shifts focus to the next element (the tab
+      // close button), and a subsequent Enter keystroke closes the terminal.
+      if (event.key === "Tab") {
+        event.preventDefault();
+        if (hasCompletion) {
+          const completion = ghostCompletionRef.current;
+          invoke("ssh_send", { sessionId, data: completion }).catch(() => {});
+          inputBufRef.current += completion;
+          hideGhost();
+          return false; // consumed — don't let xterm send Tab to SSH
+        }
+        return true; // no ghost — let xterm forward Tab to SSH for bash completion
+      }
+
+      if (hasCompletion && event.key === "ArrowRight") {
+        event.preventDefault();
         const completion = ghostCompletionRef.current;
         invoke("ssh_send", { sessionId, data: completion }).catch(() => {});
         inputBufRef.current += completion;
         hideGhost();
-        return false; // don't let xterm process Tab or Right-arrow
+        return false;
       }
 
       // Any other special key while ghost is visible → clear ghost
@@ -191,7 +224,7 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
 
     // ── onData: track line, send to SSH ─────────────────────────────────────
     term.onData((data: string) => {
-      if (!isConnected) return;
+      if (!isConnectedRef.current) return;
 
       if (data === "\r") {
         // Enter — read actual command from the rendered xterm buffer, not

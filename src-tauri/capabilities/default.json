@@ -4,6 +4,7 @@
   "description": "Default capabilities for Pingnet",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "shell:allow-open"
   ]
 }

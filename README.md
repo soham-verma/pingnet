@@ -50,6 +50,36 @@ A cross-platform network diagnostics desktop app for developers and sysadmins. B
 
 ---
 
+## Installation
+
+Download the latest release for your platform from the [Releases page](../../releases/latest).
+
+### macOS
+
+> **"Pingnet.app is damaged and can't be opened"** — this is macOS Gatekeeper blocking an unsigned app. Run this in Terminal after dragging Pingnet.app to your Applications folder:
+>
+> ```bash
+> xattr -cr /Applications/Pingnet.app
+> ```
+>
+> Then open it normally.
+
+### Linux
+
+```bash
+# AppImage
+chmod +x Pingnet_0.1.0_amd64.AppImage && ./Pingnet_0.1.0_amd64.AppImage
+
+# .deb
+sudo dpkg -i Pingnet_0.1.0_amd64.deb
+```
+
+### Windows
+
+Run the `.msi` installer or the `.exe` setup file. If Windows Defender blocks it, click **More info → Run anyway**.
+
+---
+
 ## Getting Started
 
 ### Prerequisites

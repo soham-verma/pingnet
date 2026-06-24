@@ -470,6 +470,7 @@ export default function SSHSessionView({
           <CommandHistory
             commands={commands}
             activeSessionId={primarySessionId}
+            onRun={() => setViewTab("terminal")}
           />
         </div>
       </div>

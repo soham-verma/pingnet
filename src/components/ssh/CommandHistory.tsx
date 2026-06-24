@@ -94,13 +94,16 @@ interface Props {
   commands: CommandEntry[];
   activeSessionId: string | null;
   onClear?: () => void;
+  /** Called after a command is sent — use to switch back to the terminal tab */
+  onRun?: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function CommandHistory({ commands, activeSessionId, onClear: _onClear }: Props) {
+export default function CommandHistory({ commands, activeSessionId, onClear: _onClear, onRun }: Props) {
   const [search, setSearch] = useState("");
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+  const [sentCmd, setSentCmd] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -129,8 +132,13 @@ export default function CommandHistory({ commands, activeSessionId, onClear: _on
 
   const insertCmd = async (cmd: string) => {
     if (!activeSessionId) return;
-    // Send command + carriage return to active terminal
     await invoke("ssh_send", { sessionId: activeSessionId, data: cmd + "\r" }).catch(() => {});
+    // Show brief "sent" flash, then switch to terminal tab
+    setSentCmd(cmd);
+    setTimeout(() => {
+      setSentCmd(null);
+      onRun?.();
+    }, 600);
   };
 
   const copyCmd = async (cmd: string) => {
@@ -211,6 +219,7 @@ export default function CommandHistory({ commands, activeSessionId, onClear: _on
                 base={base}
                 entries={entries}
                 copiedCmd={copiedCmd}
+                sentCmd={sentCmd}
                 onInsert={activeSessionId ? insertCmd : undefined}
                 onCopy={copyCmd}
               />
@@ -228,11 +237,12 @@ interface GroupProps {
   base: string;
   entries: CommandEntry[];
   copiedCmd: string | null;
+  sentCmd: string | null;
   onInsert?: (cmd: string) => void;
   onCopy: (cmd: string) => void;
 }
 
-function ToolGroup({ base, entries, copiedCmd, onInsert, onCopy }: GroupProps) {
+function ToolGroup({ base, entries, copiedCmd, sentCmd, onInsert, onCopy }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false);
   const desc = entries[0].help_summary ?? TOOL_DESC[base] ?? null;
   const totalRuns = entries.reduce((sum, e) => sum + e.count, 0);
@@ -263,6 +273,7 @@ function ToolGroup({ base, entries, copiedCmd, onInsert, onCopy }: GroupProps) {
           key={entry.command}
           entry={entry}
           copiedCmd={copiedCmd}
+          sentCmd={sentCmd}
           onInsert={onInsert}
           onCopy={onCopy}
         />
@@ -276,16 +287,19 @@ function ToolGroup({ base, entries, copiedCmd, onInsert, onCopy }: GroupProps) {
 interface RowProps {
   entry: CommandEntry;
   copiedCmd: string | null;
+  sentCmd: string | null;
   onInsert?: (cmd: string) => void;
   onCopy: (cmd: string) => void;
 }
 
-function CommandRow({ entry, copiedCmd, onInsert, onCopy }: RowProps) {
+function CommandRow({ entry, copiedCmd, sentCmd, onInsert, onCopy }: RowProps) {
   const isCopied = copiedCmd === entry.command;
+  const isSent   = sentCmd   === entry.command;
 
   return (
     <div
-      className="group flex items-center gap-2 px-4 py-2 hover:bg-[#0f0f1a] transition-colors cursor-pointer"
+      className="group flex items-center gap-2 px-4 py-2 transition-colors cursor-pointer"
+      style={{ background: isSent ? "#1a1f35" : undefined }}
       onClick={() => onInsert?.(entry.command)}
       title={onInsert ? "Click to run in terminal" : "Connect a terminal first"}
     >
