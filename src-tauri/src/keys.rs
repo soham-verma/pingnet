@@ -120,6 +120,20 @@ pub fn delete_ssh_key(app: tauri::AppHandle, name: String) -> Result<(), String>
     Ok(())
 }
 
+/// Regenerate an existing key — generates a new Ed25519 keypair under the same
+/// name, overwriting the old private key in the keychain and updating the index.
+/// The old public key is replaced; anything that was authorised with the old key
+/// will need to be updated on the remote (the command returns the new public key).
+#[tauri::command]
+pub fn regenerate_ssh_key(
+    app: tauri::AppHandle,
+    name: String,
+    comment: String,
+) -> Result<String, String> {
+    // Reuse generate_ssh_key — it already does retain/push so old entry is replaced
+    generate_ssh_key(app, name, comment)
+}
+
 // ── Internal helper (used by ssh.rs for KeychainKey auth) ─────────────────────
 
 pub fn get_private_key(name: &str) -> Result<String, String> {

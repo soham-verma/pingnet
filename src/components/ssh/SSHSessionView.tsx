@@ -436,11 +436,15 @@ export default function SSHSessionView({
                     <TabContent
                       tab={tab}
                       ip={ip}
+                      port={storedCreds?.config.port ?? 22}
                       suggestions={suggestions}
                       onCommand={handleCommand}
                       onRetry={() => storedCreds && connectTab(tab.id, storedCreds)}
                       onRetrySkipPing={() => storedCreds && connectTab(tab.id, storedCreds, true)}
                       onReconnect={() => reconnectTab(tab.id)}
+                      onTrustNewKey={async (host, port, fingerprint) => {
+                        await invoke("trust_host_key", { host, port, fingerprint });
+                      }}
                     />
                   </div>
                 ))}
@@ -560,17 +564,30 @@ export default function SSHSessionView({
 
 // ── TabContent ────────────────────────────────────────────────────────────────
 
+// Parse the structured HOST_KEY_CHANGED error emitted by ssh.rs
+// Format: "HOST_KEY_CHANGED\x00host=...\x00stored=...\x00current=..."
+function parseHostKeyChanged(error: string | null): { host: string; stored: string; current: string } | null {
+  if (!error?.startsWith("HOST_KEY_CHANGED")) return null;
+  const parts = Object.fromEntries(
+    error.split("\x00").slice(1).map((p) => p.split("=") as [string, string])
+  );
+  if (!parts.host || !parts.stored || !parts.current) return null;
+  return { host: parts.host, stored: parts.stored, current: parts.current };
+}
+
 interface TabContentProps {
   tab: TerminalTab;
   ip: string;
+  port: number;
   suggestions: string[];
   onCommand: (cmd: string) => void;
   onRetry: () => void;
   onRetrySkipPing: () => void;
   onReconnect: () => void;
+  onTrustNewKey: (host: string, port: number, fingerprint: string) => Promise<void>;
 }
 
-function TabContent({ tab, ip, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect }: TabContentProps) {
+function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect, onTrustNewKey }: TabContentProps) {
   const { status } = tab;
 
   // Connected — just render the terminal
@@ -687,8 +704,71 @@ function TabContent({ tab, ip, suggestions, onCommand, onRetry, onRetrySkipPing,
     );
   }
 
-  // SSH failed — auth error, port closed, etc.
+  // SSH failed — check if it's a host key mismatch first
   if (status === "ssh_fail") {
+    const hkc = parseHostKeyChanged(tab.error);
+
+    if (hkc) {
+      // ── Host key changed warning ──────────────────────────────────────────
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-5 px-8">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "#f59e0b10", border: "1px solid #f59e0b35" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 20h20L12 2z" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" />
+              <path d="M12 9v5M12 16.5v1" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </div>
+
+          <div className="text-center max-w-sm">
+            <p className="text-white font-semibold text-base mb-1">Host key has changed</p>
+            <p className="text-[#9ca3af] text-[13px] mb-4">
+              The SSH fingerprint for <span className="text-white font-mono">{hkc.host}</span> no longer matches what was stored. This could mean the server was reinstalled — or it could be a man-in-the-middle attack.
+            </p>
+
+            <div className="rounded-xl overflow-hidden text-left mb-4"
+              style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+              <div className="px-4 py-2.5 border-b border-[#1e1e35]">
+                <p className="text-[10px] tracking-[0.15em] uppercase text-[#4b5563]">Fingerprint comparison</p>
+              </div>
+              <div className="px-4 py-3 space-y-2">
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-[#4b5563] mb-0.5">Stored (trusted)</p>
+                  <p className="font-mono text-[12px] text-[#22c55e] break-all">{hkc.stored}</p>
+                </div>
+                <div className="border-t border-[#1e1e35] pt-2">
+                  <p className="text-[9px] uppercase tracking-wider text-[#4b5563] mb-0.5">Current (server)</p>
+                  <p className="font-mono text-[12px] text-[#f59e0b] break-all">{hkc.current}</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#4b5563]">
+              Only click "Trust New Key" if you are certain the server was legitimately reinstalled or the key was rotated.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            <button
+              onClick={async () => {
+                await onTrustNewKey(hkc.host, port, hkc.current);
+                onRetry();
+              }}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
+              style={{ background: "#f59e0b", color: "#000", boxShadow: "0 0 16px #f59e0b30" }}>
+              Trust New Key &amp; Reconnect
+            </button>
+            <button onClick={onRetry}
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-[#4b5563] hover:text-white"
+              style={{ border: "1px solid #1e1e35" }}>
+              Abort — Keep Stored Key
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Generic SSH failure ───────────────────────────────────────────────────
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 px-8">
         <div className="w-12 h-12 rounded-full flex items-center justify-center"

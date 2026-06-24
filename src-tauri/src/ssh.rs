@@ -122,11 +122,9 @@ fn verify_host_key(session: &Session, host: &str, port: u16, app: &tauri::AppHan
 
     match known.get(&host_key) {
         Some(stored) if stored != &fingerprint => {
+            // Embed structured fields so the frontend can parse them without regex
             return Err(format!(
-                "HOST_KEY_CHANGED\nThe host key for {} has changed!\n\
-                 Stored:  {}\nCurrent: {}\n\n\
-                 This could indicate a man-in-the-middle attack or the server was reinstalled. \
-                 If you trust this change, remove the entry from known_hosts.json in the Pingnet app data directory.",
+                "HOST_KEY_CHANGED\x00host={}\x00stored={}\x00current={}",
                 host, stored, fingerprint
             ));
         }
@@ -137,6 +135,38 @@ fn verify_host_key(session: &Session, host: &str, port: u16, app: &tauri::AppHan
         }
         _ => {} // Key matches — all good
     }
+    Ok(())
+}
+
+/// Remove a host's stored key so the next connection re-pins it (TOFU reset).
+/// Call this when the user trusts the new key after a server reinstall.
+#[tauri::command]
+pub async fn clear_host_key(
+    app: tauri::AppHandle,
+    host: String,
+    port: u16,
+) -> Result<(), String> {
+    let host_key = format!("[{}]:{}", host, port);
+    let mut known = load_known_hosts(&app);
+    known.remove(&host_key);
+    save_known_hosts(&app, &known);
+    Ok(())
+}
+
+/// Overwrite a host's stored key with the supplied fingerprint.
+/// Used by the "Trust New Key" UI action — sets the current key as trusted
+/// so the next connect() call succeeds without another mismatch error.
+#[tauri::command]
+pub async fn trust_host_key(
+    app: tauri::AppHandle,
+    host: String,
+    port: u16,
+    fingerprint: String,
+) -> Result<(), String> {
+    let host_key = format!("[{}]:{}", host, port);
+    let mut known = load_known_hosts(&app);
+    known.insert(host_key, fingerprint);
+    save_known_hosts(&app, &known);
     Ok(())
 }
 

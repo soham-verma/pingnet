@@ -11,6 +11,10 @@ export default function KeyManager({ onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Regenerate state — tracks which key name is being regenerated + shows new pubkey
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [regenResult, setRegenResult] = useState<{ name: string; pubKey: string } | null>(null);
+
   // Generate form state
   const [name, setName] = useState("");
   const [comment, setComment] = useState("");
@@ -78,6 +82,24 @@ export default function KeyManager({ onClose }: Props) {
       setError(String(e));
     } finally {
       setDeleting(null);
+    }
+  }
+
+  async function handleRegenerate(key: KeyInfo) {
+    if (!window.confirm(`Regenerate "${key.name}"? The old key will be permanently replaced. You'll need to update authorized_keys on any servers that use it.`)) return;
+    setRegenerating(key.name);
+    setRegenResult(null);
+    try {
+      const pub = await invoke<string>("regenerate_ssh_key", {
+        name: key.name,
+        comment: key.comment || key.name,
+      });
+      setRegenResult({ name: key.name, pubKey: pub });
+      await loadKeys();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRegenerating(null);
     }
   }
 
@@ -185,6 +207,14 @@ export default function KeyManager({ onClose }: Props) {
                         {copied === k.name ? "Copied!" : "Copy pub key"}
                       </button>
                       <button
+                        onClick={() => handleRegenerate(k)}
+                        disabled={regenerating === k.name}
+                        className="text-[11px] text-[#f59e0b] hover:text-[#fbbf24] transition-colors disabled:opacity-40"
+                        title="Generate a new keypair under this name — replaces the old key"
+                      >
+                        {regenerating === k.name ? "Regenerating…" : "Regenerate"}
+                      </button>
+                      <button
                         onClick={() => handleDelete(k.name)}
                         disabled={deleting === k.name}
                         className="text-[11px] text-[#4b5563] hover:text-[#ef4444] transition-colors disabled:opacity-40"
@@ -197,6 +227,21 @@ export default function KeyManager({ onClose }: Props) {
                   <p className="text-[10px] text-[#2d3748]">
                     Created {new Date(k.created_at).toLocaleDateString()}
                   </p>
+
+                  {/* Regen success banner */}
+                  {regenResult?.name === k.name && (
+                    <div className="rounded-lg bg-[#080810] border border-[#f59e0b30] p-3 space-y-1 mt-1">
+                      <p className="text-[10px] text-[#f59e0b] tracking-widest uppercase">New key — update authorized_keys on your servers</p>
+                      <pre className="text-[10px] text-[#9ca3af] font-mono break-all whitespace-pre-wrap">{regenResult.pubKey}</pre>
+                      <button
+                        type="button"
+                        onClick={() => copyKey(regenResult.pubKey, `regen-${k.name}`)}
+                        className="text-xs text-[#f59e0b] hover:text-[#fbbf24] transition-colors"
+                      >
+                        {copied === `regen-${k.name}` ? "Copied!" : "Copy to clipboard"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))
             )}

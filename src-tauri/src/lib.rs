@@ -72,11 +72,14 @@ pub fn run() {
             ssh::get_iface_details,
             ssh::get_routes,
             ssh::run_speedtest,
+            ssh::clear_host_key,
+            ssh::trust_host_key,
             command_history::load_command_history,
             command_history::save_command,
             keys::list_ssh_keys,
             keys::generate_ssh_key,
             keys::delete_ssh_key,
+            keys::regenerate_ssh_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");
