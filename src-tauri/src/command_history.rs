@@ -80,6 +80,20 @@ pub fn save_command(
         return false;
     }
 
+    // Don't persist commands that likely carry inline secrets (passwords, tokens, etc.)
+    // to avoid plaintext credential exposure in the history JSON files.
+    let lower = cmd.to_lowercase();
+    let secret_patterns = [
+        "--password", "--passwd", "--pass",
+        "--token", "--secret", "--api-key", "--apikey",
+        "--auth-token", "--access-token", "--private-key",
+        "sshpass",       // sshpass -p <password> ssh ...
+        ":// ",          // URL with embedded credentials: user:pass@host
+    ];
+    if secret_patterns.iter().any(|p| lower.contains(p)) {
+        return false; // silently skip — no error, nothing saved
+    }
+
     let base_cmd = cmd
         .split_whitespace()
         .next()

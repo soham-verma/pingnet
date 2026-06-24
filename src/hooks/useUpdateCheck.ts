@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 
-const CURRENT_VERSION = "0.1.1";
 const REPO = "soham-verma/pingnet";
 const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
-// Cache key — store check timestamp + result so we don't hammer the API
 const CACHE_KEY = "pingnet_update_check";
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -31,22 +30,25 @@ function isNewer(candidate: string, current: string): boolean {
 }
 
 export interface UpdateInfo {
-  /** A newer version is available */
   available: boolean;
-  /** e.g. "0.2.0" */
   latestVersion: string | null;
-  /** GitHub releases page URL */
   releaseUrl: string;
 }
 
 export function useUpdateCheck(): UpdateInfo {
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  const [latestVersion, setLatestVersion]   = useState<string | null>(null);
+
+  // Read the real app version from tauri.conf.json at runtime — never hardcode it
+  useEffect(() => {
+    getVersion().then(setCurrentVersion).catch(() => setCurrentVersion(null));
+  }, []);
 
   useEffect(() => {
-    // Delay check by 3 s so it doesn't compete with app startup
+    if (!currentVersion) return;
+
     const timer = setTimeout(async () => {
       try {
-        // Check local cache first
         const raw = localStorage.getItem(CACHE_KEY);
         if (raw) {
           const cache: CacheEntry = JSON.parse(raw);
@@ -57,14 +59,15 @@ export function useUpdateCheck(): UpdateInfo {
         }
 
         const res = await fetch(API_URL, {
-          headers: { "User-Agent": `Pingnet/${CURRENT_VERSION}` },
+          headers: { "User-Agent": `Pingnet/${currentVersion}` },
         });
         const data = await res.json() as { tag_name?: string };
         const tag = data.tag_name ?? null;
 
-        // Cache the result
-        const entry: CacheEntry = { checkedAt: Date.now(), latestVersion: tag };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          checkedAt: Date.now(),
+          latestVersion: tag,
+        } satisfies CacheEntry));
 
         if (tag) setLatestVersion(tag);
       } catch {
@@ -73,9 +76,12 @@ export function useUpdateCheck(): UpdateInfo {
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [currentVersion]);
 
-  const available = latestVersion !== null && isNewer(latestVersion, CURRENT_VERSION);
+  const available =
+    currentVersion !== null &&
+    latestVersion !== null &&
+    isNewer(latestVersion, currentVersion);
 
-  return { available, latestVersion: latestVersion, releaseUrl: RELEASES_URL };
+  return { available, latestVersion, releaseUrl: RELEASES_URL };
 }

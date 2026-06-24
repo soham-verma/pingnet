@@ -26,6 +26,18 @@ pub fn is_private_ip(ip: &str) -> bool {
 }
 
 pub fn ping(ip: &str) -> PingResult {
+    // Reject inputs that could be misinterpreted as CLI flags by the ping binary.
+    // A leading dash (e.g. "-c999") or empty string would alter command behavior.
+    if ip.is_empty() || ip.starts_with('-') {
+        return PingResult {
+            success: false,
+            latency_ms: None,
+            error_kind: Some("invalid_host".to_string()),
+            error_detail: Some("Invalid host: value cannot be empty or start with '-'".to_string()),
+            is_private_ip: false,
+        };
+    }
+
     let private = is_private_ip(ip);
 
     // Build platform-specific ping command
@@ -162,6 +174,14 @@ fn parse_error(stdout: &str, stderr: &str, _ip: &str, private: bool) -> (String,
     {
         let raw = stdout.trim();
         let msg = if raw.is_empty() { stderr.trim() } else { raw };
-        ("unknown".to_string(), format!("Ping failed: {}", &msg[..msg.len().min(200)]))
+        // Truncate at a valid UTF-8 char boundary to avoid a panic on multibyte chars
+        let truncated = if msg.len() <= 200 {
+            msg
+        } else {
+            let mut end = 200;
+            while !msg.is_char_boundary(end) { end -= 1; }
+            &msg[..end]
+        };
+        ("unknown".to_string(), format!("Ping failed: {}", truncated))
     }
 }

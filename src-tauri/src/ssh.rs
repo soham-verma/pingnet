@@ -70,6 +70,67 @@ impl SshState {
     }
 }
 
+// ── Known-hosts TOFU store ────────────────────────────────────────────────────
+
+fn known_hosts_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("known_hosts.json"))
+}
+
+fn load_known_hosts(app: &tauri::AppHandle) -> HashMap<String, String> {
+    let path = match known_hosts_path(app) {
+        Some(p) => p,
+        None => return HashMap::new(),
+    };
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_known_hosts(app: &tauri::AppHandle, map: &HashMap<String, String>) {
+    if let Some(path) = known_hosts_path(app) {
+        if let Ok(json) = serde_json::to_string_pretty(map) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+/// Trust-on-first-use host key verification.
+/// First connection: fingerprint is stored and the connection proceeds.
+/// Subsequent connections: fingerprint must match what was stored.
+fn verify_host_key(session: &Session, host: &str, port: u16, app: &tauri::AppHandle) -> Result<(), String> {
+    let hash = session
+        .host_key_hash(ssh2::HashType::Md5)
+        .ok_or_else(|| "Server provided no host key — refusing connection".to_string())?;
+
+    let fingerprint = hash.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let host_key = format!("[{}]:{}", host, port);
+    let mut known = load_known_hosts(app);
+
+    match known.get(&host_key) {
+        Some(stored) if stored != &fingerprint => {
+            return Err(format!(
+                "HOST_KEY_CHANGED\nThe host key for {} has changed!\n\
+                 Stored:  {}\nCurrent: {}\n\n\
+                 This could indicate a man-in-the-middle attack or the server was reinstalled. \
+                 If you trust this change, remove the entry from known_hosts.json in the Pingnet app data directory.",
+                host, stored, fingerprint
+            ));
+        }
+        None => {
+            // First time connecting to this host — store it (TOFU)
+            known.insert(host_key, fingerprint);
+            save_known_hosts(app, &known);
+        }
+        _ => {} // Key matches — all good
+    }
+    Ok(())
+}
+
 // ── Connection helpers ────────────────────────────────────────────────────────
 
 fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, String> {
@@ -77,10 +138,11 @@ fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, String> {
         .map_err(|e| format!("TCP connect failed: {}", e))
 }
 
-fn make_session(stream: TcpStream) -> Result<Session, String> {
+fn make_session(stream: TcpStream, host: &str, port: u16, app: &tauri::AppHandle) -> Result<Session, String> {
     let mut session = Session::new().map_err(|e| format!("Session init failed: {}", e))?;
     session.set_tcp_stream(stream);
     session.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    verify_host_key(&session, host, port, app)?;
     Ok(session)
 }
 
@@ -213,9 +275,10 @@ pub async fn ssh_connect(
         let host = host_c.clone();
         let username = username_c.clone();
         let auth = auth_c.clone();
+        let app_verify = app.clone();
         move || {
             let stream = tcp_connect(&host, port)?;
-            let session = make_session(stream)?;
+            let session = make_session(stream, &host, port, &app_verify)?;
             auth_session(&session, &username, &auth)?;
             let channel = open_shell(&session)?;
             std::thread::spawn(move || {
@@ -232,9 +295,10 @@ pub async fn ssh_connect(
         let host = host.clone();
         let username = username.clone();
         let auth = auth.clone();
+        let app_verify = app.clone();
         move || {
             let stream = tcp_connect(&host, port)?;
-            let session = make_session(stream)?;
+            let session = make_session(stream, &host, port, &app_verify)?;
             auth_session(&session, &username, &auth)?;
             Ok::<_, String>(session)
         }
@@ -369,11 +433,23 @@ pub async fn sftp_download(
 
         let remote_stat = sftp.stat(Path::new(&remote_path)).map_err(|e| e.to_string())?;
         let total_bytes = remote_stat.size.unwrap_or(0);
-        let filename = Path::new(&remote_path)
+
+        // Sanitize the server-derived filename: strip path separators, null bytes,
+        // and leading dots so a malicious server can't overwrite arbitrary files.
+        let raw_name = Path::new(&remote_path)
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
+        let filename: String = raw_name
+            .chars()
+            .map(|c| if c == '/' || c == '\\' || c == '\0' { '_' } else { c })
+            .collect::<String>()
+            .trim_start_matches('.')
+            .to_string();
+        if filename.is_empty() {
+            return Err("Remote filename is invalid".to_string());
+        }
 
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
         let local_path = format!("{}/Downloads/{}", home, filename);
@@ -429,6 +505,11 @@ pub async fn sftp_upload(
     remote_path: String,
     transfer_id: String,
 ) -> Result<(), String> {
+    // Guard against path traversal from a compromised webview
+    if local_path.contains("..") {
+        return Err("Path traversal not permitted".to_string());
+    }
+
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let session = conn.sftp_session.lock().unwrap();
