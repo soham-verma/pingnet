@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-shell";
 import { HostConfig, HostState, SshConfig } from "./types";
 import { usePing, PingSession } from "./hooks/usePing";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
@@ -9,9 +8,13 @@ import HostDetailView from "./components/HostDetailView";
 import AddEditModal from "./components/AddEditModal";
 import SSHSessionView from "./components/ssh/SSHSessionView";
 import KeyManager from "./components/KeyManager";
+import UpdateModal from "./components/UpdateModal";
 
 function genId(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  // crypto.randomUUID() is available in all Tauri WebView targets (Chromium/WebKit)
+  // and produces a proper RFC 4122 UUID, unlike Math.random which has ~51 bits of
+  // entropy and can collide on bulk imports.
+  return crypto.randomUUID();
 }
 
 function toHostState(config: HostConfig): HostState {
@@ -32,9 +35,14 @@ export default function App() {
   const [modal, setModal] = useState<{ mode: "add" | "edit"; host?: HostState } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("ping");
   const [sshConfigs, setSshConfigs] = useState<Record<string, SshConfig>>({});
-  const [updateDismissed, setUpdateDismissed] = useState(false);
   const [showKeyManager, setShowKeyManager] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const update = useUpdateCheck();
+
+  // Auto-open the update modal once when an update is discovered
+  useEffect(() => {
+    if (update.available && !update.skipped) setShowUpdateModal(true);
+  }, [update.available, update.skipped]);
 
   // Pass hosts to usePing so it can schedule auto-ping for hosts with alerts
   const { getSession, ping, clearSession } = usePing(hosts.map((h) => ({
@@ -83,8 +91,9 @@ export default function App() {
     );
     try {
       await invoke("save_hosts", { hosts: configs });
-    } catch {
-      // Non-fatal
+    } catch (e) {
+      // Surface write failures — silent data loss is worse than a console error
+      console.error("[Pingnet] Failed to persist hosts:", e);
     }
   }, []);
 
@@ -144,30 +153,6 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#08080f" }}>
-
-      {/* Update banner */}
-      {update.available && !updateDismissed && (
-        <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 text-[13px]"
-          style={{ background: "#1a1f35", borderBottom: "1px solid #2d3748" }}>
-          <span className="text-[#a5b4fc]">
-            Pingnet {update.latestVersion} is available —{" "}
-            <button
-              className="underline text-[#818cf8] hover:text-white transition-colors"
-              onClick={() => open(update.releaseUrl)}
-            >
-              Download from GitHub
-            </button>
-          </span>
-          <button
-            onClick={() => setUpdateDismissed(true)}
-            className="ml-4 text-[#4b5563] hover:text-white transition-colors"
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <Sidebar
@@ -179,6 +164,9 @@ export default function App() {
           onOpenSSH={handleOpenSSH}
           onAddHost={() => setModal({ mode: "add" })}
           onOpenKeyManager={() => setShowKeyManager(true)}
+          currentVersion={update.currentVersion}
+          updateAvailable={update.available && !update.skipped}
+          onOpenUpdate={() => setShowUpdateModal(true)}
         />
 
         {/* Main content */}
@@ -233,6 +221,11 @@ export default function App() {
 
         {/* Key Manager */}
         {showKeyManager && <KeyManager onClose={() => setShowKeyManager(false)} />}
+
+        {/* Update modal */}
+        {showUpdateModal && (
+          <UpdateModal update={update} onClose={() => setShowUpdateModal(false)} />
+        )}
       </div>
     </div>
   );
@@ -242,11 +235,11 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
       <div className="relative mb-8">
-        <div className="w-16 h-16 rounded-full border border-[#1e1e35] flex items-center justify-center" style={{ background: "#0f0f1a" }}>
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <circle cx="14" cy="14" r="4" fill="#00c8a8" fillOpacity="0.8" />
-            <circle cx="14" cy="14" r="8" stroke="#00c8a8" strokeWidth="1" strokeOpacity="0.3" />
-            <circle cx="14" cy="14" r="12" stroke="#00c8a8" strokeWidth="1" strokeOpacity="0.1" />
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#0d1b2e" }}>
+          <svg width="44" height="44" viewBox="0 0 200 200" fill="none">
+            <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
+              stroke="#00c8a8" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="80" cy="148" r="10" fill="#00c8a8"/>
           </svg>
         </div>
       </div>

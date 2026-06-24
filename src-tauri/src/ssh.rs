@@ -43,6 +43,8 @@ pub enum SshAuth {
     Key { key_path: String, passphrase: Option<String> },
     /// Key stored in OS keychain via the Pingnet key manager
     KeychainKey { key_name: String },
+    /// Delegate to the running SSH agent (SSH_AUTH_SOCK) — works with any key type
+    Agent,
 }
 
 enum ShellMsg {
@@ -201,9 +203,26 @@ fn auth_session(session: &Session, username: &str, auth: &SshAuth) -> Result<(),
                 .map_err(|e| format!("Password auth failed: {}", e))?;
         }
         SshAuth::Key { key_path, passphrase } => {
-            let passphrase = passphrase.as_deref();
+            // Expand `~/` and `$HOME/` — the shell does this automatically but Rust doesn't.
+            // dirs::home_dir() works cross-platform: $HOME on Unix, %USERPROFILE% on Windows.
+            let expanded: PathBuf = {
+                let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+                if key_path.starts_with("~/") || key_path == "~" {
+                    home.join(key_path.trim_start_matches("~/"))
+                } else if key_path.starts_with("$HOME/") {
+                    home.join(key_path.trim_start_matches("$HOME/"))
+                } else {
+                    PathBuf::from(key_path)
+                }
+            };
+            // Read the key into memory and use userauth_pubkey_memory rather than
+            // userauth_pubkey_file. The file-based libssh2 API has broken support for
+            // the modern OpenSSH private key format (-----BEGIN OPENSSH PRIVATE KEY-----)
+            // used by Ed25519 and newer RSA keys; the memory-based API does not.
+            let key_data = std::fs::read_to_string(&expanded)
+                .map_err(|e| format!("Cannot read key file {}: {}", expanded.display(), e))?;
             session
-                .userauth_pubkey_file(username, None, Path::new(key_path), passphrase)
+                .userauth_pubkey_memory(username, None, &key_data, passphrase.as_deref())
                 .map_err(|e| format!("Key auth failed: {}", e))?;
         }
         SshAuth::KeychainKey { key_name } => {
@@ -211,6 +230,11 @@ fn auth_session(session: &Session, username: &str, auth: &SshAuth) -> Result<(),
             session
                 .userauth_pubkey_memory(username, None, &private_pem, None)
                 .map_err(|e| format!("Keychain key auth failed: {}", e))?;
+        }
+        SshAuth::Agent => {
+            session
+                .userauth_agent(username)
+                .map_err(|e| format!("SSH agent auth failed: {}", e))?;
         }
     }
     if !session.authenticated() {
@@ -760,6 +784,300 @@ pub async fn sftp_rename(
         let sftp = session.sftp().map_err(|e| e.to_string())?;
         sftp.rename(Path::new(&old_path), Path::new(&new_path), None)
             .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Routing table ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RouteEntry {
+    pub destination: String,
+    pub gateway:     String,
+    pub iface:       String,
+    pub metric:      Option<i64>,
+    pub flags:       String,
+}
+
+#[tauri::command]
+pub async fn get_routes(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+) -> Result<Vec<RouteEntry>, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let session = conn.sftp_session.lock().unwrap();
+        // Try `ip route show` first (more reliable), fall back to /proc/net/route
+        let script = r#"
+ip route show 2>/dev/null | awk '
+{
+  dest=$1; gw=""; iface=""; metric=""; flags=""
+  for(i=2;i<=NF;i++){
+    if($i=="via"){gw=$(i+1); i++}
+    else if($i=="dev"){iface=$(i+1); i++}
+    else if($i=="metric"){metric=$(i+1); i++}
+  }
+  if(dest=="default") flags="UG"; else flags="U"
+  print dest"|"gw"|"iface"|"metric"|"flags
+}' 2>/dev/null || \
+awk 'NR>1{
+  printf "%d.%d.%d.%d|%d.%d.%d.%d|%s|%s|%s\n",
+    strtonum("0x"substr($2,7,2)),strtonum("0x"substr($2,5,2)),
+    strtonum("0x"substr($2,3,2)),strtonum("0x"substr($2,1,2)),
+    strtonum("0x"substr($3,7,2)),strtonum("0x"substr($3,5,2)),
+    strtonum("0x"substr($3,3,2)),strtonum("0x"substr($3,1,2)),
+    $1,$8,$4
+}' /proc/net/route 2>/dev/null
+"#;
+        let mut ch = session.channel_session().map_err(|e| e.to_string())?;
+        ch.exec(script).map_err(|e| e.to_string())?;
+        let mut raw = String::new();
+        ch.read_to_string(&mut raw).map_err(|e| e.to_string())?;
+        let _ = ch.close();
+
+        let routes = raw.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let parts: Vec<&str> = l.splitn(5, '|').collect();
+                RouteEntry {
+                    destination: parts.first().unwrap_or(&"").trim().to_string(),
+                    gateway:     parts.get(1).unwrap_or(&"").trim().to_string(),
+                    iface:       parts.get(2).unwrap_or(&"").trim().to_string(),
+                    metric:      parts.get(3).and_then(|s| s.trim().parse().ok()),
+                    flags:       parts.get(4).unwrap_or(&"").trim().to_string(),
+                }
+            })
+            .filter(|r| !r.destination.is_empty())
+            .collect();
+
+        Ok(routes)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Interface detail ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IfaceDetails {
+    pub name: String,
+    pub mac: Option<String>,
+    pub mtu: Option<u32>,
+    pub operstate: Option<String>,
+    /// Link speed in Mbps; -1 = not available (virtual/CAN/etc.)
+    pub speed_mbps: Option<i64>,
+    pub ipv4: Vec<String>,
+    pub ipv6: Vec<String>,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+    pub rx_packets: u64,
+    pub tx_packets: u64,
+    pub rx_errors: u64,
+    pub tx_errors: u64,
+    pub rx_dropped: u64,
+    pub tx_dropped: u64,
+    pub driver: Option<String>,
+    pub bus_info: Option<String>,
+}
+
+fn parse_u64(s: &str) -> u64 { s.trim().parse().unwrap_or(0) }
+fn parse_i64(s: &str) -> i64 { s.trim().parse().unwrap_or(-1) }
+
+fn collect_iface_details(session: &Session, iface: &str) -> Result<IfaceDetails, String> {
+    // Sanitise: only allow interface-name chars
+    if !iface.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_') {
+        return Err("Invalid interface name".to_string());
+    }
+
+    let script = format!(r#"
+N="{iface}"
+echo "MAC=$(cat /sys/class/net/$N/address 2>/dev/null)"
+echo "MTU=$(cat /sys/class/net/$N/mtu 2>/dev/null)"
+echo "STATE=$(cat /sys/class/net/$N/operstate 2>/dev/null)"
+echo "SPEED=$(cat /sys/class/net/$N/speed 2>/dev/null || echo -1)"
+echo "RX_BYTES=$(cat /sys/class/net/$N/statistics/rx_bytes 2>/dev/null || echo 0)"
+echo "TX_BYTES=$(cat /sys/class/net/$N/statistics/tx_bytes 2>/dev/null || echo 0)"
+echo "RX_PKTS=$(cat /sys/class/net/$N/statistics/rx_packets 2>/dev/null || echo 0)"
+echo "TX_PKTS=$(cat /sys/class/net/$N/statistics/tx_packets 2>/dev/null || echo 0)"
+echo "RX_ERR=$(cat /sys/class/net/$N/statistics/rx_errors 2>/dev/null || echo 0)"
+echo "TX_ERR=$(cat /sys/class/net/$N/statistics/tx_errors 2>/dev/null || echo 0)"
+echo "RX_DROP=$(cat /sys/class/net/$N/statistics/rx_dropped 2>/dev/null || echo 0)"
+echo "TX_DROP=$(cat /sys/class/net/$N/statistics/tx_dropped 2>/dev/null || echo 0)"
+ip addr show dev $N 2>/dev/null | grep -E '^\s+inet ' | awk '{{print "IPV4="$2}}'
+ip addr show dev $N 2>/dev/null | grep -E '^\s+inet6 ' | awk '{{print "IPV6="$2}}'
+ethtool -i $N 2>/dev/null | grep -E '^driver:|^bus-info:' | while IFS=': ' read k v; do
+  case "$k" in driver) echo "DRIVER=$v";; bus-info) echo "BUS=$v";; esac
+done
+"#, iface = iface);
+
+    let mut ch = session.channel_session().map_err(|e| e.to_string())?;
+    ch.exec(&script).map_err(|e| e.to_string())?;
+    let mut raw = String::new();
+    ch.read_to_string(&mut raw).map_err(|e| e.to_string())?;
+    let _ = ch.close();
+
+    let mut d = IfaceDetails {
+        name: iface.to_string(),
+        mac: None, mtu: None, operstate: None, speed_mbps: None,
+        ipv4: vec![], ipv6: vec![],
+        rx_bytes: 0, tx_bytes: 0, rx_packets: 0, tx_packets: 0,
+        rx_errors: 0, tx_errors: 0, rx_dropped: 0, tx_dropped: 0,
+        driver: None, bus_info: None,
+    };
+
+    for line in raw.lines() {
+        if let Some((k, v)) = line.split_once('=') {
+            let v = v.trim();
+            match k {
+                "MAC"      => d.mac       = if v.is_empty() { None } else { Some(v.to_string()) },
+                "MTU"      => d.mtu       = v.parse().ok(),
+                "STATE"    => d.operstate = if v.is_empty() { None } else { Some(v.to_string()) },
+                "SPEED"    => d.speed_mbps = {
+                    let n = parse_i64(v);
+                    if n <= 0 { Some(-1) } else { Some(n) }
+                },
+                "RX_BYTES"  => d.rx_bytes   = parse_u64(v),
+                "TX_BYTES"  => d.tx_bytes   = parse_u64(v),
+                "RX_PKTS"   => d.rx_packets = parse_u64(v),
+                "TX_PKTS"   => d.tx_packets = parse_u64(v),
+                "RX_ERR"    => d.rx_errors  = parse_u64(v),
+                "TX_ERR"    => d.tx_errors  = parse_u64(v),
+                "RX_DROP"   => d.rx_dropped = parse_u64(v),
+                "TX_DROP"   => d.tx_dropped = parse_u64(v),
+                "IPV4"     => { if !v.is_empty() { d.ipv4.push(v.to_string()); } },
+                "IPV6"     => { if !v.is_empty() { d.ipv6.push(v.to_string()); } },
+                "DRIVER"   => d.driver   = if v.is_empty() { None } else { Some(v.to_string()) },
+                "BUS"      => d.bus_info = if v.is_empty() { None } else { Some(v.to_string()) },
+                _ => {}
+            }
+        }
+    }
+    Ok(d)
+}
+
+#[tauri::command]
+pub async fn get_iface_details(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+    iface: String,
+) -> Result<IfaceDetails, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let session = conn.sftp_session.lock().unwrap();
+        collect_iface_details(&session, &iface)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Speedtest (runs on the remote device via SSH) ─────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SpeedtestResult {
+    pub download_mbps: f64,
+    pub upload_mbps: f64,
+    pub latency_ms:  f64,
+    pub jitter_ms:   f64,
+    pub server:      String,
+    pub error:       Option<String>,
+}
+
+/// Run a single timed SSH exec and return the first line of stdout.
+/// Each call acquires and releases the session for its own short channel,
+/// so concurrent metrics polls are not blocked between phases.
+fn speedtest_exec(session: &Session, cmd: &str) -> Result<String, String> {
+    let mut ch = session.channel_session().map_err(|e| format!("channel: {}", e))?;
+    ch.exec(cmd).map_err(|e| format!("exec: {}", e))?;
+    let mut out = String::new();
+    ch.read_to_string(&mut out).map_err(|e| e.to_string())?;
+    let _ = ch.close();
+    Ok(out.lines().next().unwrap_or("").trim().to_string())
+}
+
+fn run_speedtest_ssh(session: &Session) -> SpeedtestResult {
+    // Helper: run a command in its own channel (released immediately after).
+    // Each phase opens/closes independently so concurrent metrics polls
+    // can interleave between phases without waiting 45 s for the mutex.
+    fn phase(session: &Session, cmd: &str) -> Result<String, String> {
+        let mut ch = session.channel_session().map_err(|e| format!("channel: {}", e))?;
+        ch.exec(cmd).map_err(|e| format!("exec: {}", e))?;
+        let mut out = String::new();
+        ch.read_to_string(&mut out).map_err(|e| e.to_string())?;
+        let _ = ch.close();
+        Ok(out)
+    }
+
+    // Phase 1: latency — 5 tiny HTTP round-trips on one channel
+    let lat_script = r#"for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total}\n" --max-time 3 "https://speed.cloudflare.com/__down?measId=0&bytes=0" 2>/dev/null || echo "0"; done"#;
+    let lat_raw = match phase(session, lat_script) {
+        Err(e) => return SpeedtestResult {
+            download_mbps: 0.0, upload_mbps: 0.0, latency_ms: 0.0,
+            jitter_ms: 0.0, server: String::new(),
+            error: Some(format!("curl unavailable or no internet on remote device: {}", e)),
+        },
+        Ok(s) => s,
+    };
+
+    let times: Vec<f64> = lat_raw.lines()
+        .filter_map(|l| l.trim().parse::<f64>().ok())
+        .filter(|&t| t > 0.0)
+        .collect();
+
+    if times.is_empty() {
+        return SpeedtestResult {
+            download_mbps: 0.0, upload_mbps: 0.0, latency_ms: 0.0,
+            jitter_ms: 0.0, server: String::new(),
+            error: Some("curl not available or no internet access on the remote device".to_string()),
+        };
+    }
+
+    let latency_ms = times.iter().sum::<f64>() / times.len() as f64 * 1000.0;
+    let jitter_ms = if times.len() > 1 {
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        let var  = times.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / times.len() as f64;
+        var.sqrt() * 1000.0
+    } else { 0.0 };
+
+    // Phase 2: download 10 MB — own channel, mutex released between phases
+    let dl_bps: f64 = phase(
+        session,
+        r#"curl -s -o /dev/null -w "%{speed_download}" --max-time 15 "https://speed.cloudflare.com/__down?measId=0&bytes=10000000" 2>/dev/null || echo "0""#,
+    ).unwrap_or_default().trim().parse().unwrap_or(0.0);
+
+    // Phase 3: upload 2 MB — own channel
+    let ul_bps: f64 = phase(
+        session,
+        r#"dd if=/dev/zero bs=1M count=2 2>/dev/null | curl -s -X POST --data-binary @- -o /dev/null -w "%{speed_upload}" --max-time 15 "https://speed.cloudflare.com/__up?measId=0" 2>/dev/null || echo "0""#,
+    ).unwrap_or_default().trim().parse().unwrap_or(0.0);
+
+    SpeedtestResult {
+        download_mbps: dl_bps / 1_000_000.0 * 8.0,
+        upload_mbps:   ul_bps / 1_000_000.0 * 8.0,
+        latency_ms,
+        jitter_ms,
+        server: "speed.cloudflare.com".to_string(),
+        error: None,
+    }
+}
+
+#[tauri::command]
+pub async fn run_speedtest(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+) -> Result<SpeedtestResult, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        // Acquire and immediately release the Mutex to clone the Arc;
+        // run_speedtest_ssh opens its own short-lived channels and does NOT
+        // hold the Mutex across the multi-phase 45-second test.
+        let session_guard = conn.sftp_session.lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // SAFETY: session is Send; we hold the guard for each individual
+        // channel_session() call inside run_speedtest_ssh, releasing between
+        // phases so concurrent metrics polls are not blocked for 45 s.
+        let result = run_speedtest_ssh(&*session_guard);
+        Ok(result)
     })
     .await
     .map_err(|e| e.to_string())?

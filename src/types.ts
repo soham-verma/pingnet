@@ -46,7 +46,7 @@ export interface HostState extends HostConfig {
 export interface SshConfig {
   port: number;
   username: string;
-  auth_type: "password" | "key" | "keychain";
+  auth_type: "password" | "key" | "keychain" | "agent";
   key_path?: string;
   key_name?: string;  // for keychain keys
 }
@@ -187,6 +187,48 @@ export interface Capabilities {
 }
 
 // ── SSH Key Manager ────────────────────────────────────────────────────────────
+
+export interface RouteEntry {
+  destination: string;
+  gateway:     string;
+  iface:       string;
+  metric:      number | null;
+  flags:       string;
+}
+
+export interface IfaceDetails {
+  name: string;
+  mac: string | null;
+  mtu: number | null;
+  operstate: string | null;
+  speed_mbps: number | null;   // -1 = N/A (virtual/CAN/etc.)
+  ipv4: string[];
+  ipv6: string[];
+  rx_bytes: number;
+  tx_bytes: number;
+  rx_packets: number;
+  tx_packets: number;
+  rx_errors: number;
+  tx_errors: number;
+  rx_dropped: number;
+  tx_dropped: number;
+  driver: string | null;
+  bus_info: string | null;
+}
+
+export interface SpeedtestResult {
+  download_mbps: number;
+  upload_mbps: number;
+  latency_ms: number;
+  jitter_ms: number;
+  server: string;
+  error: string | null;
+}
+
+export interface MetricsLogEntry {
+  ts: number;          // Date.now()
+  snapshot: import("./types").MetricsSnapshot;
+}
 
 export interface KeyInfo {
   name: string;

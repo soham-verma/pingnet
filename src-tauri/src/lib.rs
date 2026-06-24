@@ -12,13 +12,25 @@ use storage::HostConfig;
 use vpn::VpnStatus;
 
 #[tauri::command]
-fn ping_host(ip: String) -> PingResult {
-    ping::ping(&ip)
+async fn ping_host(ip: String) -> PingResult {
+    // spawn_blocking so the synchronous `ping` binary call does not stall
+    // the async Tauri executor (blocking the IPC handler thread for up to 3 s).
+    tauri::async_runtime::spawn_blocking(move || ping::ping(&ip))
+        .await
+        .unwrap_or_else(|_| PingResult {
+            success: false,
+            latency_ms: None,
+            error_kind: Some("unknown".to_string()),
+            error_detail: Some("internal task error".to_string()),
+            is_private_ip: false,
+        })
 }
 
 #[tauri::command]
-fn detect_vpn() -> VpnStatus {
-    vpn::detect_vpn()
+async fn detect_vpn() -> VpnStatus {
+    tauri::async_runtime::spawn_blocking(vpn::detect_vpn)
+        .await
+        .unwrap_or_else(|_| VpnStatus { active: false, interfaces: vec![], names: vec![] })
 }
 
 #[tauri::command]
@@ -36,6 +48,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SshState::new())
         .invoke_handler(tauri::generate_handler![
             ping_host,
@@ -56,6 +69,9 @@ pub fn run() {
             ssh::get_metrics,
             ssh::probe_capabilities,
             ssh::invalidate_metrics_cache,
+            ssh::get_iface_details,
+            ssh::get_routes,
+            ssh::run_speedtest,
             command_history::load_command_history,
             command_history::save_command,
             keys::list_ssh_keys,

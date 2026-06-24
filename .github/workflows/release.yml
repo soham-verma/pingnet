@@ -71,6 +71,6 @@ jobs:
           releaseName: 'Pingnet ${{ github.ref_name }}'
           releaseBody: |
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}

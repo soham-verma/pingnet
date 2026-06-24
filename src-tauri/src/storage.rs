@@ -36,14 +36,38 @@ pub fn load_hosts(app: &tauri::AppHandle) -> Result<Vec<HostConfig>, String> {
     }
     let content = fs::read_to_string(&path)
         .map_err(|e| format!("Cannot read hosts file: {}", e))?;
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Cannot parse hosts file: {}", e))
+
+    // Try to parse the whole file; if that fails, try parsing individual
+    // entries so a single corrupt record doesn't wipe the entire host list.
+    match serde_json::from_str::<Vec<HostConfig>>(&content) {
+        Ok(hosts) => Ok(hosts),
+        Err(_) => {
+            // Attempt partial recovery: parse as raw array and skip bad entries
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&content) {
+                let recovered: Vec<HostConfig> = arr
+                    .into_iter()
+                    .filter_map(|v| serde_json::from_value(v).ok())
+                    .collect();
+                if !recovered.is_empty() {
+                    return Ok(recovered);
+                }
+            }
+            Err("hosts.json is corrupted; starting fresh".to_string())
+        }
+    }
 }
 
 pub fn save_hosts(app: &tauri::AppHandle, hosts: &[HostConfig]) -> Result<(), String> {
     let path = hosts_file_path(app)?;
     let content = serde_json::to_string_pretty(hosts)
         .map_err(|e| format!("Cannot serialize hosts: {}", e))?;
-    fs::write(&path, content)
-        .map_err(|e| format!("Cannot write hosts file: {}", e))
+
+    // Atomic write: write to a temp file then rename so a mid-write crash
+    // cannot corrupt the existing hosts.json.
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, &content)
+        .map_err(|e| format!("Cannot write temp hosts file: {}", e))?;
+    fs::rename(&tmp_path, &path)
+        .map_err(|e| format!("Cannot commit hosts file: {}", e))?;
+    Ok(())
 }

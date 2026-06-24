@@ -3,506 +3,1138 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   MetricsSnapshot, Capabilities,
   CoreStat, NetIface, DiskIo, ThermalZone, GpuStat, ProcessEntry,
+  IfaceDetails, SpeedtestResult, RouteEntry,
 } from "../../types";
 
-interface Props {
-  sessionId: string;
-  isActive: boolean;
+interface Props { sessionId: string; isActive: boolean; }
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+const f1  = (n: number) => n.toFixed(1);
+const f2  = (n: number) => n.toFixed(2);
+const f0  = (n: number) => Math.round(n).toString();
+
+function fmtBytes(kbps: number) {
+  if (kbps <= 0)   return "0 B/s";
+  if (kbps < 1024) return `${f1(kbps)} KB/s`;
+  if (kbps < 1024 * 1024) return `${f2(kbps / 1024)} MB/s`;
+  return `${f2(kbps / 1024 / 1024)} GB/s`;
+}
+function fmtUptime(s: number) {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function pctColor(p: number, warn = 70, crit = 90) {
+  return p >= crit ? "#ef4444" : p >= warn ? "#f59e0b" : "#00c8a8";
+}
+function tempColor(c: number) {
+  return c >= 85 ? "#ef4444" : c >= 70 ? "#f59e0b" : "#00c8a8";
 }
 
-// ── Tiny helpers ───────────────────────────────────────────────────────────────
+// ── Primitives ─────────────────────────────────────────────────────────────────
 
-function fmt1(n: number) { return n.toFixed(1); }
-function fmt2(n: number) { return n.toFixed(2); }
-
-function fmtKbps(kbps: number): string {
-  if (kbps < 1024) return `${fmt1(kbps)} KB/s`;
-  return `${fmt2(kbps / 1024)} MB/s`;
-}
-
-function fmtUptime(secs: number): string {
-  const d = Math.floor(secs / 86400);
-  const h = Math.floor((secs % 86400) / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h ${m}m`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
-function pctColor(pct: number, warn = 70, crit = 90): string {
-  if (pct >= crit) return "#ef4444";
-  if (pct >= warn) return "#f59e0b";
-  return "#6366f1";
-}
-
-function tempColor(c: number): string {
-  if (c >= 85) return "#ef4444";
-  if (c >= 70) return "#f59e0b";
-  return "#22c55e";
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
-function GaugeBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
+function Track({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
-    <div className="w-full h-1.5 rounded-full bg-[#1e1e35] overflow-hidden">
-      <div className="h-full rounded-full transition-all duration-500"
-        style={{ width: `${pct}%`, background: color }} />
+    <div className="w-full h-[3px] rounded-full overflow-hidden" style={{ background: "#ffffff08" }}>
+      <div className="h-full rounded-full transition-all duration-700"
+        style={{ width: `${pct}%`, background: color, boxShadow: `0 0 6px ${color}80` }} />
     </div>
   );
 }
 
-function StatCard({
-  label, value, sub, bar, barMax, barColor, unavailable,
-}: {
-  label: string; value: string; sub?: string;
-  bar?: number; barMax?: number; barColor?: string;
-  unavailable?: string | null;
-}) {
+function Chip({ label, color = "#4b5563" }: { label: string; color?: string }) {
   return (
-    <div className={`bg-[#080810] border rounded-xl p-4 space-y-2 ${unavailable ? "border-[#1e1e35] opacity-50" : "border-[#1e1e35]"}`}>
-      <p className="text-[10px] tracking-widest text-[#4b5563] uppercase">{label}</p>
-      {unavailable ? (
-        <p className="text-xs text-[#374151] italic">{unavailable}</p>
-      ) : (
-        <>
-          <p className="text-2xl font-semibold text-white font-mono">{value}</p>
-          {sub && <p className="text-xs text-[#4b5563]">{sub}</p>}
-          {bar !== undefined && barColor && (
-            <GaugeBar value={bar} max={barMax} color={barColor} />
+    <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded"
+      style={{ color, background: `${color}18`, border: `1px solid ${color}30` }}>
+      {label}
+    </span>
+  );
+}
+
+function NA({ msg }: { msg: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-10 gap-2">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#ffffff05", border: "1px solid #1e1e35" }}>
+        <span className="text-[#2d3748] text-sm">—</span>
+      </div>
+      <p className="text-[11px] text-[#2d3748] italic text-center max-w-[220px]">{msg}</p>
+    </div>
+  );
+}
+
+// ── Section: Cores ─────────────────────────────────────────────────────────────
+
+function CoresSection({ cores }: { cores: CoreStat[] }) {
+  if (!cores.length) return <NA msg="/proc/stat not available" />;
+  return (
+    <div className="p-4 space-y-3">
+      {/* Summary row */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Cores", value: cores.length.toString() },
+          { label: "Avg Load", value: `${f1(cores.reduce((a, c) => a + c.percent, 0) / cores.length)}%` },
+          { label: "Peak Core", value: `${f1(Math.max(...cores.map(c => c.percent)))}%` },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+            <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">{s.label}</p>
+            <p className="text-base font-semibold font-mono text-white">{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-core table */}
+      <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+        <div className="grid text-[9px] tracking-widest text-[#2d3748] uppercase px-4 py-2 border-b border-[#1e1e35]"
+          style={{ gridTemplateColumns: "64px 1fr 48px" }}>
+          <span>Core ID</span>
+          <span>Load</span>
+          <span className="text-right">Usage</span>
+        </div>
+        <div className="divide-y divide-[#0f0f1a]">
+          {cores.map((c) => {
+            const color = pctColor(c.percent);
+            return (
+              <div key={c.index} className="grid items-center px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
+                style={{ gridTemplateColumns: "64px 1fr 48px" }}>
+                <span className="text-[11px] font-mono text-[#4b5563]">CORE_{String(c.index).padStart(2, "0")}</span>
+                <div className="pr-4">
+                  <Track value={c.percent} color={color} />
+                </div>
+                <span className="text-right text-[11px] font-mono font-semibold" style={{ color }}>{f1(c.percent)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Interface detail panel ────────────────────────────────────────────────────
+
+function fmtBigBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(2)} MB`;
+  return `${(b / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function IfaceDetailPanel({ sessionId, iface, onClose }: {
+  sessionId: string; iface: string; onClose: () => void;
+}) {
+  const [data, setData]   = useState<IfaceDetails | null>(null);
+  const [err, setErr]     = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    invoke<IfaceDetails>("get_iface_details", { sessionId, iface })
+      .then((d) => { setData(d); setLoading(false); })
+      .catch((e) => { setErr(String(e)); setLoading(false); });
+  }, [sessionId, iface]);
+
+  const stateColor = data?.operstate === "up" ? "#00c8a8" : data?.operstate === "down" ? "#ef4444" : "#4b5563";
+
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col overflow-hidden"
+      style={{ background: "#08080f" }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e35]"
+        style={{ background: "#0a0a14" }}>
+        <div className="flex items-center gap-2">
+          <button onClick={onClose}
+            className="text-[#374151] hover:text-white transition-colors p-1 rounded"
+            style={{ background: "#ffffff08" }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M7 1L2 6l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <span className="text-[11px] font-mono font-semibold text-white">{iface}</span>
+          {data?.operstate && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+              style={{ color: stateColor, background: `${stateColor}18`, border: `1px solid ${stateColor}30` }}>
+              {data.operstate}
+            </span>
           )}
+        </div>
+        <span className="text-[10px] text-[#2d3748]">Interface Details</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {loading && (
+          <div className="flex items-center justify-center py-12 gap-2 text-[#2d3748]">
+            <div className="w-4 h-4 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" />
+            <span className="text-[11px]">Loading interface details…</span>
+          </div>
+        )}
+        {err && <div className="text-[11px] text-[#ef4444] font-mono px-2">{err}</div>}
+        {data && !loading && (
+          <>
+            {/* Identity */}
+            <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+              <div className="px-4 py-2 border-b border-[#1e1e35]">
+                <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Identity</span>
+              </div>
+              <div className="divide-y divide-[#0f0f1a]">
+                {[
+                  { label: "MAC Address", value: data.mac ?? "—" },
+                  { label: "MTU", value: data.mtu != null ? `${data.mtu} bytes` : "—" },
+                  { label: "Link Speed", value: data.speed_mbps != null && data.speed_mbps > 0 ? `${data.speed_mbps} Mbps` : "N/A" },
+                  { label: "Driver", value: data.driver ?? "—" },
+                  { label: "Bus", value: data.bus_info ?? "—" },
+                ].map(r => (
+                  <div key={r.label} className="flex justify-between px-4 py-2.5">
+                    <span className="text-[10px] text-[#374151]">{r.label}</span>
+                    <span className="text-[10px] font-mono text-white">{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* IP addresses */}
+            {(data.ipv4.length > 0 || data.ipv6.length > 0) && (
+              <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+                <div className="px-4 py-2 border-b border-[#1e1e35]">
+                  <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Addresses</span>
+                </div>
+                <div className="divide-y divide-[#0f0f1a]">
+                  {data.ipv4.map((ip) => (
+                    <div key={ip} className="flex justify-between px-4 py-2.5">
+                      <span className="text-[10px] text-[#374151]">IPv4</span>
+                      <span className="text-[10px] font-mono" style={{ color: "#00c8a8" }}>{ip}</span>
+                    </div>
+                  ))}
+                  {data.ipv6.map((ip) => (
+                    <div key={ip} className="flex justify-between px-4 py-2.5">
+                      <span className="text-[10px] text-[#374151]">IPv6</span>
+                      <span className="text-[10px] font-mono text-[#818cf8] truncate max-w-[180px]">{ip}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Traffic stats */}
+            <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+              <div className="px-4 py-2 border-b border-[#1e1e35]">
+                <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Cumulative Traffic</span>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-[#1e1e35]">
+                {[
+                  { label: "RX Bytes",   value: fmtBigBytes(data.rx_bytes),   color: "#00c8a8" },
+                  { label: "TX Bytes",   value: fmtBigBytes(data.tx_bytes),   color: "#818cf8" },
+                  { label: "RX Packets", value: data.rx_packets.toLocaleString(), color: "#00c8a8" },
+                  { label: "TX Packets", value: data.tx_packets.toLocaleString(), color: "#818cf8" },
+                  { label: "RX Errors",  value: data.rx_errors.toString(),    color: data.rx_errors > 0 ? "#ef4444" : "#374151" },
+                  { label: "TX Errors",  value: data.tx_errors.toString(),    color: data.tx_errors > 0 ? "#ef4444" : "#374151" },
+                  { label: "RX Dropped", value: data.rx_dropped.toString(),   color: data.rx_dropped > 0 ? "#f59e0b" : "#374151" },
+                  { label: "TX Dropped", value: data.tx_dropped.toString(),   color: data.tx_dropped > 0 ? "#f59e0b" : "#374151" },
+                ].map((s, idx) => (
+                  <div key={s.label} className={`p-3 text-center ${idx % 2 === 0 && idx < 6 ? "border-b border-[#1e1e35]" : idx < 6 ? "border-b border-[#1e1e35]" : ""}`}>
+                    <p className="text-[9px] text-[#2d3748] uppercase tracking-wider mb-1">{s.label}</p>
+                    <p className="text-[12px] font-mono font-semibold" style={{ color: s.color }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Routing graph ─────────────────────────────────────────────────────────────
+
+function RoutingGraph({ sessionId, ifaces }: { sessionId: string; ifaces: NetIface[] }) {
+  const [routes, setRoutes]   = useState<RouteEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setErr]       = useState<string | null>(null);
+
+  function load() {
+    setLoading(true); setErr(null);
+    invoke<RouteEntry[]>("get_routes", { sessionId })
+      .then(r => { setRoutes(r); setLoading(false); })
+      .catch(e => { setErr(String(e)); setLoading(false); });
+  }
+
+  // Derive unique interfaces from routes for the graph
+  const ifaceNames = Array.from(new Set([
+    ...ifaces.map(i => i.name),
+    ...(routes ?? []).map(r => r.iface).filter(Boolean),
+  ]));
+
+  const defaultRoute = routes?.find(r => r.destination === "default" || r.destination === "0.0.0.0/0");
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e1e35]">
+        <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Routing Table</span>
+        <button onClick={load} disabled={loading}
+          className="text-[10px] font-medium px-3 py-1 rounded-lg transition-all disabled:opacity-50"
+          style={{ background: "#ffffff08", color: "#4b5563", border: "1px solid #1e1e35" }}>
+          {loading ? "Loading…" : routes ? "Refresh" : "Load"}
+        </button>
+      </div>
+
+      {/* Visual network graph (always shown if we have route data) */}
+      {routes && routes.length > 0 && (
+        <div className="px-4 py-3 border-b border-[#1e1e35]">
+          <svg viewBox="0 0 280 80" className="w-full" style={{ height: 80 }}>
+            {/* Internet node */}
+            <g transform="translate(18,40)">
+              <circle r="12" fill="#0a0a14" stroke="#374151" strokeWidth="1.5"/>
+              <text y="1" textAnchor="middle" dominantBaseline="middle" fontSize="7" fill="#4b5563">WAN</text>
+              <text y="22" textAnchor="middle" fontSize="6" fill="#2d3748">internet</text>
+            </g>
+
+            {/* Gateway node */}
+            {defaultRoute?.gateway && (
+              <>
+                <line x1="30" y1="40" x2="82" y2="40" stroke="#00c8a8" strokeWidth="1" strokeDasharray="3,2" opacity="0.5"/>
+                <g transform="translate(94,40)">
+                  <circle r="12" fill="#0a0a14" stroke="#00c8a8" strokeWidth="1.5"
+                    style={{ filter: "drop-shadow(0 0 4px #00c8a840)" }}/>
+                  <text y="1" textAnchor="middle" dominantBaseline="middle" fontSize="6" fill="#00c8a8">GW</text>
+                  <text y="22" textAnchor="middle" fontSize="5.5" fill="#2d3748"
+                    style={{ maxWidth: 50 }}>{defaultRoute.gateway.slice(0, 12)}</text>
+                </g>
+              </>
+            )}
+
+            {/* Interface nodes */}
+            {ifaceNames.slice(0, 5).map((name, idx) => {
+              const x = defaultRoute?.gateway ? 170 : 100;
+              const spread = Math.min(ifaceNames.slice(0, 5).length - 1, 4);
+              const spacing = 60 / Math.max(spread, 1);
+              const y = 10 + idx * spacing + (spread < 2 ? 20 : 0);
+              const active = ifaces.find(i => i.name === name);
+              const color = active && (active.rx_kbps > 0 || active.tx_kbps > 0) ? "#818cf8" : "#2d3748";
+              return (
+                <g key={name}>
+                  <line x1={defaultRoute?.gateway ? 106 : 30} y1="40" x2={x - 10} y2={y}
+                    stroke={color} strokeWidth="1" opacity="0.4"/>
+                  <g transform={`translate(${x + 10},${y})`}>
+                    <circle r="9" fill="#0a0a14" stroke={color} strokeWidth="1.2"/>
+                    <text y="0.5" textAnchor="middle" dominantBaseline="middle" fontSize="5.5" fill={color}>
+                      {name.slice(0, 6)}
+                    </text>
+                  </g>
+                  {active && (active.rx_kbps > 0 || active.tx_kbps > 0) && (
+                    <text x={x + 10} y={y + 16} textAnchor="middle" fontSize="5" fill="#818cf840">
+                      {fmtBytes(active.rx_kbps + active.tx_kbps)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      )}
+
+      {/* Route table */}
+      {!routes && !loading && !error && (
+        <div className="px-4 py-5 text-center">
+          <p className="text-[11px] text-[#2d3748] italic">Click Load to fetch the routing table from the device</p>
+        </div>
+      )}
+      {error && <p className="px-4 py-3 text-[11px] text-[#ef4444] italic">{error}</p>}
+      {routes && (
+        <>
+          <div className="grid text-[9px] tracking-widest text-[#2d3748] uppercase px-4 py-2 border-b border-[#1e1e35]"
+            style={{ gridTemplateColumns: "1fr 1fr 64px 32px" }}>
+            <span>Destination</span>
+            <span>Gateway</span>
+            <span>Interface</span>
+            <span className="text-right">Metric</span>
+          </div>
+          <div className="divide-y divide-[#0f0f1a] max-h-48 overflow-y-auto">
+            {routes.map((r, idx) => {
+              const isDefault = r.destination === "default" || r.destination === "0.0.0.0/0";
+              return (
+                <div key={idx} className="grid items-center px-4 py-2 hover:bg-white/[0.02] transition-colors"
+                  style={{ gridTemplateColumns: "1fr 1fr 64px 32px" }}>
+                  <span className={`text-[10px] font-mono truncate ${isDefault ? "font-semibold" : ""}`}
+                    style={{ color: isDefault ? "#00c8a8" : "#9ca3af" }}>
+                    {r.destination || "—"}
+                  </span>
+                  <span className="text-[10px] font-mono text-[#4b5563] truncate pr-2">
+                    {r.gateway || "—"}
+                  </span>
+                  <span className="text-[10px] font-mono text-[#818cf8]">{r.iface}</span>
+                  <span className="text-right text-[10px] font-mono text-[#2d3748]">
+                    {r.metric ?? "—"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </>
       )}
     </div>
   );
 }
 
-function SectionHeader({ title, badge }: { title: string; badge?: string }) {
+// ── Speedtest card ────────────────────────────────────────────────────────────
+
+function SpeedtestCard({ sessionId }: { sessionId: string }) {
+  const [phase, setPhase]   = useState<"idle" | "running" | "done" | "error">("idle");
+  const [result, setResult] = useState<SpeedtestResult | null>(null);
+  const [statusMsg, setStatusMsg] = useState("");
+
+  async function run() {
+    setPhase("running");
+    setResult(null);
+    setStatusMsg("Testing latency…");
+    // Simulate phase messages (actual work is server-side, ~30s total)
+    const timer1 = setTimeout(() => setStatusMsg("Testing download…"), 5000);
+    const timer2 = setTimeout(() => setStatusMsg("Testing upload…"), 18000);
+    try {
+      const r = await invoke<SpeedtestResult>("run_speedtest", { sessionId });
+      clearTimeout(timer1); clearTimeout(timer2);
+      if (r.error) { setPhase("error"); setStatusMsg(r.error); }
+      else { setResult(r); setPhase("done"); }
+    } catch (e) {
+      clearTimeout(timer1); clearTimeout(timer2);
+      setPhase("error"); setStatusMsg(String(e));
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2 mt-4 mb-2">
-      <p className="text-[10px] tracking-widest text-[#4b5563] uppercase">{title}</p>
-      {badge && (
-        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1e1e35] text-[#6366f1] font-mono">{badge}</span>
-      )}
-      <div className="flex-1 h-px bg-[#1e1e35]" />
-    </div>
-  );
-}
-
-function Unavailable({ reason }: { reason: string }) {
-  return (
-    <p className="text-xs text-[#374151] italic py-1">
-      Not available: <span className="font-mono">{reason}</span>
-    </p>
-  );
-}
-
-// ── Platform badge ─────────────────────────────────────────────────────────────
-
-function PlatformBadge({ m }: { m: MetricsSnapshot }) {
-  const label = m.model || m.arch;
-  const color = m.model.toLowerCase().includes("jetson")
-    ? "#76b900"
-    : m.model.toLowerCase().includes("raspberry")
-    ? "#c51a4a"
-    : "#6366f1";
-  return (
-    <div className="flex items-center gap-2 flex-wrap mb-3">
-      <span className="text-[10px] px-2 py-1 rounded-md font-mono border"
-        style={{ color, borderColor: `${color}40`, background: `${color}10` }}>
-        {label}
-      </span>
-      <span className="text-[10px] text-[#374151] font-mono">{m.kernel}</span>
-      {m.is_first_poll && (
-        <span className="text-[10px] text-[#f59e0b]">⚡ First poll — rates update next cycle</span>
-      )}
-    </div>
-  );
-}
-
-// ── CPU cores ─────────────────────────────────────────────────────────────────
-
-function CpuCores({ cores }: { cores: CoreStat[] }) {
-  if (!cores.length) return null;
-  return (
-    <div className="grid gap-1.5"
-      style={{ gridTemplateColumns: `repeat(${Math.min(cores.length, 8)}, 1fr)` }}>
-      {cores.map((c) => {
-        const color = pctColor(c.percent);
-        return (
-          <div key={c.index} className="bg-[#080810] border border-[#1e1e35] rounded-lg p-2 space-y-1">
-            <p className="text-[9px] text-[#4b5563] text-center">cpu{c.index}</p>
-            <GaugeBar value={c.percent} color={color} />
-            <p className="text-[9px] font-mono text-center" style={{ color }}>{fmt1(c.percent)}%</p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Network I/O ───────────────────────────────────────────────────────────────
-
-function NetTable({ ifaces }: { ifaces: NetIface[] }) {
-  if (!ifaces.length) return <Unavailable reason="No active interfaces detected" />;
-  return (
-    <div className="space-y-1">
-      {ifaces.map((i) => (
-        <div key={i.name} className="flex items-center gap-3 bg-[#080810] border border-[#1e1e35] rounded-lg px-3 py-2">
-          <span className="font-mono text-[11px] text-white w-16 flex-shrink-0">{i.name}</span>
-          <div className="flex-1 space-y-0.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-[#22c55e]">▼</span>
-              <GaugeBar value={Math.min(i.rx_kbps, 10240)} max={10240} color="#22c55e" />
-              <span className="text-[10px] font-mono text-[#22c55e] w-20 flex-shrink-0">{fmtKbps(i.rx_kbps)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-[#6366f1]">▲</span>
-              <GaugeBar value={Math.min(i.tx_kbps, 10240)} max={10240} color="#6366f1" />
-              <span className="text-[10px] font-mono text-[#6366f1] w-20 flex-shrink-0">{fmtKbps(i.tx_kbps)}</span>
-            </div>
-          </div>
+    <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e1e35]">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Cloudflare Speedtest</span>
+          <Chip label="Remote" color="#f59e0b" />
         </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Disk I/O ──────────────────────────────────────────────────────────────────
-
-function DiskTable({ disks }: { disks: DiskIo[] }) {
-  if (!disks.length) return <Unavailable reason="No disk I/O data (idle or /proc/diskstats unavailable)" />;
-  return (
-    <div className="space-y-1">
-      {disks.map((d) => (
-        <div key={d.name} className="flex items-center gap-3 bg-[#080810] border border-[#1e1e35] rounded-lg px-3 py-2">
-          <span className="font-mono text-[11px] text-white w-16 flex-shrink-0">{d.name}</span>
-          <div className="flex-1 space-y-0.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-[#06b6d4]">R</span>
-              <GaugeBar value={Math.min(d.read_kbps, 102400)} max={102400} color="#06b6d4" />
-              <span className="text-[10px] font-mono text-[#06b6d4] w-20 flex-shrink-0">{fmtKbps(d.read_kbps)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-[#8b5cf6]">W</span>
-              <GaugeBar value={Math.min(d.write_kbps, 102400)} max={102400} color="#8b5cf6" />
-              <span className="text-[10px] font-mono text-[#8b5cf6] w-20 flex-shrink-0">{fmtKbps(d.write_kbps)}</span>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Thermal ───────────────────────────────────────────────────────────────────
-
-function ThermalGrid({ zones }: { zones: ThermalZone[] }) {
-  if (!zones.length) return <Unavailable reason="/sys/class/thermal not available" />;
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {zones.map((z) => {
-        const color = tempColor(z.temp_c);
-        return (
-          <div key={z.name} className="bg-[#080810] border border-[#1e1e35] rounded-lg p-2 space-y-1">
-            <p className="text-[9px] text-[#4b5563] truncate">{z.name}</p>
-            <p className="text-base font-mono font-semibold" style={{ color }}>{z.temp_c.toFixed(1)}°C</p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── GPU ───────────────────────────────────────────────────────────────────────
-
-const GPU_VENDOR_COLOR: Record<string, string> = {
-  nvidia: "#76b900",
-  jetson: "#76b900",
-  amd:    "#ed1c24",
-  rpi:    "#c51a4a",
-};
-
-function GpuCard({ gpu }: { gpu: GpuStat }) {
-  const color = GPU_VENDOR_COLOR[gpu.vendor] ?? "#6366f1";
-  return (
-    <div className="bg-[#080810] border border-[#1e1e35] rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase"
-          style={{ color, background: `${color}15` }}>
-          {gpu.vendor}
-        </span>
-        <span className="text-sm text-white font-medium">{gpu.name}</span>
-      </div>
-
-      {gpu.util_pct !== null ? (
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-[#4b5563]">
-            <span>GPU Utilisation</span>
-            <span className="font-mono" style={{ color: pctColor(gpu.util_pct) }}>
-              {fmt1(gpu.util_pct)}%
-            </span>
-          </div>
-          <GaugeBar value={gpu.util_pct} color={pctColor(gpu.util_pct)} />
-        </div>
-      ) : (
-        <p className="text-xs text-[#374151] italic">Utilisation not available</p>
-      )}
-
-      <div className="grid grid-cols-3 gap-3 text-center">
-        {gpu.mem_used_mb !== null && gpu.mem_total_mb !== null && (
-          <div>
-            <p className="text-[9px] text-[#4b5563] uppercase">VRAM</p>
-            <p className="text-xs font-mono text-white">{gpu.mem_used_mb} / {gpu.mem_total_mb} MB</p>
-          </div>
+        {phase !== "running" && (
+          <button onClick={run}
+            className="text-[10px] font-medium px-3 py-1 rounded-lg transition-all"
+            style={{ background: "#00c8a818", color: "#00c8a8", border: "1px solid #00c8a830" }}>
+            {phase === "idle" ? "Run Test" : "Re-run"}
+          </button>
         )}
-        {gpu.temp_c !== null && (
-          <div>
-            <p className="text-[9px] text-[#4b5563] uppercase">Temp</p>
-            <p className="text-xs font-mono" style={{ color: tempColor(gpu.temp_c) }}>
-              {gpu.temp_c.toFixed(1)}°C
-            </p>
-          </div>
-        )}
-        {gpu.power_w !== null && (
-          <div>
-            <p className="text-[9px] text-[#4b5563] uppercase">Power</p>
-            <p className="text-xs font-mono text-white">{gpu.power_w.toFixed(1)} W</p>
+        {phase === "running" && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" />
+            <span className="text-[10px] text-[#00c8a8]">{statusMsg}</span>
           </div>
         )}
       </div>
 
-      {gpu.note && (
-        <p className="text-[10px] text-[#374151] italic">{gpu.note}</p>
+      {phase === "error" && (
+        <div className="px-4 py-3">
+          <p className="text-[11px] text-[#ef4444] italic">{statusMsg}</p>
+          <p className="text-[10px] text-[#2d3748] mt-1">Requires curl on the remote device with internet access.</p>
+        </div>
       )}
-    </div>
-  );
-}
 
-// ── Process table ─────────────────────────────────────────────────────────────
-
-function ProcessTable({ procs }: { procs: ProcessEntry[] }) {
-  if (!procs.length) return <Unavailable reason="ps not available on this system" />;
-  return (
-    <div className="rounded-xl border border-[#1e1e35] overflow-hidden">
-      <table className="w-full text-[11px] font-mono">
-        <thead>
-          <tr className="text-[#4b5563] border-b border-[#1e1e35]" style={{ background: "#080810" }}>
-            <th className="text-left px-3 py-2 font-normal">User</th>
-            <th className="text-right px-3 py-2 font-normal w-14">CPU%</th>
-            <th className="text-right px-3 py-2 font-normal w-14">MEM%</th>
-            <th className="text-left px-3 py-2 font-normal">Command</th>
-          </tr>
-        </thead>
-        <tbody>
-          {procs.map((p, i) => (
-            <tr key={p.pid}
-              className="border-b border-[#0f0f1a] hover:bg-[#0f0f1a] transition-colors"
-              style={{ background: i % 2 === 0 ? "transparent" : "#080810" }}>
-              <td className="px-3 py-1.5 text-[#6b7280] truncate max-w-[80px]">{p.user}</td>
-              <td className="px-3 py-1.5 text-right"
-                style={{ color: p.cpu_pct > 20 ? "#f59e0b" : p.cpu_pct > 5 ? "#9ca3af" : "#374151" }}>
-                {fmt1(p.cpu_pct)}
-              </td>
-              <td className="px-3 py-1.5 text-right text-[#4b5563]">{fmt1(p.mem_pct)}</td>
-              <td className="px-3 py-1.5 text-white truncate max-w-[200px]">{p.command}</td>
-            </tr>
+      {phase === "done" && result && (
+        <div className="grid grid-cols-2 divide-x divide-y divide-[#1e1e35]">
+          {[
+            { label: "Download",  value: `${result.download_mbps.toFixed(1)}`, unit: "Mbps", color: "#00c8a8" },
+            { label: "Upload",    value: `${result.upload_mbps.toFixed(1)}`,   unit: "Mbps", color: "#818cf8" },
+            { label: "Latency",   value: `${result.latency_ms.toFixed(1)}`,    unit: "ms",   color: result.latency_ms < 20 ? "#22c55e" : result.latency_ms < 80 ? "#f59e0b" : "#ef4444" },
+            { label: "Jitter",    value: `${result.jitter_ms.toFixed(1)}`,     unit: "ms",   color: result.jitter_ms < 5 ? "#22c55e" : "#f59e0b" },
+          ].map((s) => (
+            <div key={s.label} className="p-4 text-center">
+              <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">{s.label}</p>
+              <p className="text-xl font-semibold font-mono" style={{ color: s.color }}>
+                {s.value}<span className="text-xs text-[#374151] ml-0.5">{s.unit}</span>
+              </p>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      )}
+
+      {phase === "idle" && (
+        <div className="px-4 py-4 text-center">
+          <p className="text-[11px] text-[#2d3748] italic">Tests download, upload and latency from the remote device to speed.cloudflare.com</p>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Section: Network ──────────────────────────────────────────────────────────
+
+type NetSort = "name" | "rx" | "tx" | "total";
+const NET_SORT_KEY = "pingnet_net_sort";
+
+function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; available: boolean; sessionId: string }) {
+  const [sortBy, setSortBy]           = useState<NetSort>(() => (localStorage.getItem(NET_SORT_KEY) as NetSort) ?? "rx");
+  const [selectedIface, setSelected]  = useState<string | null>(null);
+  const [showSpeedtest, setSpeedtest] = useState(false);
+
+  if (!available) return <NA msg="/proc/net/dev not available on this kernel" />;
+  if (!ifaces.length) return <NA msg="No active interfaces" />;
+
+  const changeSortBy = (s: NetSort) => { setSortBy(s); localStorage.setItem(NET_SORT_KEY, s); };
+
+  const totalRx = ifaces.reduce((a, i) => a + i.rx_kbps, 0);
+  const totalTx = ifaces.reduce((a, i) => a + i.tx_kbps, 0);
+
+  const sorted = [...ifaces].sort((a, b) => {
+    switch (sortBy) {
+      case "name":  return a.name.localeCompare(b.name);
+      case "rx":    return b.rx_kbps - a.rx_kbps;
+      case "tx":    return b.tx_kbps - a.tx_kbps;
+      case "total": return (b.rx_kbps + b.tx_kbps) - (a.rx_kbps + a.tx_kbps);
+    }
+  });
+
+  return (
+    <div className="relative flex flex-col h-full">
+      {/* Interface detail overlay */}
+      {selectedIface && (
+        <IfaceDetailPanel sessionId={sessionId} iface={selectedIface} onClose={() => setSelected(null)} />
+      )}
+
+      <div className="p-4 space-y-3">
+        {/* Totals */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl p-4" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+            <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">Total Download</p>
+            <p className="text-xl font-semibold font-mono" style={{ color: "#00c8a8" }}>{fmtBytes(totalRx)}</p>
+            <div className="mt-2"><Track value={totalRx} max={Math.max(totalRx * 1.2, 1)} color="#00c8a8" /></div>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+            <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">Total Upload</p>
+            <p className="text-xl font-semibold font-mono" style={{ color: "#818cf8" }}>{fmtBytes(totalTx)}</p>
+            <div className="mt-2"><Track value={totalTx} max={Math.max(totalTx * 1.2, 1)} color="#818cf8" /></div>
+          </div>
+        </div>
+
+        {/* Interface table */}
+        <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+          {/* Table header with sort controls */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e1e35]">
+            <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Interfaces</span>
+            <div className="flex items-center gap-1">
+              {(["name","rx","tx","total"] as NetSort[]).map((s) => (
+                <button key={s} onClick={() => changeSortBy(s)}
+                  className="text-[9px] font-medium px-2 py-0.5 rounded transition-all uppercase tracking-wider"
+                  style={sortBy === s
+                    ? { color: "#00c8a8", background: "#00c8a818", border: "1px solid #00c8a830" }
+                    : { color: "#374151", background: "transparent", border: "1px solid transparent" }
+                  }>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="divide-y divide-[#0f0f1a]">
+            {sorted.map((i) => {
+              const active = i.rx_kbps > 0 || i.tx_kbps > 0;
+              return (
+                <button key={i.name}
+                  onClick={() => setSelected(i.name)}
+                  className="w-full text-left hover:bg-white/[0.025] transition-colors group"
+                >
+                  <div className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "80px 1fr 1fr 32px" }}>
+                    <div>
+                      <p className="text-[11px] font-mono text-white font-medium">{i.name}</p>
+                      <Chip label={active ? "Active" : "Idle"} color={active ? "#00c8a8" : "#374151"} />
+                    </div>
+                    <div className="pr-3 space-y-1">
+                      <span className="text-[10px] font-mono" style={{ color: "#00c8a8" }}>↓ {fmtBytes(i.rx_kbps)}</span>
+                      <Track value={i.rx_kbps} max={Math.max(totalRx, 1)} color="#00c8a8" />
+                    </div>
+                    <div className="pr-2 space-y-1">
+                      <span className="text-[10px] font-mono" style={{ color: "#818cf8" }}>↑ {fmtBytes(i.tx_kbps)}</span>
+                      <Track value={i.tx_kbps} max={Math.max(totalTx, 1)} color="#818cf8" />
+                    </div>
+                    {/* Chevron */}
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <path d="M2 1l3 3-3 3" stroke="#4b5563" strokeWidth="1.2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Routing graph */}
+        <RoutingGraph sessionId={sessionId} ifaces={ifaces} />
+
+        {/* Speedtest */}
+        <div>
+          {!showSpeedtest
+            ? <button onClick={() => setSpeedtest(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-medium transition-all text-[#374151] hover:text-[#00c8a8] hover:bg-[#00c8a808]"
+                style={{ border: "1px dashed #1e1e35" }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1"/>
+                  <path d="M5 3v2l1.5 1.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+                </svg>
+                Run Cloudflare Speedtest
+              </button>
+            : <SpeedtestCard sessionId={sessionId} />
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Section: Disk ─────────────────────────────────────────────────────────────
+
+function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail }: {
+  disks: DiskIo[]; available: boolean;
+  usedPct: number | null; usedGb: number | null; totalGb: number | null; diskUnavail: string | null;
+}) {
+  const freeGb = totalGb !== null && usedGb !== null ? totalGb - usedGb : null;
+  const color = usedPct !== null ? pctColor(usedPct, 80, 95) : "#4b5563";
+
+  return (
+    <div className="p-4 space-y-3">
+      {/* Storage card */}
+      <div className="rounded-xl p-4" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Storage (/)</span>
+          {usedPct !== null && <span className="text-2xl font-semibold font-mono" style={{ color }}>{usedPct}%</span>}
+        </div>
+        {diskUnavail
+          ? <p className="text-[11px] text-[#374151] italic">{diskUnavail}</p>
+          : <>
+              <Track value={usedPct ?? 0} color={color} />
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                {[
+                  { label: "Total", value: totalGb !== null ? `${totalGb.toFixed(1)} GB` : "—" },
+                  { label: "Used",  value: usedGb  !== null ? `${usedGb.toFixed(1)} GB`  : "—", color },
+                  { label: "Free",  value: freeGb  !== null ? `${freeGb.toFixed(1)} GB`  : "—", color: "#22c55e" },
+                ].map((s) => (
+                  <div key={s.label} className="text-center p-2 rounded-lg" style={{ background: "#ffffff04", border: "1px solid #1e1e35" }}>
+                    <p className="text-[9px] text-[#2d3748] uppercase tracking-wider mb-1">{s.label}</p>
+                    <p className="text-[13px] font-mono font-semibold" style={{ color: s.color ?? "#ffffff" }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+        }
+      </div>
+
+      {/* I/O */}
+      <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e1e35]">
+          <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Disk I/O</span>
+          {!available && <span className="text-[10px] text-[#374151] italic">/proc/diskstats unavailable</span>}
+        </div>
+        {!available || !disks.length
+          ? <div className="px-4 py-4 text-center text-[11px] text-[#2d3748] italic">
+              {!available ? "Kernel does not expose /proc/diskstats" : "No disk activity"}
+            </div>
+          : <div className="divide-y divide-[#0f0f1a]">
+              {disks.map((d) => (
+                <div key={d.name} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-mono text-white">{d.name}</span>
+                    <div className="flex gap-3">
+                      <span className="text-[10px] font-mono" style={{ color: "#06b6d4" }}>R {fmtBytes(d.read_kbps)}</span>
+                      <span className="text-[10px] font-mono" style={{ color: "#8b5cf6" }}>W {fmtBytes(d.write_kbps)}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Track value={d.read_kbps} max={Math.max(d.read_kbps + d.write_kbps, 1)} color="#06b6d4" />
+                    <Track value={d.write_kbps} max={Math.max(d.read_kbps + d.write_kbps, 1)} color="#8b5cf6" />
+                  </div>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+// ── Section: GPU ──────────────────────────────────────────────────────────────
+
+const GPU_COLOR: Record<string, string> = { nvidia: "#76b900", jetson: "#76b900", amd: "#ed1c24", rpi: "#c51a4a" };
+
+function GpuSection({ gpus, checkedTools }: { gpus: GpuStat[]; checkedTools: string }) {
+  if (!gpus.length) return (
+    <div className="p-4">
+      <div className="rounded-xl p-6 text-center" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+        <p className="text-[#374151] text-xs italic mb-1">No GPU detected</p>
+        {checkedTools && <p className="text-[9px] text-[#2d3748] font-mono">Checked: {checkedTools}</p>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="p-4 space-y-3">
+      {gpus.map((g, i) => {
+        const color = GPU_COLOR[g.vendor] ?? "#6366f1";
+        const vramPct = g.mem_used_mb && g.mem_total_mb ? Math.round(g.mem_used_mb / g.mem_total_mb * 100) : null;
+        return (
+          <div key={i} className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+            {/* GPU header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e35]">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                  style={{ color, background: `${color}18`, border: `1px solid ${color}30` }}>
+                  {g.vendor}
+                </span>
+                <span className="text-[12px] text-white font-medium">{g.name}</span>
+              </div>
+              {g.note && <span className="text-[10px] text-[#374151] italic">{g.note}</span>}
+            </div>
+
+            {/* Main metrics row */}
+            <div className="grid grid-cols-3 divide-x divide-[#1e1e35]">
+              <div className="p-4 text-center">
+                <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">GPU Load</p>
+                {g.util_pct !== null
+                  ? <>
+                      <p className="text-2xl font-semibold font-mono" style={{ color: pctColor(g.util_pct) }}>
+                        {f1(g.util_pct)}<span className="text-sm">%</span>
+                      </p>
+                      <div className="mt-2"><Track value={g.util_pct} color={pctColor(g.util_pct)} /></div>
+                    </>
+                  : <p className="text-[11px] text-[#374151] italic mt-2">N/A</p>
+                }
+              </div>
+              <div className="p-4 text-center">
+                <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">Temperature</p>
+                {g.temp_c !== null
+                  ? <p className="text-2xl font-semibold font-mono" style={{ color: tempColor(g.temp_c) }}>
+                      {f0(g.temp_c)}<span className="text-sm">°C</span>
+                    </p>
+                  : <p className="text-[11px] text-[#374151] italic mt-2">N/A</p>
+                }
+              </div>
+              <div className="p-4 text-center">
+                <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">Power Draw</p>
+                {g.power_w !== null
+                  ? <p className="text-2xl font-semibold font-mono text-white">
+                      {f0(g.power_w)}<span className="text-sm">W</span>
+                    </p>
+                  : <p className="text-[11px] text-[#374151] italic mt-2">N/A</p>
+                }
+              </div>
+            </div>
+
+            {/* VRAM */}
+            {g.mem_used_mb !== null && g.mem_total_mb !== null && (
+              <div className="px-4 pb-4">
+                <div className="rounded-lg p-3" style={{ background: "#ffffff04", border: "1px solid #1e1e35" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">VRAM Allocation</span>
+                    <div className="flex gap-3 text-[10px] font-mono">
+                      <span style={{ color }}>{g.mem_used_mb} MB used</span>
+                      <span className="text-[#2d3748]">/</span>
+                      <span className="text-[#4b5563]">{g.mem_total_mb} MB total</span>
+                    </div>
+                  </div>
+                  <Track value={g.mem_used_mb} max={g.mem_total_mb} color={color} />
+                  <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                    {[
+                      { label: "In Use",     value: `${g.mem_used_mb} MB`,                       col: color },
+                      { label: "Available",  value: `${g.mem_total_mb - g.mem_used_mb} MB`,       col: "#22c55e" },
+                      { label: "Load",       value: vramPct !== null ? `${vramPct}%` : "—",       col: pctColor(vramPct ?? 0) },
+                    ].map((s) => (
+                      <div key={s.label}>
+                        <p className="text-[9px] text-[#2d3748] uppercase tracking-wider">{s.label}</p>
+                        <p className="text-[11px] font-mono font-semibold" style={{ color: s.col }}>{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Section: Temperature ──────────────────────────────────────────────────────
+
+function TempSection({ zones }: { zones: ThermalZone[] }) {
+  if (!zones.length) return <NA msg="/sys/class/thermal not available on this system" />;
+
+  const maxTemp = Math.max(...zones.map(z => z.temp_c));
+  const avgTemp = zones.reduce((a, z) => a + z.temp_c, 0) / zones.length;
+
+  return (
+    <div className="p-4 space-y-3">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Peak",    value: `${f0(maxTemp)}°C`, color: tempColor(maxTemp) },
+          { label: "Average", value: `${f1(avgTemp)}°C`, color: tempColor(avgTemp) },
+          { label: "Sensors", value: zones.length.toString(), color: "#4b5563" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+            <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">{s.label}</p>
+            <p className="text-xl font-semibold font-mono" style={{ color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Thermal zones table */}
+      <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+        <div className="grid text-[9px] tracking-widest text-[#2d3748] uppercase px-4 py-2 border-b border-[#1e1e35]"
+          style={{ gridTemplateColumns: "1fr 80px 48px" }}>
+          <span>Sensor</span>
+          <span>Waveform</span>
+          <span className="text-right">Temp</span>
+        </div>
+        <div className="divide-y divide-[#0f0f1a]">
+          {zones.map((z) => {
+            const color = tempColor(z.temp_c);
+            // 20°C = 0%, 100°C = 100%
+            const pct = Math.min(100, Math.max(0, (z.temp_c - 20) / 80 * 100));
+            return (
+              <div key={z.name} className="grid items-center px-4 py-3 hover:bg-white/[0.02] transition-colors"
+                style={{ gridTemplateColumns: "1fr 80px 48px" }}>
+                <span className="text-[11px] font-mono text-[#4b5563] truncate pr-2">{z.name}</span>
+                <div className="pr-4">
+                  <Track value={pct} color={color} />
+                </div>
+                <span className="text-right text-[12px] font-mono font-semibold" style={{ color }}>
+                  {f0(z.temp_c)}°
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Section: Processes ────────────────────────────────────────────────────────
+
+function ProcessesSection({ procs }: { procs: ProcessEntry[] }) {
+  if (!procs.length) return <NA msg="ps not available on this system" />;
+
+  const totalCpu = procs.reduce((a, p) => a + p.cpu_pct, 0);
+  const totalMem = procs.reduce((a, p) => a + p.mem_pct, 0);
+
+  return (
+    <div className="p-4 space-y-3">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "CPU Usage",     value: `${f1(Math.min(totalCpu, 100))}%`, color: pctColor(totalCpu) },
+          { label: "Memory Load",   value: `${f1(Math.min(totalMem, 100))}%`, color: pctColor(totalMem) },
+          { label: "Active Tasks",  value: procs.length.toString(), color: "#4b5563" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+            <p className="text-[9px] tracking-widest text-[#2d3748] uppercase mb-1">{s.label}</p>
+            <p className="text-xl font-semibold font-mono" style={{ color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Process table */}
+      <div className="rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e1e35]">
+          <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Active Systems</span>
+          <div className="flex gap-2">
+            <Chip label="Sort: CPU" color="#6366f1" />
+          </div>
+        </div>
+        <div className="grid text-[9px] tracking-widest text-[#2d3748] uppercase px-4 py-2 border-b border-[#1e1e35]"
+          style={{ gridTemplateColumns: "1fr 56px 56px 56px" }}>
+          <span>Process</span>
+          <span className="text-right">PID</span>
+          <span className="text-right">CPU</span>
+          <span className="text-right">MEM</span>
+        </div>
+        <div className="divide-y divide-[#0f0f1a]">
+          {procs.map((p) => {
+            const cpuColor = p.cpu_pct > 50 ? "#ef4444" : p.cpu_pct > 20 ? "#f59e0b" : "#4b5563";
+            const isHot = p.cpu_pct > 50;
+            return (
+              <div key={p.pid}
+                className="grid items-center px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
+                style={{ gridTemplateColumns: "1fr 56px 56px 56px" }}>
+                <div className="min-w-0 pr-2">
+                  <p className="text-[11px] font-mono text-white truncate">{p.command}</p>
+                  <p className="text-[10px] text-[#2d3748]">{p.user}</p>
+                </div>
+                <span className="text-right text-[10px] font-mono text-[#374151]">{p.pid}</span>
+                <span className="text-right">
+                  {isHot
+                    ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ color: "#ef4444", background: "#ef444418", border: "1px solid #ef444430" }}>
+                        {f1(p.cpu_pct)}%
+                      </span>
+                    : <span className="text-[10px] font-mono" style={{ color: cpuColor }}>{f1(p.cpu_pct)}%</span>
+                  }
+                </span>
+                <span className="text-right text-[10px] font-mono text-[#374151]">{f1(p.mem_pct)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────────
+
+type Section = "cores" | "network" | "disk" | "gpu" | "temp" | "processes";
 
 export default function MetricsPanel({ sessionId, isActive }: Props) {
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
-  const [caps, setCaps] = useState<Capabilities | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [caps, setCaps]       = useState<Capabilities | null>(null);
+  const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [section, setSection] = useState<Section>("cores");
+  const [pulse, setPulse]     = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Logging state ────────────────────────────────────────────────────────
+  const [logging, setLogging]   = useState(false);
+  const logBufRef  = useRef<{ ts: number; snapshot: MetricsSnapshot }[]>([]);
+  const loggingRef = useRef(false);   // mirrors `logging` without being a dep
+  const [logCount, setLogCount] = useState(0);
+  const LOG_CAP = 3600; // ~3 hours at 3 s interval
+
+  // Keep ref in sync so fetchMetrics never needs to re-subscribe to `logging`
+  useEffect(() => { loggingRef.current = logging; }, [logging]);
 
   const fetchMetrics = useCallback(async () => {
     try {
       const m = await invoke<MetricsSnapshot>("get_metrics", { sessionId });
       setMetrics(m);
       setError(null);
+      setPulse(true);
+      setTimeout(() => setPulse(false), 300);
+      // Append to log buffer if recording — read the ref, not the state value,
+      // so toggling logging does NOT recreate the interval (task #8).
+      if (loggingRef.current) {
+        if (logBufRef.current.length >= LOG_CAP) {
+          // Drop oldest entry to stay within cap (task #9)
+          logBufRef.current.shift();
+        }
+        logBufRef.current.push({ ts: Date.now(), snapshot: m });
+        setLogCount(logBufRef.current.length);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId]); // `logging` intentionally omitted — use loggingRef instead
 
-  // Probe capabilities once on mount
   useEffect(() => {
-    invoke<Capabilities>("probe_capabilities", { sessionId })
-      .then(setCaps)
-      .catch(() => {});
+    invoke<Capabilities>("probe_capabilities", { sessionId }).then(setCaps).catch(() => {});
   }, [sessionId]);
 
   useEffect(() => {
-    if (!isActive) {
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      return;
-    }
+    if (!isActive) { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } return; }
     fetchMetrics();
     intervalRef.current = setInterval(fetchMetrics, 3000);
-    return () => {
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    };
+    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
   }, [isActive, fetchMetrics]);
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[#4b5563]">
-        <div className="w-4 h-4 border border-[#6366f1] border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm">Probing system capabilities…</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[#2d3748]">
+      <div className="w-5 h-5 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" style={{ boxShadow: "0 0 12px #00c8a840" }} />
+      <p className="text-[11px] tracking-widest uppercase">Probing system</p>
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
-        <p className="text-[#ef4444] text-sm font-mono text-center">{error}</p>
-        <button onClick={fetchMetrics} className="text-xs text-[#6366f1] hover:text-[#818cf8] underline">
-          Retry
-        </button>
-      </div>
-    );
-  }
+  if (error) return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
+      <p className="text-[#ef4444] text-xs font-mono text-center">{error}</p>
+      <button onClick={fetchMetrics} className="text-[11px] text-[#00c8a8] hover:text-white underline">Retry</button>
+    </div>
+  );
 
   if (!metrics) return null;
 
   const memPct = metrics.mem_total_mb && metrics.mem_used_mb
-    ? Math.round((metrics.mem_used_mb / metrics.mem_total_mb) * 100) : 0;
+    ? Math.round(metrics.mem_used_mb / metrics.mem_total_mb * 100) : 0;
 
-  const hasGpu = metrics.gpus.length > 0;
-  const hasAdvanced = metrics.cores.length > 0 || metrics.net_ifaces.length > 0
-    || metrics.disk_io.length > 0 || metrics.thermal.length > 0
-    || hasGpu || metrics.processes.length > 0;
+  const platformColor = metrics.model.toLowerCase().includes("jetson") ? "#76b900"
+    : metrics.model.toLowerCase().includes("raspberry") ? "#c51a4a" : "#6366f1";
 
-  // Determine what GPU options were checked
-  const gpuNote = caps
-    ? [
-        caps.has_nvidia_smi  && "nvidia-smi",
-        caps.has_tegrastats  && "tegrastats",
-        caps.has_jetson_gpu_load && "jetson-gpu-load",
-        caps.has_vcgencmd    && "vcgencmd",
-        caps.has_rocm_smi    && "rocm-smi",
-      ].filter(Boolean).join(", ")
-    : null;
+  const checkedGpuTools = caps ? [
+    caps.has_nvidia_smi && "nvidia-smi", caps.has_tegrastats && "tegrastats",
+    caps.has_jetson_gpu_load && "jetson-gpu", caps.has_vcgencmd && "vcgencmd", caps.has_rocm_smi && "rocm-smi",
+  ].filter(Boolean).join(", ") : "";
+
+  const tabs: { id: Section; label: string; alert?: boolean }[] = [
+    { id: "cores",     label: "Cores" },
+    { id: "network",   label: "Network" },
+    { id: "disk",      label: "Disk" },
+    { id: "gpu",       label: "GPU",  alert: metrics.gpus.length > 0 },
+    { id: "temp",      label: "Temp", alert: metrics.thermal.some(z => z.temp_c >= 70) },
+    { id: "processes", label: "Procs" },
+  ];
+
+  const summaryItems = [
+    {
+      label: "CPU",
+      value: metrics.cpu_percent !== null ? `${f1(metrics.cpu_percent)}` : "—",
+      unit: "%",
+      pct: metrics.cpu_percent ?? 0,
+      color: metrics.cpu_percent !== null ? pctColor(metrics.cpu_percent) : "#2d3748",
+      unavail: metrics.cpu_unavailable_reason,
+    },
+    {
+      label: "Memory",
+      value: memPct ? `${memPct}` : "—",
+      unit: "%",
+      sub: metrics.mem_used_mb && metrics.mem_total_mb ? `${metrics.mem_used_mb}/${metrics.mem_total_mb} MB` : undefined,
+      pct: memPct,
+      color: pctColor(memPct),
+      unavail: metrics.mem_unavailable_reason,
+    },
+    {
+      label: "Disk",
+      value: metrics.disk_used_pct !== null ? `${metrics.disk_used_pct}` : "—",
+      unit: "%",
+      sub: metrics.disk_total_gb ? `${metrics.disk_total_gb.toFixed(0)} GB total` : undefined,
+      pct: metrics.disk_used_pct ?? 0,
+      color: metrics.disk_used_pct !== null ? pctColor(metrics.disk_used_pct, 80, 95) : "#2d3748",
+      unavail: metrics.disk_unavailable_reason,
+    },
+    {
+      label: "Load",
+      value: metrics.load_avg_1 !== null ? f2(metrics.load_avg_1) : "—",
+      unit: "",
+      sub: metrics.load_avg_5 !== null ? `5m ${f2(metrics.load_avg_5)}` : undefined,
+      pct: 0,
+      color: "#818cf8",
+      unavail: null,
+      noBar: true,
+    },
+  ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-1">
-      {/* Platform badge */}
-      <PlatformBadge m={metrics} />
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#08080f" }}>
 
-      {/* ── Summary cards ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          label="CPU"
-          value={metrics.cpu_percent !== null ? `${fmt1(metrics.cpu_percent)}%` : "N/A"}
-          bar={metrics.cpu_percent ?? undefined}
-          barColor={metrics.cpu_percent !== null ? pctColor(metrics.cpu_percent) : undefined}
-          unavailable={metrics.cpu_unavailable_reason}
-        />
-        <StatCard
-          label="Memory"
-          value={metrics.mem_total_mb !== null ? `${memPct}%` : "N/A"}
-          sub={metrics.mem_used_mb !== null && metrics.mem_total_mb !== null
-            ? `${metrics.mem_used_mb} / ${metrics.mem_total_mb} MB` : undefined}
-          bar={memPct || undefined}
-          barColor={pctColor(memPct)}
-          unavailable={metrics.mem_unavailable_reason}
-        />
-        <StatCard
-          label="Disk (/)"
-          value={metrics.disk_used_pct !== null ? `${metrics.disk_used_pct}%` : "N/A"}
-          sub={metrics.disk_used_gb !== null && metrics.disk_total_gb !== null
-            ? `${metrics.disk_used_gb.toFixed(1)} / ${metrics.disk_total_gb.toFixed(1)} GB` : undefined}
-          bar={metrics.disk_used_pct ?? undefined}
-          barColor={metrics.disk_used_pct !== null ? pctColor(metrics.disk_used_pct, 80, 95) : undefined}
-          unavailable={metrics.disk_unavailable_reason}
-        />
-        <StatCard
-          label="Load avg"
-          value={metrics.load_avg_1 !== null ? fmt2(metrics.load_avg_1) : "N/A"}
-          sub={metrics.load_avg_5 !== null && metrics.load_avg_15 !== null
-            ? `5m: ${fmt2(metrics.load_avg_5)}  15m: ${fmt2(metrics.load_avg_15)}` : undefined}
-        />
+      {/* ── Top bar ────────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-b border-[#1e1e35]"
+        style={{ background: "#0a0a14" }}>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono" style={{ color: platformColor }}>
+            {metrics.model || metrics.arch}
+          </span>
+          <span className="text-[#1e1e35]">·</span>
+          <span className="text-[10px] font-mono text-[#2d3748]">{metrics.kernel}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {metrics.is_first_poll && (
+            <span className="text-[10px] text-[#f59e0b]">⚡ next poll</span>
+          )}
+          {metrics.uptime_seconds !== null && (
+            <span className="text-[10px] font-mono text-[#2d3748]">up {fmtUptime(metrics.uptime_seconds)}</span>
+          )}
+
+          {/* Logging controls */}
+          {!logging && logCount === 0 && (
+            <button onClick={() => { logBufRef.current = []; setLogCount(0); setLogging(true); }}
+              className="flex items-center gap-1 text-[9px] font-medium px-2 py-1 rounded transition-all text-[#374151] hover:text-[#ef4444]"
+              style={{ border: "1px solid #1e1e35" }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#374151]" />
+              Record
+            </button>
+          )}
+          {logging && (
+            <button onClick={() => setLogging(false)}
+              className="flex items-center gap-1 text-[9px] font-medium px-2 py-1 rounded transition-all"
+              style={{ color: "#ef4444", background: "#ef444412", border: "1px solid #ef444430" }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444] animate-pulse" />
+              {logCount} samples
+            </button>
+          )}
+          {!logging && logCount > 0 && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => {
+                const blob = new Blob([JSON.stringify(logBufRef.current, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `pingnet-metrics-${sessionId}-${Date.now()}.json`;
+                a.click();
+                // Delay revoke so the browser has time to start the download
+                // (task #9: revoking synchronously can cancel the download in some engines)
+                setTimeout(() => URL.revokeObjectURL(url), 10_000);
+              }}
+                className="text-[9px] font-medium px-2 py-1 rounded transition-all"
+                style={{ color: "#00c8a8", background: "#00c8a812", border: "1px solid #00c8a830" }}>
+                ↓ Export {logCount}
+              </button>
+              <button onClick={() => { logBufRef.current = []; setLogCount(0); setLogging(true); }}
+                className="text-[9px] font-medium px-2 py-1 rounded transition-all text-[#374151] hover:text-[#ef4444]"
+                style={{ border: "1px solid #1e1e35" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#374151]" />
+              </button>
+            </div>
+          )}
+
+          {/* Live pulse dot */}
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full transition-all duration-300"
+              style={{ background: pulse ? "#00c8a8" : "#1e2e2a", boxShadow: pulse ? "0 0 6px #00c8a8" : "none" }} />
+            <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">Live</span>
+          </div>
+        </div>
       </div>
 
-      {metrics.uptime_seconds !== null && (
-        <div className="bg-[#080810] border border-[#1e1e35] rounded-xl px-4 py-2.5 flex items-center justify-between">
-          <span className="text-[10px] tracking-widest text-[#4b5563] uppercase">Uptime</span>
-          <span className="font-mono text-sm text-white">{fmtUptime(metrics.uptime_seconds)}</span>
-        </div>
-      )}
+      {/* ── Summary cards ──────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 grid grid-cols-4 gap-px border-b border-[#1e1e35]" style={{ background: "#1e1e35" }}>
+        {summaryItems.map((s) => (
+          <div key={s.label} className="p-4 flex flex-col gap-2" style={{ background: "#0a0a14" }}>
+            <span className="text-[9px] tracking-widest text-[#2d3748] uppercase">{s.label}</span>
+            {s.unavail
+              ? <span className="text-[10px] text-[#2d3748] italic leading-tight">{s.unavail}</span>
+              : <>
+                  <div className="flex items-baseline gap-0.5">
+                    <span className="text-2xl font-semibold font-mono leading-none" style={{ color: s.color }}>{s.value}</span>
+                    {s.unit && <span className="text-sm text-[#374151]">{s.unit}</span>}
+                  </div>
+                  {s.sub && <span className="text-[10px] font-mono text-[#2d3748]">{s.sub}</span>}
+                  {!s.noBar && <Track value={s.pct} color={s.color} />}
+                </>
+            }
+          </div>
+        ))}
+      </div>
 
-      {/* ── Advanced toggle ────────────────────────────────────────────────── */}
-      {hasAdvanced && (
-        <button
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] text-[#4b5563] hover:text-[#818cf8] hover:bg-[#6366f10a] border border-[#1e1e35] hover:border-[#6366f120] transition-all mt-2"
-        >
-          {showAdvanced ? "▲ Hide advanced" : "▼ Show advanced"}
-        </button>
-      )}
+      {/* ── Section tabs ───────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 flex items-center gap-0 border-b border-[#1e1e35] overflow-x-auto"
+        style={{ background: "#0a0a14" }}>
+        {tabs.map((t) => (
+          <button key={t.id}
+            onClick={() => setSection(t.id)}
+            className="relative flex items-center gap-1.5 px-4 py-3 text-[11px] font-medium transition-all flex-shrink-0"
+            style={section === t.id
+              ? { color: "#fff", borderBottom: "2px solid #00c8a8" }
+              : { color: "#374151", borderBottom: "2px solid transparent" }
+            }
+          >
+            {t.label}
+            {t.alert && (
+              <span className="w-1 h-1 rounded-full" style={{ background: "#00c8a8", boxShadow: "0 0 4px #00c8a8" }} />
+            )}
+          </button>
+        ))}
+      </div>
 
-      {showAdvanced && (
-        <>
-          {/* Per-core CPU */}
-          {metrics.cores.length > 0 && (
-            <>
-              <SectionHeader title="CPU Cores" badge={`${metrics.cores.length} cores`} />
-              <CpuCores cores={metrics.cores} />
-            </>
-          )}
-
-          {/* GPU */}
-          <SectionHeader title="GPU" />
-          {hasGpu ? (
-            <div className="space-y-2">
-              {metrics.gpus.map((g, i) => <GpuCard key={i} gpu={g} />)}
-            </div>
-          ) : (
-            <Unavailable reason={
-              gpuNote
-                ? `No GPU detected. Checked: ${gpuNote}`
-                : "No GPU tools found (nvidia-smi, tegrastats, vcgencmd, rocm-smi)"
-            } />
-          )}
-
-          {/* Thermal */}
-          <SectionHeader title="Temperature" />
-          <ThermalGrid zones={metrics.thermal} />
-
-          {/* Network I/O */}
-          <SectionHeader title="Network I/O" />
-          {caps?.proc_net_dev
-            ? <NetTable ifaces={metrics.net_ifaces} />
-            : <Unavailable reason="/proc/net/dev not available on this kernel" />}
-
-          {/* Disk I/O */}
-          <SectionHeader title="Disk I/O" />
-          {caps?.proc_diskstats
-            ? <DiskTable disks={metrics.disk_io} />
-            : <Unavailable reason="/proc/diskstats not available on this kernel" />}
-
-          {/* Processes */}
-          <SectionHeader title="Top Processes" badge="by CPU" />
-          <ProcessTable procs={metrics.processes} />
-        </>
-      )}
-
-      <p className="text-[10px] text-[#2d3748] text-center pt-2 pb-1">
-        Auto-refreshes every 3 s
-      </p>
+      {/* ── Section content ────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        {section === "cores"     && <CoresSection cores={metrics.cores} />}
+        {section === "network"   && <NetworkSection ifaces={metrics.net_ifaces} available={caps?.proc_net_dev ?? true} sessionId={sessionId} />}
+        {section === "disk"      && <DiskSection disks={metrics.disk_io} available={caps?.proc_diskstats ?? true}
+                                      usedPct={metrics.disk_used_pct} usedGb={metrics.disk_used_gb}
+                                      totalGb={metrics.disk_total_gb} diskUnavail={metrics.disk_unavailable_reason} />}
+        {section === "gpu"       && <GpuSection gpus={metrics.gpus} checkedTools={checkedGpuTools} />}
+        {section === "temp"      && <TempSection zones={metrics.thermal} />}
+        {section === "processes" && <ProcessesSection procs={metrics.processes} />}
+      </div>
     </div>
   );
 }

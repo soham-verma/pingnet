@@ -69,6 +69,9 @@ export function usePing(hosts: HostConfig[] = []) {
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   // Per-host auto-ping interval refs
   const autoPingRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  // Always-current snapshot of hosts so setInterval callbacks never read stale config
+  const hostsRef = useRef<HostConfig[]>(hosts);
+  useEffect(() => { hostsRef.current = hosts; }, [hosts]);
 
   const getSession = useCallback(
     (id: string): PingSession => sessions[id] ?? { ...DEFAULT_SESSION },
@@ -223,7 +226,10 @@ export function usePing(hosts: HostConfig[] = []) {
         host.alert_on_down || host.alert_on_recovery || host.alert_latency_ms != null;
       if (needsAuto && !refs[host.id]) {
         refs[host.id] = setInterval(() => {
-          doPing(host);
+          // Read from ref to get the latest host config, not the snapshot
+          // captured at interval creation time (fixes stale closure — task #7)
+          const latest = hostsRef.current.find((h) => h.id === host.id);
+          if (latest) doPing(latest);
         }, 30_000);
       } else if (!needsAuto && refs[host.id]) {
         clearInterval(refs[host.id]);

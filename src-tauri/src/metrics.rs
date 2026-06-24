@@ -365,11 +365,25 @@ fn parse_proc_diskstats(raw: &str) -> HashMap<String, (u64, u64)> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 10 { continue; }
         let name = parts[2].to_string();
-        // Skip partitions (sda1, nvme0n1p1, etc.) — keep only whole disks
-        if name.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false)
-            && !name.starts_with("nvme") {
-            continue;
-        }
+        // Skip partitions — keep only whole-disk devices.
+        // Pattern: ends in a digit BUT is not a whole NVMe disk.
+        //   sda1, sdb2   → skip  (ends in digit, not nvme)
+        //   nvme0n1p1    → skip  (NVMe partition: contains 'p' before trailing digit)
+        //   nvme0n1      → keep  (NVMe whole disk: ends in digit after 'n', no 'p')
+        //   sda, sdb     → keep  (SCSI whole disk: does not end in digit)
+        //   mmcblk0p1    → skip  (eMMC partition: contains 'p' before trailing digit)
+        //   mmcblk0      → keep  (eMMC whole disk: ends in digit but no trailing 'p\d+')
+        let is_partition = if name.starts_with("nvme") || name.starts_with("mmcblk") {
+            // For nvme/mmcblk, a partition has a 'p' followed by digits at the end
+            name.rfind('p').map(|p_pos| {
+                p_pos > 0 && name[p_pos + 1..].chars().all(|c| c.is_ascii_digit())
+                    && !name[p_pos + 1..].is_empty()
+            }).unwrap_or(false)
+        } else {
+            // For conventional names (sda1, hdb2, etc.) last char is a digit
+            name.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false)
+        };
+        if is_partition { continue; }
         let sectors_read:    u64 = parts[5].parse().unwrap_or(0);
         let sectors_written: u64 = parts[9].parse().unwrap_or(0);
         map.insert(name, (sectors_read, sectors_written));
@@ -477,17 +491,24 @@ fn parse_rocm_smi(raw: &str) -> Vec<GpuStat> {
 }
 
 fn parse_processes(raw: &str) -> Vec<ProcessEntry> {
+    // `ps aux` output columns: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+    // Consecutive spaces are used as padding — split_ascii_whitespace handles that.
+    // We collect the first 10 whitespace-delimited tokens, then take the rest of
+    // the line as the command (preserving spaces in command names like "python script.py").
     raw.lines().skip(1).take(15).filter_map(|line| {
-        let parts: Vec<&str> = line.splitn(11, ' ')
-            .filter(|s| !s.is_empty()).collect();
-        if parts.len() < 11 { return None; }
-        Some(ProcessEntry {
-            pid:     parts[1].parse().unwrap_or(0),
-            user:    parts[0].to_string(),
-            cpu_pct: parts[2].parse().unwrap_or(0.0),
-            mem_pct: parts[3].parse().unwrap_or(0.0),
-            command: parts[10].chars().take(60).collect(),
-        })
+        // Collect exactly 10 leading tokens, then everything after is the command
+        let mut tokens = line.split_ascii_whitespace();
+        let user    = tokens.next()?.to_string();
+        let pid:     u32 = tokens.next()?.parse().ok()?;
+        let cpu_pct: f64 = tokens.next()?.parse().ok()?;
+        let mem_pct: f64 = tokens.next()?.parse().ok()?;
+        // Skip VSZ, RSS, TTY, STAT, START, TIME (6 fields)
+        for _ in 0..6 { tokens.next(); }
+        // Remainder is the command — preserves spaces in command names
+        let cmd: String = tokens.collect::<Vec<_>>().join(" ");
+        let command: String = cmd.chars().take(60).collect();
+        if command.is_empty() { return None; }
+        Some(ProcessEntry { pid, user, cpu_pct, mem_pct, command })
     }).collect()
 }
 
@@ -505,7 +526,11 @@ pub fn collect(
     session_id: &str,
     state: &Arc<MetricsState>,
 ) -> Result<MetricsSnapshot, String> {
-    session.set_blocking(true);
+    // DO NOT call session.set_blocking() here — this session is shared with
+    // SFTP commands. libssh2 is not thread-safe; flipping the blocking flag
+    // while another thread holds a channel on the same session corrupts state.
+    // All exec() calls below open their own channels which inherit the session's
+    // current blocking mode (set once at connect time in ssh_connect).
 
     // ── Get or probe capabilities ─────────────────────────────────────────────
     let caps = {

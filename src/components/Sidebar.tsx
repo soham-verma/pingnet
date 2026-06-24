@@ -11,6 +11,9 @@ interface Props {
   onOpenSSH: (id: string) => void;
   onAddHost: () => void;
   onOpenKeyManager: () => void;
+  currentVersion: string | null;
+  updateAvailable: boolean;
+  onOpenUpdate: () => void;
 }
 
 function MiniBar({ history }: { history: { latency: number | null; success: boolean }[] }) {
@@ -37,16 +40,16 @@ function MiniBar({ history }: { history: { latency: number | null; success: bool
   );
 }
 
-export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost, onOpenKeyManager }: Props) {
+export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost, onOpenKeyManager, currentVersion, updateAvailable, onOpenUpdate }: Props) {
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col h-full border-r border-[#1e1e35]" style={{ background: "#0a0a14" }}>
       {/* Header */}
       <div className="px-5 pt-8 pb-4">
         <div className="flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="3" fill="#00c8a8" />
-            <circle cx="8" cy="8" r="6" stroke="#00c8a8" strokeWidth="1" strokeOpacity="0.4" />
-            <circle cx="8" cy="8" r="9" stroke="#00c8a8" strokeWidth="1" strokeOpacity="0.15" />
+          <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
+            <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
+              stroke="#00c8a8" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="80" cy="148" r="10" fill="#00c8a8"/>
           </svg>
           <span className="text-[11px] font-semibold tracking-[0.2em] text-[#8892a4] uppercase">
             Pingboard
@@ -177,6 +180,26 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
             <path d="M5 4.5h4M7.5 3v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
           </svg>
           SSH Keys
+        </button>
+
+        {/* Version / update indicator */}
+        <button
+          onClick={onOpenUpdate}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all group"
+          style={updateAvailable
+            ? { background: "#00c8a808", border: "1px solid #00c8a820" }
+            : { border: "1px solid transparent" }
+          }
+        >
+          <span className="text-[10px] font-mono text-[#2d3748] group-hover:text-[#4b5563] transition-colors">
+            v{currentVersion ?? "…"}
+          </span>
+          {updateAvailable && (
+            <span className="flex items-center gap-1 text-[10px] text-[#00c8a8]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00c8a8]" style={{ boxShadow: "0 0 4px #00c8a8" }} />
+              update
+            </span>
+          )}
         </button>
       </div>
     </aside>

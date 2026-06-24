@@ -1,6 +1,6 @@
 [package]
 name = "pingnet"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pingnet — a cross-platform ping testing app"
 authors = []
 edition = "2021"
@@ -23,6 +23,8 @@ tokio = { version = "1", features = ["full"] }
 keyring = "2"
 ssh-key = { version = "0.6", features = ["ed25519", "rand_core", "std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
+dirs = "5"
+tauri-plugin-dialog = "2"
 
 [features]
 default = ["custom-protocol"]

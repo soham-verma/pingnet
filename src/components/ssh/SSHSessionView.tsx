@@ -31,7 +31,14 @@ interface Props {
   onSaveConfig: (config: SshConfig) => void;
 }
 
-type ViewTab = "terminal" | "files" | "transfers" | "history" | "metrics";
+type ViewTab = "terminal" | "files" | "transfers" | "history" | "metrics" | "grafana";
+
+// Per-host Grafana configuration (stored in component state, persisted to localStorage)
+export interface GrafanaConfig {
+  url: string;       // e.g. http://192.168.1.100:3000
+  kiosk: boolean;    // append ?kiosk to hide sidebar
+  autoRefresh: string; // e.g. "5m" — appended as &refresh=5m
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,7 +71,7 @@ function isTransient(s: SshConnectionStatus): boolean {
 export default function SSHSessionView({
   hostname,
   ip,
-  hostId: _hostId,
+  hostId,
   savedConfig,
   onSaveConfig,
 }: Props) {
@@ -76,6 +83,22 @@ export default function SSHSessionView({
   const pendingTabId = useRef<string | null>(null);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [commands, setCommands] = useState<CommandEntry[]>([]);
+
+  // ── Grafana config — persisted per host in localStorage ────────────────────
+  const grafanaStorageKey = `pingnet_grafana_${hostId}`;
+  const [grafanaConfig, setGrafanaConfig] = useState<GrafanaConfig>(() => {
+    try {
+      const raw = localStorage.getItem(`pingnet_grafana_${hostId}`);
+      if (raw) return JSON.parse(raw) as GrafanaConfig;
+    } catch {}
+    return { url: "", kiosk: true, autoRefresh: "5m" };
+  });
+  const [showGrafanaSettings, setShowGrafanaSettings] = useState(false);
+
+  const saveGrafanaConfig = useCallback((cfg: GrafanaConfig) => {
+    setGrafanaConfig(cfg);
+    localStorage.setItem(grafanaStorageKey, JSON.stringify(cfg));
+  }, [grafanaStorageKey]);
 
   // Inline rename
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -249,6 +272,8 @@ export default function SSHSessionView({
           ? { type: "Password", password: creds.password }
           : creds.config.auth_type === "keychain"
           ? { type: "KeychainKey", key_name: creds.config.key_name ?? "" }
+          : creds.config.auth_type === "agent"
+          ? { type: "Agent" }
           : { type: "Key", key_path: creds.config.key_path ?? "~/.ssh/id_rsa", passphrase: creds.password || null };
 
       await invoke("ssh_connect", {
@@ -366,7 +391,7 @@ export default function SSHSessionView({
 
         {/* View tabs */}
         <div className="flex items-center gap-1 bg-[#0f0f1a] rounded-lg p-1 border border-[#1e1e35]">
-          {(["terminal", "files", "transfers", "history", "metrics"] as ViewTab[]).map((t) => (
+          {(["terminal", "files", "transfers", "history", "metrics", "grafana"] as ViewTab[]).map((t) => (
             <button key={t} onClick={() => setViewTab(t)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
                 viewTab === t ? "bg-[#1e1e35] text-white" : "text-[#4b5563] hover:text-[#8892a4]"
@@ -383,6 +408,9 @@ export default function SSHSessionView({
               )}
               {t === "history" && !newToolFlash && commands.length > 0 && (
                 <span className="text-[9px] text-[#374151]">{commands.length}</span>
+              )}
+              {t === "grafana" && grafanaConfig.url && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
               )}
             </button>
           ))}
@@ -492,6 +520,18 @@ export default function SSHSessionView({
             <p className="text-[12px] text-[#2d3748]">Open a terminal and connect first</p>
           </div>
         ) : null}
+
+        {/* Grafana embed panel — always mounted when grafana tab active */}
+        {viewTab === "grafana" && (
+          <div className="absolute inset-0 flex flex-col" style={{ background: "#08080f" }}>
+            <GrafanaPanel
+              config={grafanaConfig}
+              showSettings={showGrafanaSettings}
+              onToggleSettings={() => setShowGrafanaSettings((v) => !v)}
+              onSave={saveGrafanaConfig}
+            />
+          </div>
+        )}
       </div>
 
       {showModal && (
@@ -800,6 +840,168 @@ function EmptyTerminalState({ hostname, onOpen }: { hostname: string; onOpen: ()
         style={{ background: "#6366f1", color: "#fff", boxShadow: "0 0 16px #6366f140" }}>
         + New Terminal
       </button>
+    </div>
+  );
+}
+
+// ── GrafanaPanel ───────────────────────────────────────────────────────────────
+
+function buildGrafanaUrl(cfg: GrafanaConfig): string {
+  if (!cfg.url) return "";
+  const base = cfg.url.replace(/\/$/, "");
+  const params: string[] = [];
+  if (cfg.kiosk) params.push("kiosk");
+  if (cfg.autoRefresh) params.push(`refresh=${encodeURIComponent(cfg.autoRefresh)}`);
+  const query = params.length > 0 ? "?" + params.join("&") : "";
+  return `${base}${query}`;
+}
+
+function GrafanaPanel({
+  config,
+  showSettings,
+  onToggleSettings,
+  onSave,
+}: {
+  config: GrafanaConfig;
+  showSettings: boolean;
+  onToggleSettings: () => void;
+  onSave: (cfg: GrafanaConfig) => void;
+}) {
+  const [draft, setDraft] = useState<GrafanaConfig>(config);
+  const iframeUrl = buildGrafanaUrl(config);
+
+  // Sync draft when config changes from outside (e.g. host switch)
+  useEffect(() => { setDraft(config); }, [config]);
+
+  const handleSave = () => {
+    onSave(draft);
+    onToggleSettings();
+  };
+
+  const inputCls = "w-full bg-[#0a0a14] border border-[#1e1e35] rounded-lg px-3 py-2 text-[13px] text-white font-mono placeholder-[#374151] outline-none focus:border-[#00c8a860]";
+  const labelCls = "block text-[10px] tracking-[0.12em] text-[#4b5563] uppercase mb-1.5";
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e1e35] flex-shrink-0"
+        style={{ background: "#0a0a14" }}>
+        {/* Grafana "G" badge */}
+        <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+          style={{ background: "#f59e0b20", border: "1px solid #f59e0b30" }}>
+          <span className="text-[#f59e0b] text-[9px] font-bold">G</span>
+        </div>
+        <span className="text-[11px] text-[#8892a4] font-medium flex-1 truncate">
+          {config.url || "No dashboard configured"}
+        </span>
+        {config.url && (
+          <button
+            onClick={() => {
+              // Reload the iframe by toggling key
+              const el = document.getElementById("grafana-iframe") as HTMLIFrameElement | null;
+              if (el) { const s = el.src; el.src = ""; el.src = s; }
+            }}
+            className="text-[10px] text-[#4b5563] hover:text-white px-2 py-1 rounded transition-colors"
+            title="Reload">
+            ↻
+          </button>
+        )}
+        <button
+          onClick={onToggleSettings}
+          className={`text-[10px] px-2.5 py-1 rounded transition-all ${showSettings ? "text-white bg-[#1e1e35]" : "text-[#4b5563] hover:text-white"}`}>
+          {showSettings ? "✕ Close" : "⚙ Configure"}
+        </button>
+      </div>
+
+      {/* Settings drawer */}
+      {showSettings && (
+        <div className="flex-shrink-0 border-b border-[#1e1e35] px-5 py-4"
+          style={{ background: "#0d0d1a" }}>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="col-span-2">
+              <label className={labelCls}>Grafana URL</label>
+              <input
+                type="url"
+                placeholder="http://192.168.1.100:3000/d/abc123/my-dashboard"
+                value={draft.url}
+                onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Auto-refresh</label>
+              <select
+                value={draft.autoRefresh}
+                onChange={(e) => setDraft((d) => ({ ...d, autoRefresh: e.target.value }))}
+                className={inputCls}>
+                <option value="">Off</option>
+                <option value="5s">5 seconds</option>
+                <option value="30s">30 seconds</option>
+                <option value="1m">1 minute</option>
+                <option value="5m">5 minutes</option>
+                <option value="15m">15 minutes</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <span className="relative inline-flex items-center">
+                <input type="checkbox" className="sr-only" checked={draft.kiosk}
+                  onChange={(e) => setDraft((d) => ({ ...d, kiosk: e.target.checked }))} />
+                <div className="w-8 h-4 rounded-full transition-colors"
+                  style={{ background: draft.kiosk ? "#00c8a8" : "#1e1e35" }}>
+                  <div className="w-3 h-3 rounded-full bg-white transition-transform mt-0.5"
+                    style={{ transform: draft.kiosk ? "translateX(17px)" : "translateX(2px)" }} />
+                </div>
+              </span>
+              <span className="text-[11px] text-[#8892a4]">Kiosk mode (hides Grafana navigation)</span>
+            </label>
+            <div className="flex gap-2">
+              <button onClick={onToggleSettings}
+                className="px-3 py-1.5 rounded-lg text-[11px] text-[#4b5563] hover:text-white transition-colors"
+                style={{ border: "1px solid #1e1e35" }}>
+                Cancel
+              </button>
+              <button onClick={handleSave}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+                style={{ background: "#00c8a8", color: "#000" }}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 relative overflow-hidden">
+        {!config.url ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-8">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ background: "#f59e0b10", border: "1px solid #f59e0b20" }}>
+              <span className="text-[#f59e0b] text-xl font-bold">G</span>
+            </div>
+            <div>
+              <p className="text-white font-semibold mb-1">No Grafana dashboard configured</p>
+              <p className="text-[#4b5563] text-sm max-w-xs">
+                Paste the URL of any Grafana dashboard to embed it here. Works with local instances on the same network.
+              </p>
+            </div>
+            <button onClick={onToggleSettings}
+              className="px-4 py-2 rounded-xl text-sm font-semibold"
+              style={{ background: "#f59e0b", color: "#000" }}>
+              Configure Dashboard
+            </button>
+          </div>
+        ) : (
+          <iframe
+            id="grafana-iframe"
+            src={iframeUrl}
+            className="absolute inset-0 w-full h-full border-0"
+            title="Grafana Dashboard"
+            // allow="fullscreen" removed intentionally — Tauri's CSP controls this
+          />
+        )}
+      </div>
     </div>
   );
 }

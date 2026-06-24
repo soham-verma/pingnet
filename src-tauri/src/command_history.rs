@@ -121,6 +121,21 @@ pub fn save_command(
         entry.help_summary = help_summary;
     }
 
+    // Cap at 500 entries — evict least-recently-used when over limit (task #13)
+    const MAX_ENTRIES: usize = 500;
+    if map.len() > MAX_ENTRIES {
+        // Collect keys sorted by last_seen ascending (oldest first), drop the tail
+        let mut keys_by_age: Vec<(String, u64)> = map
+            .iter()
+            .map(|(k, v)| (k.clone(), v.last_seen))
+            .collect();
+        keys_by_age.sort_by_key(|(_, ts)| *ts);
+        let to_remove = map.len() - MAX_ENTRIES;
+        for (k, _) in keys_by_age.into_iter().take(to_remove) {
+            map.remove(&k);
+        }
+    }
+
     save_raw(&app, &host, &map);
     is_new_base
 }

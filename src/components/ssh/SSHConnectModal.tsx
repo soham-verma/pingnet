@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { SshConfig, KeyInfo } from "../../types";
 
 interface Props {
@@ -13,7 +14,7 @@ interface Props {
 export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, onClose }: Props) {
   const [port, setPort] = useState(savedConfig?.port ?? 22);
   const [username, setUsername] = useState(savedConfig?.username ?? "");
-  const [authType, setAuthType] = useState<"password" | "key" | "keychain">(
+  const [authType, setAuthType] = useState<"password" | "key" | "keychain" | "agent">(
     savedConfig?.auth_type ?? "password"
   );
   const [password, setPassword] = useState("");
@@ -24,13 +25,18 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
 
   // Keychain key picker
   const [keychainKeys, setKeychainKeys] = useState<KeyInfo[]>([]);
+  const [keychainError, setKeychainError] = useState<string | null>(null);
   const [selectedKeyName, setSelectedKeyName] = useState<string>(savedConfig?.key_name ?? "");
 
   useEffect(() => {
     if (authType === "keychain") {
+      setKeychainError(null);
       invoke<KeyInfo[]>("list_ssh_keys")
-        .then(setKeychainKeys)
-        .catch(() => setKeychainKeys([]));
+        .then((keys) => { setKeychainKeys(keys); })
+        .catch((e) => {
+          setKeychainKeys([]);
+          setKeychainError(String(e));
+        });
     }
   }, [authType]);
 
@@ -47,6 +53,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
       config,
       authType === "password" ? password : authType === "key" ? keyPassphrase : ""
     );
+
   };
 
   const inputCls =
@@ -111,7 +118,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
           <div>
             <label className={labelCls}>Authentication</label>
             <div className="flex gap-1 p-1 rounded-lg" style={{ background: "#0a0a14" }}>
-              {(["password", "key", "keychain"] as const).map((t) => (
+              {(["password", "agent", "key", "keychain"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setAuthType(t)}
@@ -122,7 +129,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                       : { color: "#4b5563" }
                   }
                 >
-                  {t === "password" ? "Password" : t === "key" ? "Key File" : "Keychain"}
+                  {t === "password" ? "Password" : t === "agent" ? "Agent" : t === "key" ? "Key File" : "Keychain"}
                 </button>
               ))}
             </div>
@@ -155,13 +162,29 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
           {authType === "key" && (
             <div className="space-y-3">
               <div>
-                <label className={labelCls}>Key file path</label>
-                <input
-                  className={inputCls}
-                  placeholder="~/.ssh/id_rsa"
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                />
+                <label className={labelCls}>Key file</label>
+                <div className="flex gap-2">
+                  <input
+                    className={inputCls + " flex-1 min-w-0"}
+                    placeholder="~/.ssh/id_rsa"
+                    value={keyPath}
+                    onChange={(e) => setKeyPath(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const selected = await openDialog({
+                        title: "Select SSH private key",
+                        multiple: false,
+                        directory: false,
+                      });
+                      if (typeof selected === "string") setKeyPath(selected);
+                    }}
+                    className="flex-shrink-0 px-3 py-2 rounded-lg border border-[#1e1e35] text-[11px] text-[#4b5563] hover:text-white hover:border-[#6366f1] transition-colors"
+                  >
+                    Browse
+                  </button>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Passphrase (if encrypted)</label>
@@ -186,10 +209,23 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
             </div>
           )}
 
+          {authType === "agent" && (
+            <div className="rounded-lg border border-[#1e1e35] px-4 py-3 space-y-1" style={{ background: "#0a0a14" }}>
+              <p className="text-[11px] text-[#4b5563]">
+                Connects using your running SSH agent (<span className="font-mono">SSH_AUTH_SOCK</span>).
+                Any key already loaded in the agent will be tried automatically — same as how your terminal works.
+              </p>
+            </div>
+          )}
+
           {authType === "keychain" && (
             <div>
               <label className={labelCls}>Select managed key</label>
-              {keychainKeys.length === 0 ? (
+              {keychainError ? (
+                <p className="text-[#ef4444] text-xs py-2 font-mono">
+                  {keychainError}
+                </p>
+              ) : keychainKeys.length === 0 ? (
                 <p className="text-[#4b5563] text-xs py-2">
                   No keys in keychain. Open the Key Manager to generate one.
                 </p>
