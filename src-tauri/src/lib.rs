@@ -13,11 +13,33 @@ use ssh::SshState;
 use storage::HostConfig;
 use vpn::VpnStatus;
 
-/// Open an arbitrary URL or custom-scheme URI (e.g. vscode://, cursor://, jetbrains-gateway://)
-/// using the OS default handler. The built-in tauri-plugin-shell open() only allows
-/// mailto/tel/https schemes, so we bypass it with the `open` crate directly.
+/// Open a URL or custom-scheme URI using the OS default handler.
+/// Only explicitly allowed schemes may be passed — file://, javascript:, data:,
+/// and every other unlisted scheme are rejected so a compromised webview cannot
+/// launch arbitrary local executables or access local files.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
+    // Schemes the Pingnet UI legitimately opens.  Extend this list deliberately
+    // rather than accepting all unknown schemes.
+    const ALLOWED: &[&str] = &[
+        "https://",
+        "mailto:",
+        "vscode://",
+        "vscode-insiders://",
+        "cursor://",
+        "windsurf://",
+        "jetbrains://",
+        "jetbrains-gateway://",
+    ];
+
+    let lower = url.to_lowercase();
+    if !ALLOWED.iter().any(|scheme| lower.starts_with(scheme)) {
+        return Err(format!(
+            "Scheme not permitted. Allowed: https, mailto, vscode, cursor, windsurf, jetbrains. Got: {}",
+            url.split(':').next().unwrap_or(&url)
+        ));
+    }
+
     open::that(&url).map_err(|e| e.to_string())
 }
 
@@ -80,6 +102,40 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
     let parent = parent.canonicalize().map_err(|e| e.to_string())?;
     if !parent.starts_with(&home) {
         return Err("Write path must be inside your home directory".to_string());
+    }
+
+    // Block writes to sensitive files that could enable code execution or
+    // credential theft even when the path is inside the home directory.
+    // The comparison is done on the *canonicalized* parent so path traversal
+    // tricks (e.g. foo/../.ssh) cannot bypass the check.
+    let sensitive_dirs: &[&str] = &[".ssh", ".aws", ".gnupg", ".config/gcloud"];
+    let sensitive_files: &[&str] = &[
+        ".zshrc", ".zprofile", ".zshenv", ".zlogin",
+        ".bashrc", ".bash_profile", ".bash_login", ".profile",
+        ".kshrc", ".tcshrc", ".fishrc",
+        ".npmrc", ".pypirc", ".netrc", ".gitconfig",
+        ".gitcredentials", ".curlrc",
+    ];
+
+    let canon_path = p.canonicalize().unwrap_or_else(|_| p.clone());
+    let path_str = canon_path.to_string_lossy();
+
+    for dir in sensitive_dirs {
+        let blocked = home.join(dir);
+        if canon_path.starts_with(&blocked) || parent.starts_with(&blocked) {
+            return Err(format!("Write to sensitive directory '{}' is not allowed", dir));
+        }
+    }
+    for file in sensitive_files {
+        let blocked = home.join(file);
+        if canon_path == blocked || p == blocked {
+            return Err(format!("Write to sensitive file '{}' is not allowed", file));
+        }
+    }
+    // Belt-and-suspenders: also reject anything whose lowercased path contains
+    // "authorized_keys" (common SSH persistence target).
+    if path_str.to_lowercase().contains("authorized_keys") {
+        return Err("Write to authorized_keys is not allowed".to_string());
     }
 
     if let Ok(meta) = std::fs::symlink_metadata(&p) {

@@ -3,6 +3,7 @@ export function isPrivateIp(ip: string): boolean {
   if (parts.length !== 4) return false;
   const [a, b] = parts;
   return (
+    a === 127 ||                          // loopback — matches ping.rs::is_private_ip
     a === 10 ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168)

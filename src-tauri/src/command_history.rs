@@ -115,6 +115,46 @@ pub fn save_command(
         if has_curl_u {
             return false;
         }
+        // curl -H "Authorization: ..." header flag
+        // Catches both short (-H) and long (--header) forms with auth values
+        if lower.contains("-h ") || lower.contains("--header ") {
+            let auth_header_patterns = [
+                "authorization:", "x-api-key:", "x-auth-token:",
+                "bearer ", "token ", "basic ",
+            ];
+            if auth_header_patterns.iter().any(|p| lower.contains(p)) {
+                return false;
+            }
+        }
+    }
+
+    // Generic -H / --header flags (wget, httpie, custom curl wrappers, etc.)
+    // Catches: -H "Authorization: Bearer <token>" regardless of the outer tool.
+    {
+        let has_header_flag = lower.contains(" -h ") || lower.contains("\t-h ")
+            || lower.contains(" --header ") || lower.contains("\t--header ");
+        if has_header_flag {
+            let auth_header_values = [
+                "authorization:", "x-api-key:", "x-auth-token:",
+                "bearer ", "basic ",
+            ];
+            if auth_header_values.iter().any(|p| lower.contains(p)) {
+                return false;
+            }
+        }
+    }
+
+    // Bare Authorization/Bearer patterns outside of a -H flag
+    // (e.g. httpie: `http GET /api Authorization:"Bearer xyz"`)
+    {
+        let inline_auth_patterns = [
+            "authorization:bearer ", "authorization:basic ",
+            "authorization: bearer ", "authorization: basic ",
+            "bearer eyj",  // JWT — starts with base64-encoded '{"'
+        ];
+        if inline_auth_patterns.iter().any(|p| lower.contains(p)) {
+            return false;
+        }
     }
 
     // Short -p<value> flag used by mysql, mysqldump, sshpass, etc.

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow, currentMonitor, PhysicalPosition } from "@tauri-apps/api/window";
 import { HostConfig, HostState, SshConfig } from "./types";
 import { usePing, PingSession } from "./hooks/usePing";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
@@ -47,8 +48,52 @@ export default function App() {
     if (update.available && !update.skipped) setShowUpdateModal(true);
   }, [update.available, update.skipped]);
 
-  // Pass hosts to usePing so it can schedule auto-ping for hosts with alerts
-  const { getSession, ping, clearSession } = usePing(hosts.map((h) => ({
+  // BUG-05 fix: prevent the window from being dragged off-screen when the user
+  // grabs the bottom-right corner and pulls it past the window's own left edge.
+  // macOS correctly clamps the window *width* to minWidth, but repositions the
+  // window frame so the right edge stays fixed — which can push the left side
+  // (and the entire sidebar) off-screen.  We listen to the resize event and
+  // clamp x/y to keep every corner visible.
+  useEffect(() => {
+    const win = getCurrentWindow();
+    let unlisten: (() => void) | null = null;
+
+    (async () => {
+      unlisten = await win.onResized(async () => {
+        try {
+          const [pos, size, monitor] = await Promise.all([
+            win.outerPosition(),
+            win.outerSize(),
+            currentMonitor(),
+          ]);
+          if (!monitor) return;
+
+          const { x: mx, y: my } = monitor.position;
+          const { width: mw, height: mh } = monitor.size;
+
+          // Ensure the window stays within the monitor's physical bounds.
+          // Leave at least 50 px of the window visible on every edge.
+          const margin = 50;
+          const clampedX = Math.min(Math.max(pos.x, mx), mx + mw - margin);
+          const clampedY = Math.min(Math.max(pos.y, my), my + mh - margin);
+
+          if (clampedX !== pos.x || clampedY !== pos.y) {
+            await win.setPosition(new PhysicalPosition(clampedX, clampedY));
+          }
+        } catch {
+          // Ignore — window positioning is best-effort
+        }
+      });
+    })();
+
+    return () => { unlisten?.(); };
+  }, []);
+
+  // Memoize the HostConfig array so usePing's useEffect only re-runs when
+  // the hosts list actually changes — not on every render caused by session
+  // state updates. Without this, every ping result re-renders App, creates a
+  // new array reference, and resets all 30 s auto-ping intervals immediately.
+  const hostConfigs = useMemo(() => hosts.map((h) => ({
     id: h.id,
     hostname: h.hostname,
     ip: h.ip,
@@ -62,7 +107,10 @@ export default function App() {
     ssh_auth_type: h.ssh_auth_type,
     ssh_key_path: h.ssh_key_path,
     ssh_key_name: h.ssh_key_name,
-  })));
+  })), [hosts]);
+
+  // Pass hosts to usePing so it can schedule auto-ping for hosts with alerts
+  const { getSession, ping, clearSession } = usePing(hostConfigs);
 
   // Build sessions map for sidebar
   const allSessions: Record<string, PingSession> = {};

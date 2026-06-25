@@ -22,6 +22,13 @@ pub struct HttpResponse {
 // ── Regular HTTP request ───────────────────────────────────────────────────────
 
 /// Make an outbound HTTP/HTTPS request directly from the local machine.
+///
+/// Blocked destinations:
+/// - Cloud instance-metadata services (169.254.169.254, fd00:ec2::254, etc.)
+///   which can expose IAM credentials in cloud environments.
+/// - The loopback address (127.x.x.x / ::1) is NOT blocked here because
+///   the app legitimately contacts Grafana and other localhost services;
+///   the caller (frontend) always supplies the user-configured target.
 #[tauri::command]
 pub fn make_http_request(
     method: String,
@@ -29,6 +36,26 @@ pub fn make_http_request(
     headers: Vec<HttpHeader>,
     body: Option<String>,
 ) -> Result<HttpResponse, String> {
+    // Reject well-known cloud-metadata hostnames/IPs.
+    // These endpoints are never a legitimate target for an HTTP testing tool
+    // but are prime SSRF exfiltration targets when running inside cloud VMs.
+    let url_lower = url.to_lowercase();
+    let blocked_hosts: &[&str] = &[
+        "169.254.169.254",           // AWS/GCP/Azure IMDS
+        "fd00:ec2::254",             // AWS IPv6 IMDS
+        "metadata.google.internal",  // GCP alternate
+        "100.100.100.200",           // Alibaba Cloud IMDS
+        "192.0.0.192",               // Oracle Cloud IMDS
+    ];
+    for host in blocked_hosts {
+        if url_lower.contains(host) {
+            return Err(format!(
+                "Request to cloud metadata address '{}' is not allowed",
+                host
+            ));
+        }
+    }
+
     let t0 = Instant::now();
 
     let mut req = ureq::request(&method, &url);

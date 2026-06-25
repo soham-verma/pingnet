@@ -23,8 +23,55 @@ export interface PingSession {
   vpnAtFailure: VpnStatus | null;
   isRunning: boolean;
   stats: ReturnType<typeof calcStats>;
-  // Track host up/down state for transition detection
-  lastAlertState: "up" | "down" | null;
+  // Track host up/down/slow state for transition detection
+  lastAlertState: "up" | "down" | "slow" | null;
+}
+
+// ── Alert state machine (pure, exported for tests) ────────────────────────────
+
+export type AlertState = "up" | "down" | "slow" | null;
+export type AlertFire  = "down" | "recovery" | "slow" | null;
+
+export interface AlertStateInput {
+  prevState: AlertState;
+  success: boolean;
+  latency_ms: number | null;
+  alert_on_down: boolean;
+  alert_on_recovery: boolean;
+  alert_latency_ms: number | null;
+}
+
+/**
+ * Pure function: given the previous alert state and a new ping result, returns
+ * the next state and which notification (if any) should fire.
+ * No side-effects — suitable for unit testing without React or Tauri.
+ */
+export function computeNextAlertState(input: AlertStateInput): {
+  nextState: "up" | "down" | "slow";
+  fire: AlertFire;
+} {
+  const { prevState, success, latency_ms, alert_on_down, alert_on_recovery, alert_latency_ms } = input;
+
+  const isSlowPing =
+    success &&
+    alert_latency_ms != null &&
+    latency_ms != null &&
+    latency_ms > alert_latency_ms;
+
+  const nextState: "up" | "down" | "slow" =
+    !success ? "down" : isSlowPing ? "slow" : "up";
+
+  let fire: AlertFire = null;
+
+  if (success && prevState === "down" && alert_on_recovery) {
+    fire = "recovery";
+  } else if (!success && prevState !== "down" && alert_on_down) {
+    fire = "down";
+  } else if (isSlowPing && prevState === "up") {
+    fire = "slow";
+  }
+
+  return { nextState, fire };
 }
 
 const DEFAULT_SESSION: PingSession = {
@@ -139,27 +186,24 @@ export function usePing(hosts: HostConfig[] = []) {
         const newStats = calcStats(newHistory);
 
         // ── Alert state machine ──────────────────────────────────────────────
-        const prevState = s.lastAlertState;
-        const currState: "up" | "down" = result.success ? "up" : "down";
-        let nextAlertState = currState;
+        const { nextState: nextAlertState, fire } = computeNextAlertState({
+          prevState: s.lastAlertState,
+          success: result.success,
+          latency_ms: result.latency_ms,
+          alert_on_down: host.alert_on_down,
+          alert_on_recovery: host.alert_on_recovery,
+          alert_latency_ms: host.alert_latency_ms,
+        });
 
-        if (result.success && prevState === "down" && host.alert_on_recovery) {
+        if (fire === "recovery") {
           notify(`✅ ${host.hostname} is back up`, `Host ${host.ip} recovered`);
-        } else if (!result.success && prevState !== "down" && host.alert_on_down) {
+        } else if (fire === "down") {
           notify(`🔴 ${host.hostname} is down`, `Host ${host.ip} is unreachable`);
-        } else if (
-          result.success &&
-          host.alert_latency_ms != null &&
-          result.latency_ms != null &&
-          result.latency_ms > host.alert_latency_ms
-        ) {
-          // Only fire latency alert once per spike (when previously ok, now slow)
+        } else if (fire === "slow") {
           notify(
             `⚠️ ${host.hostname} slow`,
-            `Latency ${Math.round(result.latency_ms)}ms > ${host.alert_latency_ms}ms threshold`
+            `Latency ${Math.round(result.latency_ms!)}ms > ${host.alert_latency_ms}ms threshold`
           );
-          // Keep state as "up" — don't mis-report as down
-          nextAlertState = "up";
         }
         // ────────────────────────────────────────────────────────────────────
 

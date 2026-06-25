@@ -101,14 +101,27 @@ export default function SSHSessionView({
 
   // ── Grafana config — persisted per host in localStorage ────────────────────
   const grafanaStorageKey = `pingnet_grafana_${hostId}`;
-  const [grafanaConfig, setGrafanaConfig] = useState<GrafanaConfig>(() => {
+
+  function readGrafanaConfig(key: string): GrafanaConfig {
     try {
-      const raw = localStorage.getItem(`pingnet_grafana_${hostId}`);
+      const raw = localStorage.getItem(key);
       if (raw) return JSON.parse(raw) as GrafanaConfig;
     } catch {}
     return { url: "", kiosk: true, autoRefresh: "5m" };
-  });
+  }
+
+  const [grafanaConfig, setGrafanaConfig] = useState<GrafanaConfig>(() =>
+    readGrafanaConfig(grafanaStorageKey)
+  );
   const [showGrafanaSettings, setShowGrafanaSettings] = useState(false);
+
+  // Re-read Grafana config from localStorage whenever the host changes —
+  // the useState initializer only runs on first mount, so without this,
+  // switching hosts leaves the previous host's config in state.
+  useEffect(() => {
+    setGrafanaConfig(readGrafanaConfig(grafanaStorageKey));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostId]);
 
   const saveGrafanaConfig = useCallback((cfg: GrafanaConfig) => {
     setGrafanaConfig(cfg);

@@ -102,18 +102,36 @@ fn save_known_hosts(app: &tauri::AppHandle, map: &HashMap<String, String>) {
     }
 }
 
+/// Compute a collision-resistant fingerprint from the raw host key bytes.
+/// We use the raw key directly (not an MD5/SHA1 hash) because:
+///   - ssh2 0.9 exposes only MD5/SHA1 via host_key_hash — both are weak for MITM detection
+///   - The raw key bytes are the authoritative identity; any hash is strictly weaker
+///   - Ed25519 and ECDSA keys are already 32–65 bytes, so hex-encoding is compact
+/// Format: "<key-type>:<hex-bytes>" — e.g. "ssh-ed25519:aabbcc..."
+fn raw_key_fingerprint(session: &Session) -> Option<String> {
+    let (key_bytes, key_type) = session.host_key()?;
+    // ssh2 0.9.x HostKeyType: Rsa | Dss | Ed25519 | Unknown
+    // ECDSA keys are reported as Unknown in this version (no separate variant).
+    let type_str = match key_type {
+        ssh2::HostKeyType::Rsa     => "ssh-rsa",
+        ssh2::HostKeyType::Dss     => "ssh-dss",
+        ssh2::HostKeyType::Ed25519 => "ssh-ed25519",
+        _                          => "unknown",
+    };
+    let hex = key_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    Some(format!("{}:{}", type_str, hex))
+}
+
 /// Trust-on-first-use host key verification.
 /// First connection: fingerprint is stored and the connection proceeds.
 /// Subsequent connections: fingerprint must match what was stored.
+///
+/// Uses raw key bytes (not MD5) to avoid collision-weak MITM detection.
+/// Existing entries stored as bare MD5 hex (no "ssh-*:" prefix) will be
+/// treated as unknown and re-pinned on the next connection.
 fn verify_host_key(session: &Session, host: &str, port: u16, app: &tauri::AppHandle) -> Result<(), String> {
-    let hash = session
-        .host_key_hash(ssh2::HashType::Md5)
+    let fingerprint = raw_key_fingerprint(session)
         .ok_or_else(|| "Server provided no host key — refusing connection".to_string())?;
-
-    let fingerprint = hash.iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<_>>()
-        .join(":");
 
     let host_key = format!("[{}]:{}", host, port);
     let mut known = load_known_hosts(app);
@@ -1144,14 +1162,39 @@ pub async fn tunnel_http_request(
         if !body_bytes.is_empty() {
             hmap.insert("Content-Length".to_string(), body_bytes.len().to_string());
         }
+        // Strip CR/LF before embedding caller-supplied values into the raw HTTP
+        // request.  Without this a malicious header value or path could inject an
+        // arbitrary second request line or override Host/Connection headers (CRLF
+        // injection / HTTP request smuggling).
+        fn strip_crlf(s: &str) -> String {
+            s.replace(['\r', '\n'], "")
+        }
+
         for h in &headers {
-            if !h.name.trim().is_empty() && !h.value.trim().is_empty() {
-                hmap.insert(h.name.trim().to_string(), h.value.trim().to_string());
+            let name  = strip_crlf(h.name.trim());
+            let value = strip_crlf(h.value.trim());
+            // Reject empty names and colons inside the name (would corrupt
+            // the "field-name: field-value" wire format).
+            if !name.is_empty() && !name.contains(':') && !value.is_empty() {
+                hmap.insert(name, value);
             }
         }
 
-        let path = if path.trim().is_empty() { "/".to_string() } else { path.trim().to_string() };
-        let mut raw = format!("{} {} HTTP/1.1\r\n", method.to_uppercase(), path);
+        let sanitized_path = {
+            let p = path.trim();
+            let p = if p.is_empty() { "/" } else { p };
+            strip_crlf(p)
+        };
+        // Method must be ASCII letters only (RFC 7230 §3.1.1).
+        let method_safe: String = method.to_uppercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .collect();
+        if method_safe.is_empty() {
+            return Err("tunnel_http_request: invalid HTTP method".to_string());
+        }
+
+        let mut raw = format!("{} {} HTTP/1.1\r\n", method_safe, sanitized_path);
         for (k, v) in &hmap {
             raw.push_str(&format!("{}: {}\r\n", k, v));
         }

@@ -19,20 +19,37 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // BUG-04 fix: use document (more reliable in WKWebView than window) and
+  // also attach onKeyDown to the backdrop element as a belt-and-suspenders fallback.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  // BUG-07 fix: proper IPv4 octet range check + RFC-1123 hostname check.
+  // Removes the over-broad /^[\w.-]+$/ fallback that accepted 999.999.999.999.
+  function isValidIp(addr: string): boolean {
+    const parts = addr.split(".");
+    if (parts.length !== 4) return false;
+    return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) >= 0 && Number(p) <= 255);
+  }
+
+  function isValidHostname(h: string): boolean {
+    if (h.length === 0 || h.length > 253) return false;
+    // Each label: 1–63 chars of [A-Za-z0-9-], not starting/ending with hyphen
+    const label = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+    return h.split(".").every((part) => label.test(part));
+  }
 
   function validate() {
     const errs: Record<string, string> = {};
     if (!hostname.trim()) errs.hostname = "Name is required";
-    if (!ip.trim()) errs.ip = "IP or hostname is required";
-    const ipPattern =
-      /^(\d{1,3}\.){3}\d{1,3}$|^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/;
-    if (ip.trim() && !ipPattern.test(ip.trim()) && !/^[\w.-]+$/.test(ip.trim())) {
-      errs.ip = "Enter a valid IP address or hostname";
+    const trimmedIp = ip.trim();
+    if (!trimmedIp) {
+      errs.ip = "IP or hostname is required";
+    } else if (!isValidIp(trimmedIp) && !isValidHostname(trimmedIp)) {
+      errs.ip = "Enter a valid IPv4 address or hostname";
     }
     if (alertLatency !== "" && (isNaN(Number(alertLatency)) || Number(alertLatency) <= 0)) {
       errs.alertLatency = "Enter a positive number (ms)";
@@ -55,6 +72,15 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
     }
   }
 
+  // BUG-01 fix: confirm before deleting — one stray click can't destroy a host.
+  function handleDeleteClick() {
+    if (!onDelete) return;
+    if (window.confirm(`Delete "${hostname || "this host"}"? This cannot be undone.`)) {
+      onDelete();
+    }
+  }
+
+  // BUG-11 fix: keyboard-accessible toggle — role="switch", tabIndex, Space/Enter support.
   const Toggle = ({
     checked,
     onChange,
@@ -65,31 +91,48 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
     label: string;
   }) => (
     <label className="flex items-center gap-3 cursor-pointer select-none">
-      <div
-        className={`relative w-9 h-5 rounded-full transition-colors ${checked ? "bg-[#6366f1]" : "bg-[var(--border)]"}`}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        tabIndex={0}
         onClick={() => onChange(!checked)}
+        onKeyDown={(e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            onChange(!checked);
+          }
+        }}
+        className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1] focus-visible:ring-offset-2 ${
+          checked ? "bg-[#6366f1]" : "bg-[var(--border)]"
+        }`}
+        style={{ focusRingOffset: "var(--bg2)" } as React.CSSProperties}
       >
         <div
           className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
             checked ? "translate-x-4" : "translate-x-0"
           }`}
         />
-      </div>
+      </button>
       <span className="text-sm text-[var(--text2)]">{label}</span>
     </label>
   );
 
   return (
+    // BUG-04 fallback: onKeyDown on backdrop catches Escape even if document listener misses it
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop"
+      className="fixed inset-0 z-50 flex items-start justify-center modal-backdrop overflow-y-auto py-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
+      {/* BUG-03 fix: modal is now max-height capped and scrollable, matching KeyManager.
+          Using flex-col so header stays fixed and only the form body scrolls. */}
       <div
-        className="w-full max-w-md rounded-2xl border border-[var(--border)] shadow-2xl"
-        style={{ background: "var(--bg2)" }}
+        className="w-full max-w-md rounded-2xl border border-[var(--border)] shadow-2xl flex flex-col my-auto"
+        style={{ background: "var(--bg2)", maxHeight: "85vh" }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)]">
+        {/* Header — fixed, never scrolls */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] flex-shrink-0">
           <h2 className="font-semibold text-[var(--text)]">
             {existing ? "Edit Host" : "Add New Host"}
           </h2>
@@ -101,122 +144,124 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          {/* Display Name */}
-          <div>
-            <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
-              Display Name
-            </label>
-            <input
-              type="text"
-              value={hostname}
-              onChange={(e) => setHostname(e.target.value)}
-              placeholder="e.g. Home NAS, VPS Sydney"
-              className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] ${
-                errors.hostname ? "border-[#ef4444]" : "border-[var(--border)]"
-              }`}
-              autoFocus
-            />
-            {errors.hostname && (
-              <p className="text-[#ef4444] text-xs mt-1">{errors.hostname}</p>
-            )}
-          </div>
-
-          {/* IP */}
-          <div>
-            <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
-              IP Address / Hostname
-            </label>
-            <input
-              type="text"
-              value={ip}
-              onChange={(e) => setIp(e.target.value)}
-              placeholder="e.g. 192.168.1.10 or example.com"
-              className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                errors.ip ? "border-[#ef4444]" : "border-[var(--border)]"
-              }`}
-            />
-            {errors.ip && (
-              <p className="text-[#ef4444] text-xs mt-1">{errors.ip}</p>
-            )}
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
-              Notes <span className="text-[var(--text5)] normal-case tracking-normal">(optional)</span>
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Home server rack, AP Southeast-2"
-              rows={2}
-              className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] resize-none"
-            />
-          </div>
-
-          {/* ── Alert Settings ─────────────────────────────────────────────── */}
-          <div className="border border-[var(--border)] rounded-xl p-4 space-y-3">
-            <p className="text-[11px] tracking-widest text-[var(--text3)] uppercase">Alerts</p>
-            <Toggle
-              checked={alertDown}
-              onChange={setAlertDown}
-              label="Notify when host goes down"
-            />
-            <Toggle
-              checked={alertRecovery}
-              onChange={setAlertRecovery}
-              label="Notify when host recovers"
-            />
+        {/* Scrollable form body */}
+        <div className="overflow-y-auto flex-1">
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            {/* Display Name */}
             <div>
-              <label className="text-sm text-[var(--text2)]">
-                Latency spike threshold (ms){" "}
-                <span className="text-[var(--text3)] text-xs">(optional)</span>
+              <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
+                Display Name
               </label>
               <input
-                type="number"
-                min={1}
-                value={alertLatency}
-                onChange={(e) => setAlertLatency(e.target.value)}
-                placeholder="e.g. 200"
-                className={`mt-1.5 w-full px-4 py-2 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                  errors.alertLatency ? "border-[#ef4444]" : "border-[var(--border)]"
+                type="text"
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                placeholder="e.g. Home NAS, VPS Sydney"
+                className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] ${
+                  errors.hostname ? "border-[#ef4444]" : "border-[var(--border)]"
                 }`}
+                autoFocus
               />
-              {errors.alertLatency && (
-                <p className="text-[#ef4444] text-xs mt-1">{errors.alertLatency}</p>
+              {errors.hostname && (
+                <p className="text-[#ef4444] text-xs mt-1">{errors.hostname}</p>
               )}
             </div>
-          </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-3 pt-2">
-            {existing && onDelete && (
+            {/* IP */}
+            <div>
+              <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
+                IP Address / Hostname
+              </label>
+              <input
+                type="text"
+                value={ip}
+                onChange={(e) => setIp(e.target.value)}
+                placeholder="e.g. 192.168.1.10 or example.com"
+                className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
+                  errors.ip ? "border-[#ef4444]" : "border-[var(--border)]"
+                }`}
+              />
+              {errors.ip && (
+                <p className="text-[#ef4444] text-xs mt-1">{errors.ip}</p>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
+                Notes <span className="text-[var(--text5)] normal-case tracking-normal">(optional)</span>
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Home server rack, AP Southeast-2"
+                rows={2}
+                className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] resize-none"
+              />
+            </div>
+
+            {/* ── Alert Settings ─────────────────────────────────────────────── */}
+            <div className="border border-[var(--border)] rounded-xl p-4 space-y-3">
+              <p className="text-[11px] tracking-widest text-[var(--text3)] uppercase">Alerts</p>
+              <Toggle
+                checked={alertDown}
+                onChange={setAlertDown}
+                label="Notify when host goes down"
+              />
+              <Toggle
+                checked={alertRecovery}
+                onChange={setAlertRecovery}
+                label="Notify when host recovers"
+              />
+              <div>
+                <label className="text-sm text-[var(--text2)]">
+                  Latency spike threshold (ms){" "}
+                  <span className="text-[var(--text3)] text-xs">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={alertLatency}
+                  onChange={(e) => setAlertLatency(e.target.value)}
+                  placeholder="e.g. 200"
+                  className={`mt-1.5 w-full px-4 py-2 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
+                    errors.alertLatency ? "border-[#ef4444]" : "border-[var(--border)]"
+                  }`}
+                />
+                {errors.alertLatency && (
+                  <p className="text-[#ef4444] text-xs mt-1">{errors.alertLatency}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              {existing && onDelete && (
+                <button
+                  type="button"
+                  onClick={handleDeleteClick}
+                  className="px-4 py-2 rounded-lg text-sm text-[#ef4444] hover:bg-[#ef444410] border border-[#ef444430] hover:border-[#ef4444] transition-all"
+                >
+                  Delete
+                </button>
+              )}
+              <div className="flex-1" />
               <button
                 type="button"
-                onClick={onDelete}
-                className="px-4 py-2 rounded-lg text-sm text-[#ef4444] hover:bg-[#ef444410] border border-[#ef444430] hover:border-[#ef4444] transition-all"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] transition-colors"
               >
-                Delete
+                Cancel
               </button>
-            )}
-            <div className="flex-1" />
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-lg text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
-            >
-              {existing ? "Save Changes" : "Add Host"}
-            </button>
-          </div>
-        </form>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-lg text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
+              >
+                {existing ? "Save Changes" : "Add Host"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

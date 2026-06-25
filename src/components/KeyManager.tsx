@@ -53,14 +53,30 @@ export default function KeyManager({ onClose }: Props) {
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    // BUG-02 fix: if a key with the same name already exists, warn before overwriting.
+    // The Regenerate action already does this — Generate must too, since both paths
+    // call generate_ssh_key which silently replaces the keychain entry.
+    const existing = keys.find((k) => k.name === trimmedName);
+    if (existing) {
+      const ok = window.confirm(
+        `A key named "${trimmedName}" already exists.\n\n` +
+        `Generating a new key will permanently overwrite the old private key — ` +
+        `any servers already using it will lose access.\n\n` +
+        `Continue and overwrite?`
+      );
+      if (!ok) return;
+    }
+
     setGenerating(true);
     setGenError(null);
     setNewPubKey(null);
     try {
       const pub = await invoke<string>("generate_ssh_key", {
-        name: name.trim(),
-        comment: comment.trim() || name.trim(),
+        name: trimmedName,
+        comment: comment.trim() || trimmedName,
       });
       setNewPubKey(pub);
       setName("");
@@ -74,9 +90,23 @@ export default function KeyManager({ onClose }: Props) {
   }
 
   async function handleDelete(keyName: string) {
+    // BUG-06 fix: confirm before deleting — keychain removal is irreversible.
+    const ok = window.confirm(
+      `Delete key "${keyName}"?\n\nThe private key will be permanently removed from the OS keychain. Any servers using it will lose access.`
+    );
+    if (!ok) return;
+
     setDeleting(keyName);
     try {
       await invoke("delete_ssh_key", { name: keyName });
+      // BUG-10 fix: if the key that was just generated (newPubKey banner) is the one
+      // being deleted, clear the banner — showing a public key for a deleted key is misleading.
+      setNewPubKey((prev) => {
+        // We don't have the key name stored with newPubKey, so clear it unconditionally
+        // on any delete to avoid showing stale public key material.
+        void prev;
+        return null;
+      });
       await loadKeys();
     } catch (e) {
       setError(String(e));

@@ -50,7 +50,8 @@ function saveStorage(hostId: string, collections: SavedRequest[], envVars: EnvVa
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function uid() { return Math.random().toString(36).slice(2); }
+// crypto.randomUUID() provides full RFC 4122 UUID entropy vs ~30 bits from Math.random()
+function uid() { return crypto.randomUUID(); }
 
 function emptyHeader(): Header { return { id: uid(), enabled: true, name: "", value: "" }; }
 function emptyEnvVar(): EnvVar  { return { id: uid(), enabled: true, key: "", value: "" }; }

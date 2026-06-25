@@ -28,6 +28,10 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // BUG-08 / BUG-09: inline validation errors shown when the user clicks Connect
+  // with an empty username, port 0, or an incomplete TOTP code.
+  const [connectError, setConnectError] = useState<string | null>(null);
+
   // TOTP state
   const [totpCode, setTotpCode] = useState("");
   const [totpSecsLeft, setTotpSecsLeft] = useState(totpSecondsLeft());
@@ -62,8 +66,25 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
   }, [authType]);
 
   const handleConnect = () => {
-    if (!username.trim()) return;
-    if (authType === "totp" && totpCode.trim().length < 6) return;
+    // BUG-08 fix: surface a clear error instead of silently no-op-ing.
+    // BUG-09 fix: validate port range before passing to backend.
+    setConnectError(null);
+    if (!username.trim()) {
+      setConnectError("Username is required.");
+      return;
+    }
+    if (port < 1 || port > 65535 || !Number.isInteger(port)) {
+      setConnectError("Port must be between 1 and 65535.");
+      return;
+    }
+    if (authType === "totp" && totpCode.trim().length < 6) {
+      setConnectError("Enter the full 6-digit TOTP code.");
+      return;
+    }
+    if (authType === "keychain" && !selectedKeyName) {
+      setConnectError("Select a key from the list.");
+      return;
+    }
     const config: SshConfig = {
       port,
       username: username.trim(),
@@ -325,25 +346,26 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6 flex items-center justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleConnect}
-            disabled={
-              !username.trim() ||
-              (authType === "keychain" && !selectedKeyName) ||
-              (authType === "totp" && totpCode.trim().length < 6)
-            }
-            className="px-5 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50 transition-all"
-            style={{ background: "#6366f1", color: "#fff", boxShadow: "0 0 16px #6366f140" }}
-          >
-            Connect
-          </button>
+        <div className="px-6 pb-6 space-y-3">
+          {/* BUG-08/09 fix: inline error so the user knows why Connect is blocked */}
+          {connectError && (
+            <p className="text-[#ef4444] text-xs text-right">{connectError}</p>
+          )}
+          <div className="flex items-center justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConnect}
+              className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-all"
+              style={{ background: "#6366f1", color: "#fff", boxShadow: "0 0 16px #6366f140" }}
+            >
+              Connect
+            </button>
+          </div>
         </div>
       </div>
     </div>
