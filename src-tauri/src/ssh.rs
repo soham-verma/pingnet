@@ -1095,3 +1095,80 @@ pub async fn run_speedtest(
     .await
     .map_err(|e| e.to_string())?
 }
+
+// ── HTTP over SSH tunnel ──────────────────────────────────────────────────────
+//
+// Opens a direct-tcpip channel through the existing sftp_session to any host:port
+// reachable from inside the remote machine, sends a raw HTTP/1.1 request, and
+// returns the parsed response. No port is opened on the local machine.
+
+#[tauri::command]
+pub async fn tunnel_http_request(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+    remote_host: String,
+    remote_port: u16,
+    method: String,
+    path: String,
+    headers: Vec<crate::http_client::HttpHeader>,
+    body: Option<String>,
+) -> Result<crate::http_client::HttpResponse, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::{Read, Write};
+        use std::collections::HashMap;
+        use std::time::Instant;
+
+        let session_guard = conn.sftp_session.lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let mut channel = session_guard
+            .channel_direct_tcpip(&remote_host, remote_port, None)
+            .map_err(|e| format!("Tunnel open failed ({}:{}) — {}", remote_host, remote_port, e))?;
+
+        let t0 = Instant::now();
+
+        // Build request headers
+        let host_header = if remote_port == 80 {
+            remote_host.clone()
+        } else {
+            format!("{}:{}", remote_host, remote_port)
+        };
+
+        let body_bytes = body.as_deref().unwrap_or("").as_bytes().to_vec();
+
+        let mut hmap: HashMap<String, String> = HashMap::new();
+        hmap.insert("Host".to_string(), host_header);
+        hmap.insert("Connection".to_string(), "close".to_string());
+        if !body_bytes.is_empty() {
+            hmap.insert("Content-Length".to_string(), body_bytes.len().to_string());
+        }
+        for h in &headers {
+            if !h.name.trim().is_empty() && !h.value.trim().is_empty() {
+                hmap.insert(h.name.trim().to_string(), h.value.trim().to_string());
+            }
+        }
+
+        let path = if path.trim().is_empty() { "/".to_string() } else { path.trim().to_string() };
+        let mut raw = format!("{} {} HTTP/1.1\r\n", method.to_uppercase(), path);
+        for (k, v) in &hmap {
+            raw.push_str(&format!("{}: {}\r\n", k, v));
+        }
+        raw.push_str("\r\n");
+
+        channel.write_all(raw.as_bytes()).map_err(|e| format!("Tunnel write: {}", e))?;
+        if !body_bytes.is_empty() {
+            channel.write_all(&body_bytes).map_err(|e| format!("Tunnel body write: {}", e))?;
+        }
+        channel.send_eof().map_err(|e| format!("Tunnel EOF: {}", e))?;
+
+        let mut buf = Vec::new();
+        channel.read_to_end(&mut buf).map_err(|e| format!("Tunnel read: {}", e))?;
+
+        let latency_ms = t0.elapsed().as_millis() as u64;
+        crate::http_client::parse_raw_http_response(&buf, latency_ms)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

@@ -1,5 +1,6 @@
 mod audit;
 mod command_history;
+mod http_client;
 mod keys;
 mod metrics;
 mod ping;
@@ -11,6 +12,14 @@ use ping::PingResult;
 use ssh::SshState;
 use storage::HostConfig;
 use vpn::VpnStatus;
+
+/// Open an arbitrary URL or custom-scheme URI (e.g. vscode://, cursor://, jetbrains-gateway://)
+/// using the OS default handler. The built-in tauri-plugin-shell open() only allows
+/// mailto/tel/https schemes, so we bypass it with the `open` crate directly.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    open::that(&url).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 async fn ping_host(ip: String) -> PingResult {
@@ -127,10 +136,13 @@ pub fn run() {
             keys::generate_ssh_key,
             keys::delete_ssh_key,
             keys::regenerate_ssh_key,
+            open_url,
             write_text_file,
             audit::append_audit_log,
             audit::load_audit_log,
             audit::clear_audit_log,
+            http_client::make_http_request,
+            ssh::tunnel_http_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");

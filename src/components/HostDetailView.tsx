@@ -25,7 +25,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
   const isSuccess = lastResult !== null && lastResult.success;
 
   const statusLabel = isRunning ? "PINGING" : isSuccess ? "STABLE" : isFailure ? "FAILURE STATE" : "IDLE";
-  const statusColor = isRunning ? "#f59e0b" : isSuccess ? "#22c55e" : isFailure ? "#ef4444" : "#374151";
+  const statusColor = isRunning ? "#f59e0b" : isSuccess ? "#22c55e" : isFailure ? "#ef4444" : "var(--text4)";
 
   const showVpnBanner =
     isFailure &&
@@ -42,11 +42,11 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
     <div className="flex flex-col h-full overflow-hidden">
       {/* Top bar */}
       <div
-        className="flex items-center justify-between px-6 py-4 border-b border-[#1e1e35] flex-shrink-0"
-        style={{ background: "#0a0a14" }}
+        className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] flex-shrink-0"
+        style={{ background: "var(--bg1)" }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="font-semibold text-white text-lg">{host.hostname}</h1>
+          <h1 className="font-semibold text-[var(--text)] text-lg">{host.hostname}</h1>
           <span
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
             style={{
@@ -61,7 +61,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
             />
             {statusLabel}
           </span>
-          <span className="text-[11px] text-[#374151] font-mono">
+          <span className="text-[11px] text-[var(--text4)] font-mono">
             {getRegionLabel(host.ip)}
           </span>
         </div>
@@ -71,7 +71,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
             onClick={handlePing}
             disabled={isRunning}
             title="Re-run ping"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[#4b5563] hover:text-white hover:bg-[#1e1e35] transition-all disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all disabled:opacity-40"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={isRunning ? "animate-spin" : ""}>
               <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -81,7 +81,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           <button
             onClick={onEdit}
             title="Edit host"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[#4b5563] hover:text-white hover:bg-[#1e1e35] transition-all"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M9 2l3 3L4 13H1v-3L9 2Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
@@ -90,7 +90,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           <button
             onClick={onRefresh}
             title="Clear history"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[#4b5563] hover:text-white hover:bg-[#1e1e35] transition-all"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2" />
@@ -102,7 +102,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           <button
             onClick={onOpenSSH}
             title="Open SSH session"
-            className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-[#4b5563] hover:text-[#818cf8] hover:bg-[#6366f110] border border-transparent hover:border-[#6366f120] transition-all text-[11px] font-medium"
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-[var(--text3)] hover:text-[#818cf8] hover:bg-[#6366f110] border border-transparent hover:border-[#6366f120] transition-all text-[11px] font-medium"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <rect x="1" y="2.5" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.1" />
@@ -130,7 +130,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
         {isFailure && !showVpnBanner && !vpnDismissed && lastResult && (
           <div
             className="rounded-xl border border-[#ef444430] p-4 flex items-start gap-3"
-            style={{ background: "#140808" }}
+            style={{ background: "var(--bg)" }}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="flex-shrink-0 mt-0.5">
               <circle cx="9" cy="9" r="7.5" stroke="#ef4444" strokeWidth="1.2" />
@@ -153,11 +153,11 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           <div className="grid grid-cols-2 gap-4">
             {/* Big latency */}
             <div
-              className="rounded-xl border border-[#1e1e35] p-5 col-span-1"
-              style={{ background: "#0f0f1a" }}
+              className="rounded-xl border border-[var(--border)] p-5 col-span-1"
+              style={{ background: "var(--bg2)" }}
             >
               <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] tracking-widest text-[#4b5563] uppercase">
+                <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase">
                   Real-Time
                 </span>
                 {isSuccess && (
@@ -177,13 +177,13 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
                           ? "text-[#ef4444]"
                           : (lastResult.latency_ms ?? 0) > 80
                           ? "text-[#f59e0b]"
-                          : "text-white"
+                          : "text-[var(--text)]"
                       }`}
                       style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)" }}
                     >
                       {Math.round(lastResult.latency_ms ?? 0)}
                     </span>
-                    <span className="text-[#4b5563] text-sm mb-2">ms</span>
+                    <span className="text-[var(--text3)] text-sm mb-2">ms</span>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     {[
@@ -192,16 +192,16 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
                       { label: "UP", value: `${stats.uptime.toFixed(1)}%` },
                     ].map(({ label, value }) => (
                       <div key={label} className="text-center">
-                        <div className="text-[9px] tracking-widest text-[#4b5563] uppercase mb-1">
+                        <div className="text-[9px] tracking-widest text-[var(--text3)] uppercase mb-1">
                           {label}
                         </div>
-                        <div className="text-sm font-mono text-[#8892a4]">{value}</div>
+                        <div className="text-sm font-mono text-[var(--text2)]">{value}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-24 text-[#2d3748]">
+                <div className="flex flex-col items-center justify-center h-24 text-[var(--text5)]">
                   <div className="text-4xl font-bold mb-1">—</div>
                   <div className="text-xs">No data yet</div>
                 </div>
@@ -210,10 +210,10 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
 
             {/* Stats right */}
             <div
-              className="rounded-xl border border-[#1e1e35] p-5 flex flex-col justify-between"
-              style={{ background: "#0f0f1a" }}
+              className="rounded-xl border border-[var(--border)] p-5 flex flex-col justify-between"
+              style={{ background: "var(--bg2)" }}
             >
-              <span className="text-[10px] tracking-widest text-[#4b5563] uppercase">
+              <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase">
                 Session Stats
               </span>
               <div className="space-y-3">
@@ -223,7 +223,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
                   { label: "Samples", value: `${history.length}`, color: "#6366f1" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center justify-between">
-                    <span className="text-[11px] text-[#4b5563]">{label}</span>
+                    <span className="text-[11px] text-[var(--text3)]">{label}</span>
                     <span className="font-mono text-sm" style={{ color }}>
                       {value}
                     </span>
@@ -238,7 +238,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
         {isFailure && (
           <div
             className="rounded-xl border border-[#ef444420] p-8 flex flex-col items-center justify-center"
-            style={{ background: "#0a0505" }}
+            style={{ background: "var(--bg)" }}
           >
             {/* Crossed monitor icon */}
             <svg width="60" height="60" viewBox="0 0 60 60" fill="none" className="mb-4 opacity-70">
@@ -277,8 +277,8 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
 
       {/* Footer: Run ping button */}
       <div
-        className="flex-shrink-0 px-5 py-4 border-t border-[#1e1e35] flex items-center justify-end"
-        style={{ background: "#0a0a14" }}
+        className="flex-shrink-0 px-5 py-4 border-t border-[var(--border)] flex items-center justify-end"
+        style={{ background: "var(--bg1)" }}
       >
         <button
           onClick={handlePing}
@@ -286,7 +286,7 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           style={{
             background: isRunning ? "#2d2d4a" : "#00c8a8",
-            color: isRunning ? "#6b7280" : "#000",
+            color: isRunning ? "var(--text3)" : "#000",
             boxShadow: isRunning ? "none" : "0 0 20px #00c8a840",
           }}
         >

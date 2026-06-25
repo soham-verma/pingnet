@@ -66,7 +66,7 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
   }) => (
     <label className="flex items-center gap-3 cursor-pointer select-none">
       <div
-        className={`relative w-9 h-5 rounded-full transition-colors ${checked ? "bg-[#6366f1]" : "bg-[#1e1e35]"}`}
+        className={`relative w-9 h-5 rounded-full transition-colors ${checked ? "bg-[#6366f1]" : "bg-[var(--border)]"}`}
         onClick={() => onChange(!checked)}
       >
         <div
@@ -75,7 +75,7 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
           }`}
         />
       </div>
-      <span className="text-sm text-[#9ca3af]">{label}</span>
+      <span className="text-sm text-[var(--text2)]">{label}</span>
     </label>
   );
 
@@ -85,17 +85,17 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-[#1e1e35] shadow-2xl"
-        style={{ background: "#0f0f1a" }}
+        className="w-full max-w-md rounded-2xl border border-[var(--border)] shadow-2xl"
+        style={{ background: "var(--bg2)" }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#1e1e35]">
-          <h2 className="font-semibold text-white">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)]">
+          <h2 className="font-semibold text-[var(--text)]">
             {existing ? "Edit Host" : "Add New Host"}
           </h2>
           <button
             onClick={onClose}
-            className="text-[#4b5563] hover:text-white transition-colors text-xl"
+            className="text-[var(--text3)] hover:text-[var(--text)] transition-colors text-xl"
           >
             ×
           </button>
@@ -105,7 +105,7 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           {/* Display Name */}
           <div>
-            <label className="block text-[11px] tracking-widest text-[#4b5563] uppercase mb-2">
+            <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
               Display Name
             </label>
             <input
@@ -113,8 +113,8 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
               value={hostname}
               onChange={(e) => setHostname(e.target.value)}
               placeholder="e.g. Home NAS, VPS Sydney"
-              className={`w-full px-4 py-2.5 rounded-lg bg-[#080810] border text-sm text-white placeholder-[#2d3748] outline-none transition-all focus:border-[#6366f1] ${
-                errors.hostname ? "border-[#ef4444]" : "border-[#1e1e35]"
+              className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] ${
+                errors.hostname ? "border-[#ef4444]" : "border-[var(--border)]"
               }`}
               autoFocus
             />
@@ -125,7 +125,7 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
 
           {/* IP */}
           <div>
-            <label className="block text-[11px] tracking-widest text-[#4b5563] uppercase mb-2">
+            <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
               IP Address / Hostname
             </label>
             <input
@@ -133,8 +133,8 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
               value={ip}
               onChange={(e) => setIp(e.target.value)}
               placeholder="e.g. 192.168.1.10 or example.com"
-              className={`w-full px-4 py-2.5 rounded-lg bg-[#080810] border text-sm text-white placeholder-[#2d3748] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                errors.ip ? "border-[#ef4444]" : "border-[#1e1e35]"
+              className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
+                errors.ip ? "border-[#ef4444]" : "border-[var(--border)]"
               }`}
             />
             {errors.ip && (
@@ -144,21 +144,21 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
 
           {/* Notes */}
           <div>
-            <label className="block text-[11px] tracking-widest text-[#4b5563] uppercase mb-2">
-              Notes <span className="text-[#2d3748] normal-case tracking-normal">(optional)</span>
+            <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
+              Notes <span className="text-[var(--text5)] normal-case tracking-normal">(optional)</span>
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Home server rack, AP Southeast-2"
               rows={2}
-              className="w-full px-4 py-2.5 rounded-lg bg-[#080810] border border-[#1e1e35] text-sm text-white placeholder-[#2d3748] outline-none transition-all focus:border-[#6366f1] resize-none"
+              className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] resize-none"
             />
           </div>
 
           {/* ── Alert Settings ─────────────────────────────────────────────── */}
-          <div className="border border-[#1e1e35] rounded-xl p-4 space-y-3">
-            <p className="text-[11px] tracking-widest text-[#4b5563] uppercase">Alerts</p>
+          <div className="border border-[var(--border)] rounded-xl p-4 space-y-3">
+            <p className="text-[11px] tracking-widest text-[var(--text3)] uppercase">Alerts</p>
             <Toggle
               checked={alertDown}
               onChange={setAlertDown}
@@ -170,9 +170,9 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
               label="Notify when host recovers"
             />
             <div>
-              <label className="text-sm text-[#9ca3af]">
+              <label className="text-sm text-[var(--text2)]">
                 Latency spike threshold (ms){" "}
-                <span className="text-[#4b5563] text-xs">(optional)</span>
+                <span className="text-[var(--text3)] text-xs">(optional)</span>
               </label>
               <input
                 type="number"
@@ -180,8 +180,8 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
                 value={alertLatency}
                 onChange={(e) => setAlertLatency(e.target.value)}
                 placeholder="e.g. 200"
-                className={`mt-1.5 w-full px-4 py-2 rounded-lg bg-[#080810] border text-sm text-white placeholder-[#2d3748] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                  errors.alertLatency ? "border-[#ef4444]" : "border-[#1e1e35]"
+                className={`mt-1.5 w-full px-4 py-2 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
+                  errors.alertLatency ? "border-[#ef4444]" : "border-[var(--border)]"
                 }`}
               />
               {errors.alertLatency && (
@@ -205,13 +205,13 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-[#4b5563] hover:text-white transition-colors"
+              className="px-4 py-2 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
+              className="px-5 py-2 rounded-lg text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
             >
               {existing ? "Save Changes" : "Add Host"}
             </button>

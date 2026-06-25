@@ -83,25 +83,25 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
   };
 
   const inputCls =
-    "w-full bg-[#0a0a14] border border-[#1e1e35] rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#374151] focus:outline-none focus:border-[#6366f1] transition-colors font-mono";
-  const labelCls = "block text-[11px] text-[#4b5563] tracking-widest uppercase mb-1.5";
+    "w-full bg-[var(--bg1)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] transition-colors font-mono";
+  const labelCls = "block text-[11px] text-[var(--text3)] tracking-widest uppercase mb-1.5";
 
   return (
     <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="w-full max-w-md rounded-2xl border border-[#1e1e35] overflow-hidden"
-        style={{ background: "#0f0f1a" }}
+        className="w-full max-w-md rounded-2xl border border-[var(--border)] overflow-hidden"
+        style={{ background: "var(--bg2)" }}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-[#1e1e35]" style={{ background: "#0a0a14" }}>
+        <div className="px-6 py-5 border-b border-[var(--border)]" style={{ background: "var(--bg1)" }}>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-white font-semibold text-base">Connect via SSH</h2>
-              <p className="text-[#4b5563] text-[12px] mt-0.5 font-mono">{hostname} · {ip}</p>
+              <h2 className="text-[var(--text)] font-semibold text-base">Connect via SSH</h2>
+              <p className="text-[var(--text3)] text-[12px] mt-0.5 font-mono">{hostname} · {ip}</p>
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-[#4b5563] hover:text-white hover:bg-[#1e1e35] transition-all"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
             >
               ✕
             </button>
@@ -143,7 +143,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
           {/* Auth type tabs */}
           <div>
             <label className={labelCls}>Authentication</label>
-            <div className="flex gap-1 p-1 rounded-lg" style={{ background: "#0a0a14" }}>
+            <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--bg1)" }}>
               {(["password", "agent", "key", "keychain", "totp"] as const).map((t) => (
                 <button
                   key={t}
@@ -152,7 +152,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                   style={
                     authType === t
                       ? { background: "#6366f1", color: "#fff" }
-                      : { color: "#4b5563" }
+                      : { color: "var(--text3)" }
                   }
                 >
                   {t === "password" ? "Password" : t === "agent" ? "Agent" : t === "key" ? "Key File" : t === "keychain" ? "Keychain" : "TOTP"}
@@ -177,7 +177,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4b5563] hover:text-white text-[11px]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text3)] hover:text-[var(--text)] text-[11px]"
                 >
                   {showPassword ? "hide" : "show"}
                 </button>
@@ -206,7 +206,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                       });
                       if (typeof selected === "string") setKeyPath(selected);
                     }}
-                    className="flex-shrink-0 px-3 py-2 rounded-lg border border-[#1e1e35] text-[11px] text-[#4b5563] hover:text-white hover:border-[#6366f1] transition-colors"
+                    className="flex-shrink-0 px-3 py-2 rounded-lg border border-[var(--border)] text-[11px] text-[var(--text3)] hover:text-[var(--text)] hover:border-[#6366f1] transition-colors"
                   >
                     Browse
                   </button>
@@ -226,7 +226,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                   <button
                     type="button"
                     onClick={() => setShowPassphrase(!showPassphrase)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4b5563] hover:text-white text-[11px]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text3)] hover:text-[var(--text)] text-[11px]"
                   >
                     {showPassphrase ? "hide" : "show"}
                   </button>
@@ -236,8 +236,8 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
           )}
 
           {authType === "agent" && (
-            <div className="rounded-lg border border-[#1e1e35] px-4 py-3 space-y-1" style={{ background: "#0a0a14" }}>
-              <p className="text-[11px] text-[#4b5563]">
+            <div className="rounded-lg border border-[var(--border)] px-4 py-3 space-y-1" style={{ background: "var(--bg1)" }}>
+              <p className="text-[11px] text-[var(--text3)]">
                 Connects using your running SSH agent (<span className="font-mono">SSH_AUTH_SOCK</span>).
                 Any key already loaded in the agent will be tried automatically — same as how your terminal works.
               </p>
@@ -252,7 +252,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                   {keychainError}
                 </p>
               ) : keychainKeys.length === 0 ? (
-                <p className="text-[#4b5563] text-xs py-2">
+                <p className="text-[var(--text3)] text-xs py-2">
                   No keys in keychain. Open the Key Manager to generate one.
                 </p>
               ) : (
@@ -281,12 +281,12 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                   <div className="flex items-center gap-1.5">
                     <span
                       className="text-[11px] font-mono font-semibold tabular-nums"
-                      style={{ color: totpSecsLeft <= 5 ? "#ef4444" : totpSecsLeft <= 10 ? "#f59e0b" : "#4b5563" }}
+                      style={{ color: totpSecsLeft <= 5 ? "#ef4444" : totpSecsLeft <= 10 ? "#f59e0b" : "var(--text3)" }}
                     >
                       {totpSecsLeft}s
                     </span>
                     <svg width="16" height="16" viewBox="0 0 16 16">
-                      <circle cx="8" cy="8" r="6" fill="none" stroke="#1e1e35" strokeWidth="2" />
+                      <circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" strokeWidth="2" />
                       <circle
                         cx="8" cy="8" r="6" fill="none"
                         stroke={totpSecsLeft <= 5 ? "#ef4444" : totpSecsLeft <= 10 ? "#f59e0b" : "#6366f1"}
@@ -313,8 +313,8 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                   style={{ letterSpacing: "0.35em", fontSize: "20px", textAlign: "center" }}
                 />
               </div>
-              <div className="rounded-lg border border-[#1e1e35] px-4 py-3" style={{ background: "#0a0a14" }}>
-                <p className="text-[11px] text-[#4b5563] leading-relaxed">
+              <div className="rounded-lg border border-[var(--border)] px-4 py-3" style={{ background: "var(--bg1)" }}>
+                <p className="text-[11px] text-[var(--text3)] leading-relaxed">
                   Open your authenticator app (Google Authenticator, Authy, etc.) and enter the
                   6-digit code for this server. The code refreshes every 30 seconds — connect
                   before the timer expires.
@@ -328,7 +328,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
         <div className="px-6 pb-6 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 rounded-lg text-sm text-[#4b5563] hover:text-white hover:bg-[#1e1e35] transition-all"
+            className="px-4 py-2.5 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
           >
             Cancel
           </button>

@@ -23,12 +23,12 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
   }, [isRunning, success]);
 
   const lineColor =
-    success === null ? "#1e1e35" : success ? "#00c8a8" : "#ef4444";
+    success === null ? "var(--border)" : success ? "#00c8a8" : "#ef4444";
 
   return (
     <div
-      className="rounded-xl border border-[#1e1e35] p-5 relative overflow-hidden"
-      style={{ background: "#0a0a14" }}
+      className="rounded-xl border border-[var(--border)] p-5 relative overflow-hidden"
+      style={{ background: "var(--bg1)" }}
     >
       {/* Background grid pattern */}
       <svg
@@ -44,7 +44,7 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
       </svg>
 
       <div className="relative z-10">
-        <span className="text-[10px] tracking-widest text-[#4b5563] uppercase mb-5 block">
+        <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase mb-5 block">
           Network Route
         </span>
 
@@ -53,22 +53,22 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
           <div className="text-center">
             <div
               className="w-8 h-8 rounded-full border border-[#252535] flex items-center justify-center mx-auto mb-2"
-              style={{ background: "#13132a" }}
+              style={{ background: "var(--bg2)" }}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <rect x="1" y="3" width="12" height="8" rx="1" stroke="#6366f1" strokeWidth="1.2" />
                 <path d="M4 3V2M10 3V2" stroke="#6366f1" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
             </div>
-            <div className="text-[10px] text-[#4b5563]">ORIGIN</div>
-            <div className="text-xs text-[#8892a4] mt-0.5">Local Client</div>
+            <div className="text-[10px] text-[var(--text3)]">ORIGIN</div>
+            <div className="text-xs text-[var(--text2)] mt-0.5">Local Client</div>
           </div>
 
           {/* Animated line */}
           <div className="flex-1 mx-4 relative h-6 flex items-center">
             <div
               className="absolute inset-x-0 h-px"
-              style={{ backgroundColor: "#1e1e35" }}
+              style={{ backgroundColor: "var(--border)" }}
             />
             <div
               className="absolute h-px transition-all"
@@ -95,7 +95,7 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
             <div
               className="absolute left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border flex items-center justify-center z-10"
               style={{
-                background: "#0a0a14",
+                background: "var(--bg1)",
                 borderColor: isRunning ? "#6366f1" : lineColor,
                 boxShadow: isRunning ? "0 0 8px #6366f140" : undefined,
               }}
@@ -114,7 +114,7 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
             <div
               className="w-8 h-8 rounded-full border border-[#252535] flex items-center justify-center mx-auto mb-2"
               style={{
-                background: "#13132a",
+                background: "var(--bg2)",
                 borderColor: success === false ? "#ef444430" : "#252535",
               }}
             >
@@ -123,14 +123,14 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
                 <path d="M5 5h4M5 8h4" stroke={success === false ? "#ef4444" : "#00c8a8"} strokeWidth="1" strokeLinecap="round" strokeOpacity="0.6" />
               </svg>
             </div>
-            <div className="text-[10px] text-[#4b5563]">TARGET</div>
-            <div className="text-xs text-[#8892a4] mt-0.5 font-mono">{hostname}</div>
+            <div className="text-[10px] text-[var(--text3)]">TARGET</div>
+            <div className="text-xs text-[var(--text2)] mt-0.5 font-mono">{hostname}</div>
           </div>
         </div>
 
         {/* IP below */}
         <div className="text-center mt-3">
-          <span className="font-mono text-[11px] text-[#374151]">{ip}</span>
+          <span className="font-mono text-[11px] text-[var(--text4)]">{ip}</span>
         </div>
       </div>
     </div>

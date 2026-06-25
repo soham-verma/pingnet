@@ -33,14 +33,14 @@ export default function UpdateModal({ update, onClose }: Props) {
         className="w-full max-w-sm rounded-2xl overflow-hidden"
         style={{
           background: "linear-gradient(160deg, #12121e 0%, #0e0e1a 100%)",
-          border: "1px solid #1e1e35",
+          border: "1px solid var(--border)",
           boxShadow: "0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03)",
         }}
       >
         {/* Header */}
-        <div className="px-6 pt-7 pb-5 text-center border-b border-[#1e1e35]">
-          <p className="text-[10px] tracking-[0.2em] text-[#4b5563] uppercase mb-1">Software Update</p>
-          <p className="text-[11px] text-[#2d3748] font-mono">Version {cur} (Stable)</p>
+        <div className="px-6 pt-7 pb-5 text-center border-b border-[var(--border)]">
+          <p className="text-[10px] tracking-[0.2em] text-[var(--text3)] uppercase mb-1">Software Update</p>
+          <p className="text-[11px] text-[var(--text5)] font-mono">Version {cur} (Stable)</p>
         </div>
 
         {/* Icon + headline */}
@@ -49,7 +49,7 @@ export default function UpdateModal({ update, onClose }: Props) {
           <div className="relative w-16 h-16 mb-5">
             <svg className="absolute inset-0 w-full h-full" viewBox="0 0 64 64">
               {/* Background ring */}
-              <circle cx="32" cy="32" r="28" fill="none" stroke="#1e1e35" strokeWidth="3" />
+              <circle cx="32" cy="32" r="28" fill="none" stroke="var(--border)" strokeWidth="3" />
               {/* Animated progress ring */}
               <circle
                 cx="32" cy="32" r="28"
@@ -69,7 +69,7 @@ export default function UpdateModal({ update, onClose }: Props) {
             {/* Center icon */}
             <div
               className="absolute inset-0 flex items-center justify-center rounded-full"
-              style={{ margin: "10px", background: "#0a0a14", border: "1px solid #1e1e35" }}
+              style={{ margin: "10px", background: "var(--bg1)", border: "1px solid var(--border)" }}
             >
               <svg width="26" height="26" viewBox="0 0 200 200" fill="none">
                 <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
@@ -79,17 +79,17 @@ export default function UpdateModal({ update, onClose }: Props) {
             </div>
           </div>
 
-          <h2 className="text-white text-lg font-semibold mb-1">A new version is available.</h2>
-          <p className="text-[#4b5563] text-[13px] text-center">
+          <h2 className="text-[var(--text)] text-lg font-semibold mb-1">A new version is available.</h2>
+          <p className="text-[var(--text3)] text-[13px] text-center">
             Pingnet {ver} is ready to download.
           </p>
         </div>
 
         {/* Release notes */}
         {hasNotes && (
-          <div className="mx-4 mb-4 rounded-xl overflow-hidden" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e1e35]">
-              <span className="text-[10px] tracking-[0.15em] text-[#4b5563] uppercase">
+          <div className="mx-4 mb-4 rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
+              <span className="text-[10px] tracking-[0.15em] text-[var(--text3)] uppercase">
                 What's new in {ver}
               </span>
               <span
@@ -104,9 +104,9 @@ export default function UpdateModal({ update, onClose }: Props) {
                 <div key={i} className="flex gap-2.5">
                   <span className="mt-1 w-1 h-1 rounded-full bg-[#00c8a8] flex-shrink-0" style={{ marginTop: "6px" }} />
                   <div>
-                    <p className="text-[12px] text-white font-medium leading-snug">{n.title}</p>
+                    <p className="text-[12px] text-[var(--text)] font-medium leading-snug">{n.title}</p>
                     {n.detail && (
-                      <p className="text-[11px] text-[#4b5563] leading-snug mt-0.5">{n.detail}</p>
+                      <p className="text-[11px] text-[var(--text3)] leading-snug mt-0.5">{n.detail}</p>
                     )}
                   </div>
                 </div>
@@ -117,8 +117,8 @@ export default function UpdateModal({ update, onClose }: Props) {
 
         {/* No notes fallback */}
         {!hasNotes && (
-          <div className="mx-4 mb-4 rounded-xl px-4 py-3 text-center" style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
-            <p className="text-[11px] text-[#374151]">See the full changelog on GitHub.</p>
+          <div className="mx-4 mb-4 rounded-xl px-4 py-3 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
+            <p className="text-[11px] text-[var(--text4)]">See the full changelog on GitHub.</p>
           </div>
         )}
 
@@ -140,15 +140,15 @@ export default function UpdateModal({ update, onClose }: Props) {
           </button>
           <button
             onClick={() => { update.skipVersion(); onClose(); }}
-            className="flex-1 py-3 rounded-xl text-sm font-medium text-[#4b5563] hover:text-white transition-colors"
-            style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}
+            className="flex-1 py-3 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+            style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}
           >
             Remind Me Later
           </button>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[10px] text-[#2d3748] pb-4 px-4">
+        <p className="text-center text-[10px] text-[var(--text5)] pb-4 px-4">
           Opens the GitHub releases page to download the installer.
         </p>
       </div>

@@ -23,12 +23,12 @@ export default function DiagnosticConsole({ logs }: Props) {
 
   return (
     <div
-      className="rounded-xl border border-[#1e1e35] flex flex-col"
-      style={{ background: "#080810" }}
+      className="rounded-xl border border-[var(--border)] flex flex-col"
+      style={{ background: "var(--bg)" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e35]">
-        <span className="text-[10px] tracking-widest text-[#4b5563] uppercase">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+        <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase">
           Diagnostic Console
         </span>
         <div className="flex items-center gap-1.5">
@@ -41,25 +41,25 @@ export default function DiagnosticConsole({ logs }: Props) {
       {/* Log output */}
       <div className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-[11px] min-h-[160px] max-h-[240px]">
         {logs.length === 0 ? (
-          <div className="text-[#2d3748] italic">No activity yet. Run a ping to see output.</div>
+          <div className="text-[var(--text5)] italic">No activity yet. Run a ping to see output.</div>
         ) : (
           logs.map((entry, i) => (
             <div key={i} className="flex items-start gap-3">
-              <span className="text-[#2d3748] flex-shrink-0 tabular-nums">{entry.time}</span>
+              <span className="text-[var(--text5)] flex-shrink-0 tabular-nums">{entry.time}</span>
               <span
                 className="flex-shrink-0 font-semibold"
                 style={{ color: levelColor[entry.level] }}
               >
                 {entry.level}:
               </span>
-              <span className="text-[#8892a4] break-all">{entry.message}</span>
+              <span className="text-[var(--text2)] break-all">{entry.message}</span>
             </div>
           ))
         )}
         {/* Blinking cursor */}
-        <div className="flex items-center gap-1 text-[#4b5563]">
-          <span className="text-[#4b5563]">$</span>
-          <span className="w-[6px] h-[12px] bg-[#4b5563] inline-block animate-pulse" />
+        <div className="flex items-center gap-1 text-[var(--text3)]">
+          <span className="text-[var(--text3)]">$</span>
+          <span className="w-[6px] h-[12px] bg-[var(--text3)] inline-block animate-pulse" />
         </div>
         <div ref={bottomRef} />
       </div>

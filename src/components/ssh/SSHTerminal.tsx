@@ -13,6 +13,8 @@ interface Props {
   suggestions?: string[];
   /** Called whenever the user submits a command (presses Enter). */
   onCommand?: (cmd: string) => void;
+  /** Additional session IDs to mirror all input to (broadcast mode). */
+  broadcastTo?: string[];
 }
 
 // Pull xterm's internal cell dimensions — more accurate than measuring DOM.
@@ -30,7 +32,7 @@ function getCellDims(term: Terminal): { w: number; h: number } {
   }
 }
 
-export default function SSHTerminal({ sessionId, isConnected, suggestions = [], onCommand }: Props) {
+export default function SSHTerminal({ sessionId, isConnected, suggestions = [], onCommand, broadcastTo = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +50,10 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
   // isConnected via ref — avoids stale closure in the useEffect onData handler
   const isConnectedRef = useRef(isConnected);
   useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+
+  // broadcastTo via ref so the stable onData handler sees fresh values
+  const broadcastToRef = useRef(broadcastTo);
+  useEffect(() => { broadcastToRef.current = broadcastTo; }, [broadcastTo]);
 
   // Commands that exit / restart the shell — never ghost-suggest these
   const SKIP_SUGGEST = new Set(["exit", "logout", "bye", "quit", "reboot", "shutdown", "halt", "poweroff"]);
@@ -143,19 +149,19 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
 
     const term = new Terminal({
       theme: {
-        background:         "#08080f",
-        foreground:         "#e2e8f0",
+        background:         "var(--bg)",
+        foreground:         "var(--text)",
         cursor:             "#00c8a8",
-        cursorAccent:       "#08080f",
+        cursorAccent:       "var(--bg)",
         selectionBackground:"#6366f140",
-        black:        "#1a1a2e", brightBlack:   "#374151",
+        black:        "var(--bg4)", brightBlack:   "var(--text4)",
         red:          "#ef4444", brightRed:     "#f87171",
         green:        "#22c55e", brightGreen:   "#4ade80",
         yellow:       "#f59e0b", brightYellow:  "#fbbf24",
         blue:         "#6366f1", brightBlue:    "#818cf8",
         magenta:      "#a855f7", brightMagenta: "#c084fc",
         cyan:         "#00c8a8", brightCyan:    "#34d399",
-        white:        "#e2e8f0", brightWhite:   "#f8fafc",
+        white:        "var(--text)", brightWhite:   "#f8fafc",
       },
       fontFamily:   '"JetBrains Mono", "Fira Code", monospace',
       fontSize:     13,
@@ -254,6 +260,10 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
       }
 
       invoke("ssh_send", { sessionId, data }).catch(() => {});
+      // Broadcast to mirrored sessions
+      broadcastToRef.current.forEach(targetId => {
+        invoke("ssh_send", { sessionId: targetId, data }).catch(() => {});
+      });
     });
 
     // ── Listen for terminal output from Rust ─────────────────────────────────
@@ -322,7 +332,7 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
           fontFamily: '"JetBrains Mono", "Fira Code", monospace',
           fontSize:   "13px",
           lineHeight: "1.4",
-          color:      "#374151",   // muted — clearly "ghost"
+          color:      "var(--text4)",   // muted — clearly "ghost"
           whiteSpace: "pre",
           zIndex:     20,
         }}

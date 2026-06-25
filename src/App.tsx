@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { HostConfig, HostState, SshConfig } from "./types";
 import { usePing, PingSession } from "./hooks/usePing";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
+import { useTheme } from "./hooks/useTheme";
 import Sidebar from "./components/Sidebar";
 import HostDetailView from "./components/HostDetailView";
 import AddEditModal from "./components/AddEditModal";
@@ -37,6 +38,8 @@ export default function App() {
   const [sshConfigs, setSshConfigs] = useState<Record<string, SshConfig>>({});
   const [showKeyManager, setShowKeyManager] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [theme, toggleTheme] = useTheme();
   const update = useUpdateCheck();
 
   // Auto-open the update modal once when an update is discovered
@@ -168,7 +171,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#08080f" }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <Sidebar
@@ -183,6 +186,10 @@ export default function App() {
           currentVersion={update.currentVersion}
           updateAvailable={update.available && !update.skipped}
           onOpenUpdate={() => setShowUpdateModal(true)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
 
         {/* Main content */}
@@ -266,7 +273,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
       <div className="relative mb-8">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#0d1b2e" }}>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "var(--bg3)" }}>
           <svg width="44" height="44" viewBox="0 0 200 200" fill="none">
             <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
               stroke="#00c8a8" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
@@ -275,13 +282,13 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         </div>
       </div>
 
-      <h2 className="text-xl font-semibold text-white mb-2">No Host Selected</h2>
-      <p className="text-[#4b5563] text-sm max-w-xs mb-6">
+      <h2 className="text-xl font-semibold text-[var(--text)] mb-2">No Host Selected</h2>
+      <p className="text-[var(--text3)] text-sm max-w-xs mb-6">
         Add a device to start monitoring. You can ping any IP address or hostname and get detailed diagnostics.
       </p>
       <button
         onClick={onAdd}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
       >
         <span className="text-base leading-none">+</span>
         Add your first host

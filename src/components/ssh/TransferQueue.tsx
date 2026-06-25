@@ -8,7 +8,7 @@ interface Props {
 function ProgressBar({ done, total }: { done: number; total: number }) {
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   return (
-    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: "#1e1e35" }}>
+    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
       <div
         className="h-full rounded-full transition-all"
         style={{
@@ -32,7 +32,7 @@ export default function TransferQueue({ transfers, onClear }: Props) {
 
   if (transfers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-[#2d3748]">
+      <div className="flex flex-col items-center justify-center h-full text-[var(--text5)]">
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="mb-3 opacity-40">
           <path d="M16 4v16M16 20L10 14M16 20L22 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M4 26H28" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -45,12 +45,12 @@ export default function TransferQueue({ transfers, onClear }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e35] flex-shrink-0" style={{ background: "#0a0a14" }}>
-        <span className="text-[11px] tracking-widest text-[#4b5563] uppercase">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] flex-shrink-0" style={{ background: "var(--bg1)" }}>
+        <span className="text-[11px] tracking-widest text-[var(--text3)] uppercase">
           Transfers · {transfers.length}
         </span>
         {done.length > 0 && (
-          <button onClick={onClear} className="text-[11px] text-[#374151] hover:text-[#4b5563] transition-colors">
+          <button onClick={onClear} className="text-[11px] text-[var(--text4)] hover:text-[var(--text3)] transition-colors">
             Clear done
           </button>
         )}
@@ -60,8 +60,8 @@ export default function TransferQueue({ transfers, onClear }: Props) {
         {transfers.map((t) => (
           <div
             key={t.id}
-            className="rounded-xl border border-[#1e1e35] p-3"
-            style={{ background: "#0f0f1a" }}
+            className="rounded-xl border border-[var(--border)] p-3"
+            style={{ background: "var(--bg2)" }}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -85,8 +85,8 @@ export default function TransferQueue({ transfers, onClear }: Props) {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[13px] text-white font-mono truncate">{t.name}</p>
-                  <p className="text-[11px] text-[#374151] mt-0.5">
+                  <p className="text-[13px] text-[var(--text)] font-mono truncate">{t.name}</p>
+                  <p className="text-[11px] text-[var(--text4)] mt-0.5">
                     {t.kind === "download" ? "↓ Download" : "↑ Upload"}
                     {t.total_bytes > 0 &&
                       ` · ${formatBytes(t.bytes_done)} / ${formatBytes(t.total_bytes)}`}

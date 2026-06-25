@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { SshConfig, SshConnectionStatus, TransferItem, PingResult, CommandEntry, AuditEntry } from "../../types";
@@ -8,6 +8,7 @@ import SFTPBrowser from "./SFTPBrowser";
 import TransferQueue from "./TransferQueue";
 import CommandHistory from "./CommandHistory";
 import MetricsPanel from "./MetricsPanel";
+import ApiClient from "./ApiClient";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,8 @@ interface TerminalTab {
   name: string;
   status: SshConnectionStatus;
   error: string | null;
+  color?: string;   // hex accent colour for tab top-border + dot
+  icon?: string;    // emoji shown in tab label
 }
 
 interface StoredCreds {
@@ -31,7 +34,7 @@ interface Props {
   onSaveConfig: (config: SshConfig) => void;
 }
 
-type ViewTab = "terminal" | "files" | "transfers" | "history" | "metrics" | "grafana" | "audit";
+type ViewTab = "terminal" | "files" | "history" | "metrics" | "grafana" | "api";
 
 // Per-host Grafana configuration (stored in component state, persisted to localStorage)
 export interface GrafanaConfig {
@@ -60,7 +63,7 @@ function statusColor(s: SshConnectionStatus): string {
     case "preflight_fail":
     case "ssh_fail":
     case "lost":           return "#ef4444";
-    default:               return "#374151";
+    default:               return "var(--text4)";
   }
 }
 
@@ -87,6 +90,14 @@ export default function SSHSessionView({
   const [commands, setCommands] = useState<CommandEntry[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditNewCount, setAuditNewCount] = useState(0);
+  const [filesSubTab, setFilesSubTab] = useState<"browse" | "transfers">("browse");
+  const [historySubTab, setHistorySubTab] = useState<"commands" | "audit">("commands");
+
+  // ── Split + broadcast state ───────────────────────────────────────────────
+  const [splitTabId, setSplitTabId] = useState<string | null>(null);
+  const [splitRatio, setSplitRatio] = useState(50); // % width for left pane
+  const [broadcastMode, setBroadcastMode] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // ── Grafana config — persisted per host in localStorage ────────────────────
   const grafanaStorageKey = `pingnet_grafana_${hostId}`;
@@ -368,12 +379,74 @@ export default function SSHSessionView({
     unlistenMap.current.delete(tabId);
     try { await invoke("ssh_disconnect", { sessionId: tabId }); } catch {}
 
+    if (tabId === splitTabId) setSplitTabId(null);
+
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
       if (activeTabId === tabId) setActiveTabId(next[next.length - 1]?.id ?? null);
       return next;
     });
   };
+
+  // ── Split terminal ────────────────────────────────────────────────────────
+
+  const handleSplit = useCallback(() => {
+    const id = uid();
+    setTabs((prev) => [...prev, { id, name: defaultName(prev), status: "disconnected", error: null }]);
+    setSplitTabId(id);
+    setSplitRatio(50);
+    setViewTab("terminal");
+
+    if (storedCreds) {
+      connectTab(id, storedCreds);
+    } else {
+      pendingTabId.current = id;
+      setShowModal(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedCreds]);
+
+  /** Merge: close the split VIEW — the right-pane tab stays in the left tab bar. */
+  const handleMerge = useCallback(() => {
+    setSplitTabId(null);
+  }, []);
+
+  /** Remove split: close the split VIEW and disconnect + destroy the right-pane terminal. */
+  const handleRemoveSplit = useCallback(async () => {
+    if (!splitTabId) return;
+    const tabId = splitTabId;
+    setSplitTabId(null);
+    unlistenMap.current.get(tabId)?.();
+    unlistenMap.current.delete(tabId);
+    try { await invoke("ssh_disconnect", { sessionId: tabId }); } catch {}
+    setTabs(prev => {
+      const next = prev.filter(t => t.id !== tabId);
+      if (activeTabId === tabId) setActiveTabId(next[next.length - 1]?.id ?? null);
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitTabId, activeTabId]);
+
+  const handleDividerDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+
+    const startX = e.clientX;
+    const startRatio = splitRatio;
+    const containerWidth = container.getBoundingClientRect().width;
+
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      setSplitRatio(Math.min(80, Math.max(20, startRatio + (delta / containerWidth) * 100)));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [splitRatio]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -382,14 +455,21 @@ export default function SSHSessionView({
   const anyConnected = connectedTabs.length > 0;
   const activeTransfers = transfers.filter((t) => t.status === "running").length;
 
+  // For each tab, the set of other connected session IDs to broadcast to
+  const broadcastTargetsFor = useMemo(() => {
+    if (!broadcastMode) return (_id: string) => ([] as string[]);
+    const connectedIds = connectedTabs.map(t => t.id);
+    return (id: string) => connectedIds.filter(cid => cid !== id);
+  }, [broadcastMode, connectedTabs]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-[#1e1e35] flex-shrink-0"
-        style={{ background: "#0a0a14" }}>
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0"
+        style={{ background: "var(--bg1)" }}>
 
         <div className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0"
           style={{ background: "#6366f115", border: "1px solid #6366f125" }}>
@@ -402,7 +482,7 @@ export default function SSHSessionView({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-white font-semibold text-sm">{hostname}</span>
+            <span className="text-[var(--text)] font-semibold text-sm">{hostname}</span>
             {anyConnected && (
               <span className="text-[11px] px-2 py-0.5 rounded-full"
                 style={{ background: "#22c55e15", color: "#22c55e", border: "1px solid #22c55e25" }}>
@@ -411,42 +491,43 @@ export default function SSHSessionView({
               </span>
             )}
           </div>
-          <div className="text-[11px] text-[#374151] font-mono mt-0.5">
+          <div className="text-[11px] text-[var(--text4)] font-mono mt-0.5">
             {storedCreds ? `${storedCreds.config.username}@${ip}:${storedCreds.config.port}` : ip}
           </div>
         </div>
 
         {/* View tabs */}
-        <div className="flex items-center gap-1 bg-[#0f0f1a] rounded-lg p-1 border border-[#1e1e35]">
-          {(["terminal", "files", "transfers", "history", "metrics", "grafana", "audit"] as ViewTab[]).map((t) => (
+        <div className="flex items-center gap-1 bg-[var(--bg2)] rounded-lg p-1 border border-[var(--border)]">
+          {(["terminal", "files", "history", "metrics", "grafana", "api"] as ViewTab[]).map((t) => (
             <button key={t}
-              onClick={() => {
-                setViewTab(t);
-                if (t === "audit") setAuditNewCount(0);
-              }}
+              onClick={() => setViewTab(t)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
-                viewTab === t ? "bg-[#1e1e35] text-white" : "text-[#4b5563] hover:text-[#8892a4]"
+                viewTab === t ? "bg-[var(--border)] text-[var(--text)]" : "text-[var(--text3)] hover:text-[var(--text2)]"
               }`}
             >
               {t}
-              {t === "transfers" && activeTransfers > 0 && (
-                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#6366f1] text-white">
+              {/* files: badge for active transfers */}
+              {t === "files" && activeTransfers > 0 && (
+                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#6366f1] text-[var(--text)]">
                   {activeTransfers}
                 </span>
               )}
+              {/* history: new command-tool flash dot */}
               {t === "history" && newToolFlash && (
                 <span className="w-1.5 h-1.5 rounded-full bg-[#00c8a8] animate-pulse" title={`New tool: ${newToolFlash}`} />
               )}
-              {t === "history" && !newToolFlash && commands.length > 0 && (
-                <span className="text-[9px] text-[#374151]">{commands.length}</span>
+              {/* history: audit badge */}
+              {t === "history" && !newToolFlash && auditNewCount > 0 && (
+                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#ef4444] text-[var(--text)]">
+                  {auditNewCount > 99 ? "99+" : auditNewCount}
+                </span>
+              )}
+              {/* history: command count */}
+              {t === "history" && !newToolFlash && auditNewCount === 0 && commands.length > 0 && (
+                <span className="text-[9px] text-[var(--text4)]">{commands.length}</span>
               )}
               {t === "grafana" && grafanaConfig.url && (
                 <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
-              )}
-              {t === "audit" && auditNewCount > 0 && (
-                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#ef4444] text-white">
-                  {auditNewCount > 99 ? "99+" : auditNewCount}
-                </span>
               )}
             </button>
           ))}
@@ -464,89 +545,290 @@ export default function SSHSessionView({
             <EmptyTerminalState hostname={hostname} onOpen={openFirstTab} />
           ) : (
             <>
-              {/* xterm instances — all kept mounted */}
-              <div className="flex-1 relative">
-                {tabs.map((tab) => (
-                  <div key={tab.id} className="absolute inset-0"
-                    style={{ display: tab.id === activeTabId ? "block" : "none", background: "#08080f" }}>
-                    <TabContent
-                      tab={tab}
-                      ip={ip}
-                      port={storedCreds?.config.port ?? 22}
-                      suggestions={suggestions}
-                      onCommand={handleCommand}
-                      onRetry={() => storedCreds && connectTab(tab.id, storedCreds)}
-                      onRetrySkipPing={() => storedCreds && connectTab(tab.id, storedCreds, true)}
-                      onReconnect={() => reconnectTab(tab.id)}
-                      onTrustNewKey={async (host, port, fingerprint) => {
-                        await invoke("trust_host_key", { host, port, fingerprint });
-                      }}
-                    />
-                  </div>
-                ))}
+              {/* Broadcast banner */}
+              {broadcastMode && connectedTabs.length > 1 && (
+                <div className="flex items-center gap-2 px-4 py-1.5 flex-shrink-0 text-[11px] font-medium"
+                  style={{ background: "#2e1f05", borderBottom: "1px solid #f59e0b30", color: "#f59e0b" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12s1.5-4 7-4 7 4 7 4M5 12s1.5 4 7 4 7-4 7-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                  </svg>
+                  Broadcasting to {connectedTabs.length} terminals — all input is mirrored
+                </div>
+              )}
+
+              {/* Pane area — supports horizontal split */}
+              <div className="flex flex-1 min-h-0 overflow-hidden" ref={splitContainerRef}>
+
+                {/* Primary pane — mounts every tab EXCEPT the split tab so
+                    each SSHTerminal instance (and its xterm + listeners) exists
+                    in exactly one pane at a time. */}
+                <div className="relative h-full" style={{ width: splitTabId ? `${splitRatio}%` : "100%" }}>
+                  {tabs.filter(t => t.id !== splitTabId).map((tab) => (
+                    <div key={tab.id} className="absolute inset-0"
+                      style={{ display: tab.id === activeTabId ? "block" : "none", background: "var(--bg)" }}>
+                      <TabContent
+                        tab={tab}
+                        ip={ip}
+                        port={storedCreds?.config.port ?? 22}
+                        suggestions={suggestions}
+                        onCommand={handleCommand}
+                        onRetry={() => storedCreds && connectTab(tab.id, storedCreds)}
+                        onRetrySkipPing={() => storedCreds && connectTab(tab.id, storedCreds, true)}
+                        onReconnect={() => reconnectTab(tab.id)}
+                        onTrustNewKey={async (host, port, fingerprint) => {
+                          await invoke("trust_host_key", { host, port, fingerprint });
+                        }}
+                        broadcastTo={broadcastTargetsFor(tab.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Drag divider + secondary pane — only when split is active */}
+                {splitTabId && (() => {
+                  const splitTab = tabs.find(t => t.id === splitTabId);
+                  if (!splitTab) return null;
+                  const sc = splitTab.color ?? statusColor(splitTab.status);
+                  return (
+                    <>
+                      {/* Drag divider */}
+                      <div
+                        className="flex-shrink-0 cursor-col-resize transition-colors"
+                        style={{ width: 3, background: "var(--border2)" }}
+                        onMouseDown={handleDividerDrag}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#6366f1")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "var(--border2)")}
+                      />
+
+                      {/* Secondary pane — mounts ONLY the split tab */}
+                      <div className="flex flex-col h-full" style={{ flex: 1, minWidth: 0 }}>
+
+                        {/* Right pane header */}
+                        <div
+                          className="flex items-center gap-2 px-3 flex-shrink-0 border-b select-none"
+                          style={{ height: 30, background: "var(--bg1)", borderColor: "var(--border)", borderTop: `2px solid ${sc}` }}
+                        >
+                          {splitTab.icon ? (
+                            <span className="text-[12px] leading-none">{splitTab.icon}</span>
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                              style={{ background: sc }} />
+                          )}
+                          <span className="text-[11px] font-medium truncate max-w-[120px]"
+                            style={{ color: "var(--text2)" }}>
+                            {splitTab.name}
+                          </span>
+
+                          <div className="flex-1" />
+
+                          {/* Merge: close split VIEW, tab stays in left panel tab bar */}
+                          <button
+                            onClick={handleMerge}
+                            title="Merge — move terminal back to main panel (keeps session)"
+                            className="h-6 px-2 flex items-center gap-1 rounded text-[10px] font-medium transition-colors"
+                            style={{ color: "var(--text3)" }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg3)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--text3)"; }}
+                          >
+                            {/* merge-left icon */}
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                              <rect x="1" y="2" width="6" height="12" rx="1" stroke="currentColor" strokeWidth="1.4"/>
+                              <rect x="9" y="2" width="6" height="12" rx="1" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.2"/>
+                              <path d="M12 8H7M9 6l-2 2 2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            Merge
+                          </button>
+
+                          {/* Close: disconnect + remove the terminal entirely */}
+                          <button
+                            onClick={handleRemoveSplit}
+                            title="Close terminal — disconnect and remove"
+                            className="h-6 w-6 flex items-center justify-center rounded text-[11px] transition-colors ml-0.5"
+                            style={{ color: "var(--text3)" }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#2e0d0d"; (e.currentTarget as HTMLElement).style.color = "#f87171"; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--text3)"; }}
+                          >✕</button>
+                        </div>
+
+                        {/* Terminal content */}
+                        <div className="flex-1 min-h-0 relative">
+                          <div className="absolute inset-0">
+                            <TabContent
+                              tab={splitTab}
+                              ip={ip}
+                              port={storedCreds?.config.port ?? 22}
+                              suggestions={suggestions}
+                              onCommand={handleCommand}
+                              onRetry={() => storedCreds && connectTab(splitTab.id, storedCreds)}
+                              onRetrySkipPing={() => storedCreds && connectTab(splitTab.id, storedCreds, true)}
+                              onReconnect={() => reconnectTab(splitTab.id)}
+                              onTrustNewKey={async (host, port, fingerprint) => {
+                                await invoke("trust_host_key", { host, port, fingerprint });
+                              }}
+                              broadcastTo={broadcastTargetsFor(splitTab.id)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Tab bar */}
               <TabBar
                 tabs={tabs}
                 activeTabId={activeTabId}
+                splitTabId={splitTabId}
+                broadcastMode={broadcastMode}
                 editingId={editingId}
                 editingName={editingName}
                 renameInputRef={renameInputRef}
-                onActivate={setActiveTabId}
+                onActivate={(id) => {
+                  if (id === splitTabId) {
+                    // Clicking the split tab in the bottom bar → merge it to the left pane
+                    setSplitTabId(null);
+                    setActiveTabId(id);
+                  } else {
+                    setActiveTabId(id);
+                  }
+                }}
                 onClose={closeTab}
                 onAdd={addTab}
+                onSplit={handleSplit}
+                onToggleBroadcast={() => setBroadcastMode(v => !v)}
+                onSplitActivate={setSplitTabId}
                 onStartRename={startRename}
                 onEditChange={setEditingName}
                 onCommitRename={commitRename}
                 onCancelRename={() => setEditingId(null)}
+                onSetTabColor={(tabId, color) =>
+                  setTabs(prev => prev.map(t => t.id === tabId ? { ...t, color } : t))
+                }
+                onSetTabIcon={(tabId, icon) =>
+                  setTabs(prev => prev.map(t => t.id === tabId ? { ...t, icon } : t))
+                }
               />
             </>
           )}
         </div>
 
-        {/* Files panel — mounted once connected, preserved with display:none */}
-        {primarySessionId ? (
-          <div className="absolute inset-0"
-            style={{ display: viewTab === "files" ? "block" : "none" }}>
-            <SFTPBrowser
-              sessionId={primarySessionId}
-              host={ip}
-              username={storedCreds?.config.username ?? ""}
-              port={storedCreds?.config.port ?? 22}
-              onUploadStart={(id, name, totalBytes) =>
-                setTransfers((p) => [...p, { id, name, kind: "upload", bytes_done: 0, total_bytes: totalBytes, status: "running" }])
-              }
-              onDownloadStart={(id, name) =>
-                setTransfers((p) => [...p, { id, name, kind: "download", bytes_done: 0, total_bytes: 0, status: "running" }])
-              }
-            />
-          </div>
-        ) : viewTab === "files" ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[#374151]">
-            <p className="text-sm">No active connection</p>
-            <p className="text-[12px] text-[#2d3748]">Open a terminal and connect first</p>
-          </div>
-        ) : null}
+        {/* Files panel — SFTP browser + transfers sub-tabs */}
+        {viewTab === "files" && (
+          <div className="absolute inset-0 flex flex-col">
+            {/* Sub-tab strip */}
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)]" style={{ background: "var(--bg1)" }}>
+              {(["browse", "transfers"] as const).map((s) => (
+                <button key={s}
+                  onClick={() => setFilesSubTab(s)}
+                  className="px-3 py-1 rounded text-[11px] font-medium capitalize transition-all flex items-center gap-1.5"
+                  style={filesSubTab === s
+                    ? { background: "var(--border)", color: "var(--text)" }
+                    : { color: "var(--text3)" }}
+                >
+                  {s === "browse" ? "Browse" : "Transfers"}
+                  {s === "transfers" && activeTransfers > 0 && (
+                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#6366f1] text-[var(--text)]">
+                      {activeTransfers}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
 
-        {/* Transfers panel — always mounted */}
-        <div className="absolute inset-0"
-          style={{ display: viewTab === "transfers" ? "block" : "none" }}>
-          <TransferQueue
-            transfers={transfers}
-            onClear={() => setTransfers((p) => p.filter((t) => t.status === "running"))}
-          />
-        </div>
+            {/* Browse sub-panel */}
+            <div className="flex-1 overflow-hidden relative">
+              {filesSubTab === "browse" && (
+                primarySessionId ? (
+                  <div className="absolute inset-0">
+                    <SFTPBrowser
+                      sessionId={primarySessionId}
+                      host={ip}
+                      username={storedCreds?.config.username ?? ""}
+                      port={storedCreds?.config.port ?? 22}
+                      onUploadStart={(id, name, totalBytes) =>
+                        setTransfers((p) => [...p, { id, name, kind: "upload", bytes_done: 0, total_bytes: totalBytes, status: "running" }])
+                      }
+                      onDownloadStart={(id, name) =>
+                        setTransfers((p) => [...p, { id, name, kind: "download", bytes_done: 0, total_bytes: 0, status: "running" }])
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text4)]">
+                    <p className="text-sm">No active connection</p>
+                    <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
+                  </div>
+                )
+              )}
 
-        {/* History panel — always mounted */}
-        <div className="absolute inset-0"
-          style={{ display: viewTab === "history" ? "block" : "none" }}>
-          <CommandHistory
-            commands={commands}
-            activeSessionId={primarySessionId}
-            onRun={() => setViewTab("terminal")}
-          />
-        </div>
+              {/* Transfers sub-panel */}
+              {filesSubTab === "transfers" && (
+                <div className="absolute inset-0">
+                  <TransferQueue
+                    transfers={transfers}
+                    onClear={() => setTransfers((p) => p.filter((t) => t.status === "running"))}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* History panel — command history + audit sub-tabs */}
+        {viewTab === "history" && (
+          <div className="absolute inset-0 flex flex-col">
+            {/* Sub-tab strip */}
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)]" style={{ background: "var(--bg1)" }}>
+              {(["commands", "audit"] as const).map((s) => (
+                <button key={s}
+                  onClick={() => {
+                    setHistorySubTab(s);
+                    if (s === "audit") setAuditNewCount(0);
+                  }}
+                  className="px-3 py-1 rounded text-[11px] font-medium capitalize transition-all flex items-center gap-1.5"
+                  style={historySubTab === s
+                    ? { background: "var(--border)", color: "var(--text)" }
+                    : { color: "var(--text3)" }}
+                >
+                  {s === "commands" ? "Commands" : "Audit log"}
+                  {s === "commands" && commands.length > 0 && (
+                    <span className="text-[9px] text-[var(--text4)]">{commands.length}</span>
+                  )}
+                  {s === "audit" && auditNewCount > 0 && (
+                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#ef4444] text-[var(--text)]">
+                      {auditNewCount > 99 ? "99+" : auditNewCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-hidden relative">
+              {historySubTab === "commands" && (
+                <div className="absolute inset-0">
+                  <CommandHistory
+                    commands={commands}
+                    activeSessionId={primarySessionId}
+                    onRun={() => setViewTab("terminal")}
+                  />
+                </div>
+              )}
+              {historySubTab === "audit" && (
+                <AuditPanel
+                  entries={auditLog}
+                  hostId={hostId}
+                  onClear={() => {
+                    invoke("clear_audit_log", { hostId }).catch(() => {});
+                    setAuditLog([]);
+                    setAuditNewCount(0);
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Metrics panel — only when connected */}
         {primarySessionId ? (
@@ -558,15 +840,15 @@ export default function SSHSessionView({
             />
           </div>
         ) : viewTab === "metrics" ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[#374151]">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text4)]">
             <p className="text-sm">No active connection</p>
-            <p className="text-[12px] text-[#2d3748]">Open a terminal and connect first</p>
+            <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
           </div>
         ) : null}
 
         {/* Grafana embed panel — always mounted when grafana tab active */}
         {viewTab === "grafana" && (
-          <div className="absolute inset-0 flex flex-col" style={{ background: "#08080f" }}>
+          <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
             <GrafanaPanel
               config={grafanaConfig}
               showSettings={showGrafanaSettings}
@@ -576,17 +858,14 @@ export default function SSHSessionView({
           </div>
         )}
 
-        {/* Audit log panel */}
-        {viewTab === "audit" && (
-          <AuditPanel
-            entries={auditLog}
-            hostId={hostId}
-            onClear={() => {
-              invoke("clear_audit_log", { hostId }).catch(() => {});
-              setAuditLog([]);
-              setAuditNewCount(0);
-            }}
-          />
+        {/* API client panel */}
+        {viewTab === "api" && (
+          <div className="absolute inset-0 flex flex-col overflow-hidden">
+            <ApiClient
+              hostId={hostId}
+              sessionId={activeTabId}
+            />
+          </div>
         )}
       </div>
 
@@ -637,14 +916,15 @@ interface TabContentProps {
   onRetrySkipPing: () => void;
   onReconnect: () => void;
   onTrustNewKey: (host: string, port: number, fingerprint: string) => Promise<void>;
+  broadcastTo?: string[];
 }
 
-function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect, onTrustNewKey }: TabContentProps) {
+function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect, onTrustNewKey, broadcastTo }: TabContentProps) {
   const { status } = tab;
 
   // Connected — just render the terminal
   if (status === "connected") {
-    return <SSHTerminal sessionId={tab.id} isConnected suggestions={suggestions} onCommand={onCommand} />;
+    return <SSHTerminal sessionId={tab.id} isConnected suggestions={suggestions} onCommand={onCommand} broadcastTo={broadcastTo} />;
   }
 
   // Connection lost — show terminal output (preserved) + reconnect overlay
@@ -653,13 +933,13 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
       <div className="relative h-full">
         {/* Terminal output stays visible underneath */}
         <div className="absolute inset-0 opacity-40 pointer-events-none">
-          <SSHTerminal sessionId={tab.id} isConnected={false} suggestions={suggestions} onCommand={onCommand} />
+          <SSHTerminal sessionId={tab.id} isConnected={false} suggestions={suggestions} onCommand={onCommand} broadcastTo={[]} />
         </div>
         {/* Overlay */}
         <div className="absolute inset-0 flex items-center justify-center"
           style={{ background: "rgba(8,8,15,0.75)", backdropFilter: "blur(2px)" }}>
           <div className="rounded-2xl border border-[#ef444430] p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4"
-            style={{ background: "#0f0f1a" }}>
+            style={{ background: "var(--bg2)" }}>
             {/* Pulse icon */}
             <div className="relative">
               <div className="w-12 h-12 rounded-full flex items-center justify-center"
@@ -671,7 +951,7 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
               </div>
             </div>
             <div className="text-center">
-              <p className="text-white font-semibold mb-1">Connection lost</p>
+              <p className="text-[var(--text)] font-semibold mb-1">Connection lost</p>
               <p className="text-[#6b3333] text-[13px]">{ip} stopped responding</p>
             </div>
             <div className="flex gap-2 w-full">
@@ -696,7 +976,7 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="relative">
-          <div className="w-12 h-12 rounded-full border-2 border-[#1e1e35] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full border-2 border-[var(--border)] flex items-center justify-center">
             <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#6366f1] animate-spin" />
             {status === "checking" ? (
               /* Ping icon */
@@ -716,8 +996,8 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
           </div>
         </div>
         <div className="text-center">
-          <p className="text-white font-medium text-sm mb-1">{label}</p>
-          <p className="text-[#374151] text-[12px]">{subLabel}</p>
+          <p className="text-[var(--text)] font-medium text-sm mb-1">{label}</p>
+          <p className="text-[var(--text4)] text-[12px]">{subLabel}</p>
         </div>
       </div>
     );
@@ -735,20 +1015,20 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
           </svg>
         </div>
         <div className="text-center max-w-xs">
-          <p className="text-white font-semibold mb-1">Host unreachable</p>
+          <p className="text-[var(--text)] font-semibold mb-1">Host unreachable</p>
           <p className="text-[#6b3333] text-[13px] mb-1">{tab.error}</p>
-          <p className="text-[#374151] text-[12px]">
+          <p className="text-[var(--text4)] text-[12px]">
             ICMP ping failed. The host may be offline, or a firewall is blocking ping.
           </p>
         </div>
         <div className="flex flex-col gap-2 w-full max-w-xs">
           <button onClick={onRetry}
             className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: "#6366f1", color: "#fff" }}>
+            style={{ background: "#6366f1", color: "var(--text)" }}>
             Try again
           </button>
           <button onClick={onRetrySkipPing}
-            className="w-full py-2.5 rounded-xl text-sm font-medium text-[#4b5563] hover:text-white hover:bg-[#1e1e35] transition-all border border-[#1e1e35]">
+            className="w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all border border-[var(--border)]">
             Try SSH anyway
           </button>
         </div>
@@ -773,29 +1053,29 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
           </div>
 
           <div className="text-center max-w-sm">
-            <p className="text-white font-semibold text-base mb-1">Host key has changed</p>
-            <p className="text-[#9ca3af] text-[13px] mb-4">
-              The SSH fingerprint for <span className="text-white font-mono">{hkc.host}</span> no longer matches what was stored. This could mean the server was reinstalled — or it could be a man-in-the-middle attack.
+            <p className="text-[var(--text)] font-semibold text-base mb-1">Host key has changed</p>
+            <p className="text-[var(--text2)] text-[13px] mb-4">
+              The SSH fingerprint for <span className="text-[var(--text)] font-mono">{hkc.host}</span> no longer matches what was stored. This could mean the server was reinstalled — or it could be a man-in-the-middle attack.
             </p>
 
             <div className="rounded-xl overflow-hidden text-left mb-4"
-              style={{ background: "#0a0a14", border: "1px solid #1e1e35" }}>
-              <div className="px-4 py-2.5 border-b border-[#1e1e35]">
-                <p className="text-[10px] tracking-[0.15em] uppercase text-[#4b5563]">Fingerprint comparison</p>
+              style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
+              <div className="px-4 py-2.5 border-b border-[var(--border)]">
+                <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--text3)]">Fingerprint comparison</p>
               </div>
               <div className="px-4 py-3 space-y-2">
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[#4b5563] mb-0.5">Stored (trusted)</p>
+                  <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-0.5">Stored (trusted)</p>
                   <p className="font-mono text-[12px] text-[#22c55e] break-all">{hkc.stored}</p>
                 </div>
-                <div className="border-t border-[#1e1e35] pt-2">
-                  <p className="text-[9px] uppercase tracking-wider text-[#4b5563] mb-0.5">Current (server)</p>
+                <div className="border-t border-[var(--border)] pt-2">
+                  <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-0.5">Current (server)</p>
                   <p className="font-mono text-[12px] text-[#f59e0b] break-all">{hkc.current}</p>
                 </div>
               </div>
             </div>
 
-            <p className="text-[11px] text-[#4b5563]">
+            <p className="text-[11px] text-[var(--text3)]">
               Only click "Trust New Key" if you are certain the server was legitimately reinstalled or the key was rotated.
             </p>
           </div>
@@ -813,8 +1093,8 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
               Trust New Key &amp; Reconnect
             </button>
             <button onClick={onRetry}
-              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-[#4b5563] hover:text-white"
-              style={{ border: "1px solid #1e1e35" }}>
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-[var(--text3)] hover:text-[var(--text)]"
+              style={{ border: "1px solid var(--border)" }}>
               Abort — Keep Stored Key
             </button>
           </div>
@@ -835,12 +1115,12 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
           </svg>
         </div>
         <div className="text-center max-w-xs">
-          <p className="text-white font-semibold mb-1">SSH failed</p>
+          <p className="text-[var(--text)] font-semibold mb-1">SSH failed</p>
           <p className="text-[#6b3333] text-[13px] font-mono break-words">{tab.error}</p>
         </div>
         <button onClick={onRetry}
           className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all"
-          style={{ background: "#6366f1", color: "#fff" }}>
+          style={{ background: "#6366f1", color: "var(--text)" }}>
           Retry
         </button>
       </div>
@@ -849,7 +1129,7 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
 
   // Disconnected (never tried)
   return (
-    <div className="flex items-center justify-center h-full text-[#2d3748] text-sm">
+    <div className="flex items-center justify-center h-full text-[var(--text5)] text-sm">
       Not connected
     </div>
   );
@@ -857,51 +1137,88 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
 
 // ── TabBar ────────────────────────────────────────────────────────────────────
 
+const TAB_COLORS = [
+  "#22c55e", "#6366f1", "#f59e0b", "#ef4444",
+  "#00c8a8", "#a78bfa", "#60a5fa", "#f87171",
+];
+const TAB_ICONS = ["⚡", "🔧", "📦", "🌐", "🔍", "🚀", "🐛", "📊"];
+
 interface TabBarProps {
   tabs: TerminalTab[];
   activeTabId: string | null;
+  splitTabId: string | null;
+  broadcastMode: boolean;
   editingId: string | null;
   editingName: string;
   renameInputRef: React.RefObject<HTMLInputElement>;
   onActivate: (id: string) => void;
+  onSplitActivate: (id: string) => void;
   onClose: (id: string, e: React.MouseEvent) => void;
   onAdd: () => void;
+  onSplit: () => void;
+  onToggleBroadcast: () => void;
   onStartRename: (tab: TerminalTab) => void;
   onEditChange: (v: string) => void;
   onCommitRename: () => void;
   onCancelRename: () => void;
+  onSetTabColor: (tabId: string, color: string | undefined) => void;
+  onSetTabIcon: (tabId: string, icon: string | undefined) => void;
 }
 
 function TabBar({
-  tabs, activeTabId, editingId, editingName, renameInputRef,
-  onActivate, onClose, onAdd, onStartRename, onEditChange, onCommitRename, onCancelRename,
+  tabs, activeTabId, splitTabId, broadcastMode,
+  editingId, editingName, renameInputRef,
+  onActivate, onSplitActivate, onClose, onAdd,
+  onSplit, onToggleBroadcast,
+  onStartRename, onEditChange, onCommitRename, onCancelRename,
+  onSetTabColor, onSetTabIcon,
 }: TabBarProps) {
-  return (
-    <div className="flex items-center border-t border-[#1e1e35] flex-shrink-0 overflow-x-auto"
-      style={{ background: "#0a0a14", minHeight: 36 }}>
+  const [ctxMenu, setCtxMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
 
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [ctxMenu]);
+
+  const ctxTab = ctxMenu ? tabs.find(t => t.id === ctxMenu.tabId) : null;
+
+  return (
+    <div className="flex items-center border-t border-[var(--border)] flex-shrink-0 overflow-x-auto relative"
+      style={{ background: "var(--bg1)", minHeight: 36 }}>
+
+      {/* ── Tab list ── */}
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
-        const sc = statusColor(tab.status);
+        const isSplit = tab.id === splitTabId;
+        const sc = tab.color ?? statusColor(tab.status);
         const isEditing = editingId === tab.id;
 
         return (
           <div key={tab.id}
             onClick={() => onActivate(tab.id)}
-            className={`group flex items-center gap-2 px-3 h-9 border-r border-[#1e1e35] cursor-pointer flex-shrink-0 select-none transition-colors ${
-              isActive ? "bg-[#0f0f1a]" : "hover:bg-[#0d0d1a]"
+            onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ tabId: tab.id, x: e.clientX, y: e.clientY }); }}
+            className={`group flex items-center gap-1.5 px-3 h-9 border-r border-[var(--border)] cursor-pointer flex-shrink-0 select-none transition-colors ${
+              isActive ? "bg-[var(--bg2)]" : "hover:bg-[var(--bg2)]"
             }`}
-            style={{ borderTop: isActive ? `2px solid ${sc}` : "2px solid transparent" }}
+            style={{ borderTop: (isActive || isSplit) ? `2px solid ${sc}` : "2px solid transparent",
+                     opacity: isSplit && !isActive ? 0.85 : 1 }}
           >
-            {/* Status dot */}
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isTransient(tab.status) ? "ping-pulsing" : ""}`}
-              style={{ background: sc }} />
+            {/* Icon (emoji) or status dot */}
+            {tab.icon ? (
+              <span className="text-[12px] leading-none flex-shrink-0">{tab.icon}</span>
+            ) : (
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isTransient(tab.status) ? "ping-pulsing" : ""}`}
+                style={{ background: sc }} />
+            )}
 
             {/* Editable name */}
             {isEditing ? (
               <input
                 ref={renameInputRef}
-                className="w-24 bg-transparent text-white text-[12px] font-medium outline-none border-b border-[#6366f1]"
+                className="w-24 bg-transparent text-[var(--text)] text-[12px] font-medium outline-none border-b border-[#6366f1]"
                 value={editingName}
                 onChange={(e) => onEditChange(e.target.value)}
                 onKeyDown={(e) => {
@@ -914,12 +1231,20 @@ function TabBar({
             ) : (
               <span
                 className={`text-[12px] font-medium max-w-[120px] truncate ${
-                  isActive ? "text-white" : "text-[#4b5563] group-hover:text-[#6b7280]"
+                  isActive ? "text-[var(--text)]" : "text-[var(--text3)] group-hover:text-[var(--text2)]"
                 }`}
                 onDoubleClick={(e) => { e.stopPropagation(); onStartRename(tab); }}
-                title="Double-click to rename"
+                title={tab.name}
               >
                 {tab.name}
+              </span>
+            )}
+
+            {/* "split" badge on the right-pane tab */}
+            {isSplit && (
+              <span className="text-[9px] px-1 rounded flex-shrink-0"
+                style={{ background: "#6366f115", color: "#818cf8", border: "1px solid #6366f125" }}>
+                split
               </span>
             )}
 
@@ -928,26 +1253,132 @@ function TabBar({
               onClick={(e) => onClose(tab.id, e)}
               className={`flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] transition-all ${
                 isActive
-                  ? "text-[#4b5563] hover:text-white hover:bg-[#1e1e35] opacity-100"
-                  : "text-[#2d3748] hover:text-[#4b5563] opacity-0 group-hover:opacity-100"
+                  ? "text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] opacity-100"
+                  : "text-[var(--text5)] hover:text-[var(--text3)] opacity-0 group-hover:opacity-100"
               }`}
             >✕</button>
           </div>
         );
       })}
 
+      {/* ── New tab ── */}
       <button onClick={onAdd}
-        className="h-9 px-3 flex items-center text-[#374151] hover:text-[#6366f1] hover:bg-[#0d0d1a] transition-all flex-shrink-0"
-        title="New terminal">
+        className="h-9 px-3 flex items-center text-[var(--text4)] hover:text-[#6366f1] hover:bg-[var(--bg2)] transition-all flex-shrink-0"
+        title="New terminal (new SSH session)">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
 
       <div className="flex-1" />
-      <span className="text-[10px] text-[#1e2d3d] pr-3 flex-shrink-0 hidden lg:block select-none">
-        double-click to rename
-      </span>
+
+      {/* ── Toolbar actions ── */}
+      <div className="flex items-center gap-0.5 px-2 flex-shrink-0">
+
+        {/* Broadcast toggle */}
+        <button
+          onClick={onToggleBroadcast}
+          title={broadcastMode ? "Broadcast ON — click to turn off" : "Broadcast input to all terminals"}
+          className="h-7 px-2 flex items-center gap-1 rounded text-[11px] font-medium transition-all"
+          style={broadcastMode
+            ? { background: "#2e1f05", color: "#f59e0b", border: "1px solid #f59e0b30" }
+            : { color: "var(--text4)", background: "transparent" }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12s1.5-4 7-4 7 4 7 4M5 12s1.5 4 7 4 7-4 7-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+          </svg>
+          {broadcastMode && <span>Broadcast</span>}
+        </button>
+
+        {/* Split — always available; when split is active the right pane header owns Merge/Close */}
+        <button
+          onClick={onSplit}
+          title={splitTabId ? "Open another split terminal" : "Split terminal — opens new session side-by-side"}
+          className="h-7 px-2 flex items-center gap-1 rounded text-[11px] font-medium transition-colors"
+          style={splitTabId
+            ? { color: "#818cf8", background: "#6366f110", border: "1px solid #6366f120" }
+            : { color: "var(--text3)" }}
+          onMouseEnter={e => { if (!splitTabId) (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+          onMouseLeave={e => { if (!splitTabId) (e.currentTarget as HTMLElement).style.color = "var(--text3)"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="3" width="9" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+            <rect x="13" y="3" width="9" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+            <path d="M11.5 12h1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+          </svg>
+          Split
+        </button>
+      </div>
+
+      {/* ── Context menu ── */}
+      {ctxMenu && ctxTab && (
+        <div
+          className="fixed z-50 rounded-xl border py-2 shadow-2xl min-w-[200px]"
+          style={{
+            left: ctxMenu.x, top: ctxMenu.y - 8,
+            background: "var(--bg2)", borderColor: "var(--border2)",
+            transform: "translateY(-100%)",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Colour swatches */}
+          <div className="px-3 pb-1.5">
+            <p className="text-[9px] tracking-widest uppercase text-[var(--text3)] mb-2">Colour</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {TAB_COLORS.map(c => (
+                <button key={c}
+                  onClick={() => { onSetTabColor(ctxTab.id, ctxTab.color === c ? undefined : c); setCtxMenu(null); }}
+                  className="w-5 h-5 rounded-full transition-transform hover:scale-110"
+                  style={{ background: c, boxShadow: ctxTab.color === c ? `0 0 0 2px var(--bg2), 0 0 0 3px ${c}` : "none" }}
+                />
+              ))}
+              {ctxTab.color && (
+                <button
+                  onClick={() => { onSetTabColor(ctxTab.id, undefined); setCtxMenu(null); }}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] transition-colors"
+                  style={{ border: "1px solid var(--border2)", color: "var(--text3)" }}
+                  title="Clear colour"
+                >✕</button>
+              )}
+            </div>
+          </div>
+
+          {/* Icon swatches */}
+          <div className="px-3 pt-1 pb-1.5 border-t border-[var(--border)]">
+            <p className="text-[9px] tracking-widest uppercase text-[var(--text3)] mb-2 mt-1.5">Icon</p>
+            <div className="flex gap-1 flex-wrap">
+              {TAB_ICONS.map(ic => (
+                <button key={ic}
+                  onClick={() => { onSetTabIcon(ctxTab.id, ctxTab.icon === ic ? undefined : ic); setCtxMenu(null); }}
+                  className="w-7 h-7 rounded-md text-sm flex items-center justify-center transition-colors"
+                  style={ctxTab.icon === ic
+                    ? { background: "var(--bg4)", border: "1px solid var(--border2)" }
+                    : { background: "transparent" }}
+                >{ic}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-1 border-t border-[var(--border)]">
+            <button
+              onClick={() => { onStartRename(ctxTab); setCtxMenu(null); }}
+              className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--text2)] hover:bg-[var(--bg3)] hover:text-[var(--text)] transition-colors"
+            >Rename</button>
+            {ctxTab.id !== splitTabId && (
+              <button
+                onClick={() => { onSplitActivate(ctxTab.id); setCtxMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--text2)] hover:bg-[var(--bg3)] hover:text-[var(--text)] transition-colors"
+              >{splitTabId ? "Replace split pane" : "Move to split pane"}</button>
+            )}
+            <button
+              onClick={(e) => { onClose(ctxTab.id, e as unknown as React.MouseEvent); setCtxMenu(null); }}
+              className="w-full text-left px-3 py-1.5 text-[12px] text-[#f87171] hover:bg-[#2e0d0d] transition-colors"
+            >Close terminal</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -966,8 +1397,8 @@ function EmptyTerminalState({ hostname, onOpen }: { hostname: string; onOpen: ()
         </svg>
       </div>
       <div className="text-center">
-        <p className="text-white font-semibold mb-1">No terminals open</p>
-        <p className="text-[#4b5563] text-sm">Start an SSH session to {hostname}</p>
+        <p className="text-[var(--text)] font-semibold mb-1">No terminals open</p>
+        <p className="text-[var(--text3)] text-sm">Start an SSH session to {hostname}</p>
       </div>
       <button onClick={onOpen}
         className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
@@ -1012,20 +1443,20 @@ function GrafanaPanel({
     onToggleSettings();
   };
 
-  const inputCls = "w-full bg-[#0a0a14] border border-[#1e1e35] rounded-lg px-3 py-2 text-[13px] text-white font-mono placeholder-[#374151] outline-none focus:border-[#00c8a860]";
-  const labelCls = "block text-[10px] tracking-[0.12em] text-[#4b5563] uppercase mb-1.5";
+  const inputCls = "w-full bg-[var(--bg1)] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[var(--text)] font-mono placeholder-[var(--text4)] outline-none focus:border-[#00c8a860]";
+  const labelCls = "block text-[10px] tracking-[0.12em] text-[var(--text3)] uppercase mb-1.5";
 
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e1e35] flex-shrink-0"
-        style={{ background: "#0a0a14" }}>
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border)] flex-shrink-0"
+        style={{ background: "var(--bg1)" }}>
         {/* Grafana "G" badge */}
         <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
           style={{ background: "#f59e0b20", border: "1px solid #f59e0b30" }}>
           <span className="text-[#f59e0b] text-[9px] font-bold">G</span>
         </div>
-        <span className="text-[11px] text-[#8892a4] font-medium flex-1 truncate">
+        <span className="text-[11px] text-[var(--text2)] font-medium flex-1 truncate">
           {config.url || "No dashboard configured"}
         </span>
         {config.url && (
@@ -1035,22 +1466,22 @@ function GrafanaPanel({
               const el = document.getElementById("grafana-iframe") as HTMLIFrameElement | null;
               if (el) { const s = el.src; el.src = ""; el.src = s; }
             }}
-            className="text-[10px] text-[#4b5563] hover:text-white px-2 py-1 rounded transition-colors"
+            className="text-[10px] text-[var(--text3)] hover:text-[var(--text)] px-2 py-1 rounded transition-colors"
             title="Reload">
             ↻
           </button>
         )}
         <button
           onClick={onToggleSettings}
-          className={`text-[10px] px-2.5 py-1 rounded transition-all ${showSettings ? "text-white bg-[#1e1e35]" : "text-[#4b5563] hover:text-white"}`}>
+          className={`text-[10px] px-2.5 py-1 rounded transition-all ${showSettings ? "text-[var(--text)] bg-[var(--border)]" : "text-[var(--text3)] hover:text-[var(--text)]"}`}>
           {showSettings ? "✕ Close" : "⚙ Configure"}
         </button>
       </div>
 
       {/* Settings drawer */}
       {showSettings && (
-        <div className="flex-shrink-0 border-b border-[#1e1e35] px-5 py-4"
-          style={{ background: "#0d0d1a" }}>
+        <div className="flex-shrink-0 border-b border-[var(--border)] px-5 py-4"
+          style={{ background: "var(--bg2)" }}>
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="col-span-2">
               <label className={labelCls}>Grafana URL</label>
@@ -1083,17 +1514,17 @@ function GrafanaPanel({
                 <input type="checkbox" className="sr-only" checked={draft.kiosk}
                   onChange={(e) => setDraft((d) => ({ ...d, kiosk: e.target.checked }))} />
                 <div className="w-8 h-4 rounded-full transition-colors"
-                  style={{ background: draft.kiosk ? "#00c8a8" : "#1e1e35" }}>
+                  style={{ background: draft.kiosk ? "#00c8a8" : "var(--border)" }}>
                   <div className="w-3 h-3 rounded-full bg-white transition-transform mt-0.5"
                     style={{ transform: draft.kiosk ? "translateX(17px)" : "translateX(2px)" }} />
                 </div>
               </span>
-              <span className="text-[11px] text-[#8892a4]">Kiosk mode (hides Grafana navigation)</span>
+              <span className="text-[11px] text-[var(--text2)]">Kiosk mode (hides Grafana navigation)</span>
             </label>
             <div className="flex gap-2">
               <button onClick={onToggleSettings}
-                className="px-3 py-1.5 rounded-lg text-[11px] text-[#4b5563] hover:text-white transition-colors"
-                style={{ border: "1px solid #1e1e35" }}>
+                className="px-3 py-1.5 rounded-lg text-[11px] text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+                style={{ border: "1px solid var(--border)" }}>
                 Cancel
               </button>
               <button onClick={handleSave}
@@ -1115,8 +1546,8 @@ function GrafanaPanel({
               <span className="text-[#f59e0b] text-xl font-bold">G</span>
             </div>
             <div>
-              <p className="text-white font-semibold mb-1">No Grafana dashboard configured</p>
-              <p className="text-[#4b5563] text-sm max-w-xs">
+              <p className="text-[var(--text)] font-semibold mb-1">No Grafana dashboard configured</p>
+              <p className="text-[var(--text3)] text-sm max-w-xs">
                 Paste the URL of any Grafana dashboard to embed it here. Works with local instances on the same network.
               </p>
             </div>
@@ -1172,18 +1603,18 @@ function AuditPanel({
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ background: "#08080f" }}>
+    <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e1e35] flex-shrink-0"
-        style={{ background: "#0a0a14" }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] flex-shrink-0"
+        style={{ background: "var(--bg1)" }}>
         <input
           type="text"
           placeholder="Filter commands…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 bg-[#111120] border border-[#1e1e35] rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-[#374151] focus:outline-none focus:border-[#6366f1] transition-colors font-mono"
+          className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] transition-colors font-mono"
         />
-        <span className="text-[11px] text-[#374151]">{entries.length} entries</span>
+        <span className="text-[11px] text-[var(--text4)]">{entries.length} entries</span>
         <button
           onClick={exportLog}
           disabled={entries.length === 0}
@@ -1203,7 +1634,7 @@ function AuditPanel({
             </button>
             <button
               onClick={() => setConfirmClear(false)}
-              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[#4b5563] hover:text-white transition-all border border-[#1e1e35]"
+              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[var(--text3)] hover:text-[var(--text)] transition-all border border-[var(--border)]"
             >
               Cancel
             </button>
@@ -1212,7 +1643,7 @@ function AuditPanel({
           <button
             onClick={() => setConfirmClear(true)}
             disabled={entries.length === 0}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[#4b5563] hover:text-[#ef4444] transition-all disabled:opacity-30 border border-[#1e1e35]"
+            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[var(--text3)] hover:text-[#ef4444] transition-all disabled:opacity-30 border border-[var(--border)]"
           >
             Clear
           </button>
@@ -1221,39 +1652,39 @@ function AuditPanel({
 
       {/* Log entries */}
       {entries.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[#374151]">
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text4)]">
           <p className="text-sm">No commands logged yet</p>
-          <p className="text-[12px] text-[#2d3748]">Every command you run in the terminal is recorded here</p>
+          <p className="text-[12px] text-[var(--text5)]">Every command you run in the terminal is recorded here</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto font-mono text-[12px]">
           <table className="w-full border-collapse">
-            <thead className="sticky top-0" style={{ background: "#0a0a14" }}>
-              <tr className="text-left border-b border-[#1e1e35]">
-                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[#374151] w-44">Time</th>
-                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[#374151] w-28">User</th>
-                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[#374151]">Command</th>
+            <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
+              <tr className="text-left border-b border-[var(--border)]">
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)] w-44">Time</th>
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)] w-28">User</th>
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">Command</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((e, i) => (
                 <tr
                   key={i}
-                  className="border-b border-[#0d0d1a] hover:bg-[#0d0d1a] transition-colors"
+                  className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors"
                 >
-                  <td className="px-4 py-2 text-[#374151] whitespace-nowrap">
+                  <td className="px-4 py-2 text-[var(--text4)] whitespace-nowrap">
                     {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    <span className="ml-1.5 text-[10px] text-[#2d3748]">
+                    <span className="ml-1.5 text-[10px] text-[var(--text5)]">
                       {new Date(e.ts).toLocaleDateString([], { month: "short", day: "numeric" })}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-[#4b5563] whitespace-nowrap">{e.username}</td>
+                  <td className="px-4 py-2 text-[var(--text3)] whitespace-nowrap">{e.username}</td>
                   <td className="px-4 py-2 text-[#c9d1d9] break-all">{e.command}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-[#374151]">No commands match "{filter}"</td>
+                  <td colSpan={3} className="px-4 py-8 text-center text-[var(--text4)]">No commands match "{filter}"</td>
                 </tr>
               )}
             </tbody>
