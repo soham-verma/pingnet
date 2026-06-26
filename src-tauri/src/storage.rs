@@ -3,11 +3,28 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
+/// A secondary IP address associated with a host (for reference/display only).
+/// The primary `ip` field is always used for pinging.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HostIp {
+    pub address: String,
+    /// Role label: "local" | "wifi" | "vpn" | "public" | "tailscale" | "other"
+    #[serde(rename = "type")]
+    pub ip_type: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HostConfig {
     pub id: String,
     pub hostname: String,
+    /// The active IP used for pinging
     pub ip: String,
+    /// Type/role label for the active IP
+    #[serde(default)]
+    pub ip_type: Option<String>,
+    /// Additional IPs — stored for reference; not pinged automatically
+    #[serde(default)]
+    pub extra_ips: Vec<HostIp>,
     pub notes: Option<String>,
     pub created_at: u64,
     // Alert settings — all default to false/None so existing JSON deserialises cleanly

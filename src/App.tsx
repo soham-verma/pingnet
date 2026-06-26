@@ -11,6 +11,7 @@ import AddEditModal from "./components/AddEditModal";
 import SSHSessionView from "./components/ssh/SSHSessionView";
 import KeyManager from "./components/KeyManager";
 import UpdateModal from "./components/UpdateModal";
+import ShortcutsModal from "./components/ShortcutsModal";
 
 function genId(): string {
   // crypto.randomUUID() is available in all Tauri WebView targets (Chromium/WebKit)
@@ -39,6 +40,7 @@ export default function App() {
   const [sshConfigs, setSshConfigs] = useState<Record<string, SshConfig>>({});
   const [showKeyManager, setShowKeyManager] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const update = useUpdateCheck();
@@ -97,6 +99,8 @@ export default function App() {
     id: h.id,
     hostname: h.hostname,
     ip: h.ip,
+    ip_type: h.ip_type,
+    extra_ips: h.extra_ips,
     notes: h.notes,
     created_at: h.created_at,
     alert_on_down: h.alert_on_down,
@@ -110,7 +114,7 @@ export default function App() {
   })), [hosts]);
 
   // Pass hosts to usePing so it can schedule auto-ping for hosts with alerts
-  const { getSession, ping, clearSession } = usePing(hostConfigs);
+  const { getSession, ping, stopPing, clearSession } = usePing(hostConfigs);
 
   // Build sessions map for sidebar
   const allSessions: Record<string, PingSession> = {};
@@ -118,6 +122,81 @@ export default function App() {
 
   const selectedHost = hosts.find((h) => h.id === selectedId) ?? null;
   const selectedSession = selectedId ? getSession(selectedId) : null;
+
+  // ── Global keyboard shortcuts ─────────────────────────────────────────────
+  // Placed after selectedHost / stopPing declarations to avoid TDZ errors.
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+      const isTyping = ["input", "textarea", "select"].includes(tag)
+        || (document.activeElement as HTMLElement)?.isContentEditable;
+      if (isTyping) return;
+
+      // ? — toggle shortcuts cheatsheet
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+        return;
+      }
+
+      // If any modal is open, don't fire navigation shortcuts
+      if (showShortcuts || showKeyManager || showUpdateModal || modal) return;
+
+      // N — add new host
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        setModal({ mode: "add" });
+        return;
+      }
+
+      // E — edit selected host
+      if ((e.key === "e" || e.key === "E") && selectedHost) {
+        e.preventDefault();
+        setModal({ mode: "edit", host: selectedHost });
+        return;
+      }
+
+      // S — open SSH for selected host
+      if ((e.key === "s" || e.key === "S") && selectedHost) {
+        e.preventDefault();
+        handleOpenSSH(selectedHost.id);
+        return;
+      }
+
+      // Enter — ping selected host
+      if (e.key === "Enter" && selectedHost && viewMode === "ping") {
+        e.preventDefault();
+        handlePing(selectedHost);
+        return;
+      }
+
+      // Esc — stop pinging selected host
+      if (e.key === "Escape" && selectedHost) {
+        stopPing(selectedHost.id);
+        return;
+      }
+
+      // ↑ / ↓ — navigate host list
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const idx = hosts.findIndex((h) => h.id === selectedId);
+        const next = e.key === "ArrowUp"
+          ? Math.max(0, idx - 1)
+          : Math.min(hosts.length - 1, idx + 1);
+        if (hosts[next]) { setSelectedId(hosts[next].id); setViewMode("ping"); }
+        return;
+      }
+
+      // 1–9 — jump to host by position
+      if (e.key >= "1" && e.key <= "9" && !e.metaKey && !e.ctrlKey) {
+        const idx = parseInt(e.key, 10) - 1;
+        if (hosts[idx]) { e.preventDefault(); setSelectedId(hosts[idx].id); setViewMode("ping"); }
+        return;
+      }
+    }
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [hosts, selectedId, selectedHost, viewMode, modal, showShortcuts, showKeyManager, showUpdateModal, stopPing]);
 
   // Load hosts on mount — also seed sshConfigs from any persisted SSH fields
   useEffect(() => {
@@ -148,10 +227,10 @@ export default function App() {
 
   const persistHosts = useCallback(async (updated: HostState[]) => {
     const configs: HostConfig[] = updated.map(
-      ({ hostname, ip, notes, id, created_at,
+      ({ hostname, ip, ip_type, extra_ips, notes, id, created_at,
          alert_on_down, alert_on_recovery, alert_latency_ms,
          ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name }) => ({
-        id, hostname, ip, notes, created_at,
+        id, hostname, ip, ip_type, extra_ips, notes, created_at,
         alert_on_down, alert_on_recovery, alert_latency_ms,
         ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name,
       })
@@ -165,7 +244,7 @@ export default function App() {
   }, []);
 
   function handleAddHost(
-    data: Pick<HostConfig, "hostname" | "ip" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
+    data: Pick<HostConfig, "hostname" | "ip" | "ip_type" | "extra_ips" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
   ) {
     const newHost: HostState = toHostState({
       ...data,
@@ -181,7 +260,7 @@ export default function App() {
   }
 
   function handleEditHost(
-    data: Pick<HostConfig, "hostname" | "ip" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
+    data: Pick<HostConfig, "hostname" | "ip" | "ip_type" | "extra_ips" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
   ) {
     if (!modal?.host) return;
     const updated = hosts.map((h) =>
@@ -208,6 +287,25 @@ export default function App() {
     ping(host);
   }
 
+  /** Swap which IP is the active ping target for a host.
+   *  The current active IP is moved into extra_ips, and the chosen extra IP
+   *  becomes the new active `ip`. */
+  function handleSetActiveIp(hostId: string, newIp: string, newIpType: HostConfig["ip_type"]) {
+    const updated = hosts.map((h) => {
+      if (h.id !== hostId) return h;
+      const prevExtra = h.extra_ips ?? [];
+      // Remove the newly-active IP from extra_ips (if it was there)
+      const nextExtra = prevExtra.filter((e) => e.address !== newIp);
+      // Push the old active IP into extra_ips (preserve its type)
+      if (h.ip && h.ip !== newIp) {
+        nextExtra.push({ address: h.ip, type: h.ip_type ?? "other" });
+      }
+      return { ...h, ip: newIp, ip_type: newIpType, extra_ips: nextExtra };
+    });
+    setHosts(updated);
+    persistHosts(updated);
+  }
+
   function handleSelectHost(id: string) {
     setSelectedId(id);
     setViewMode("ping");
@@ -231,6 +329,7 @@ export default function App() {
           onOpenSSH={handleOpenSSH}
           onAddHost={() => setModal({ mode: "add" })}
           onOpenKeyManager={() => setShowKeyManager(true)}
+          onOpenShortcuts={() => setShowShortcuts(true)}
           currentVersion={update.currentVersion}
           updateAvailable={update.available && !update.skipped}
           onOpenUpdate={() => setShowUpdateModal(true)}
@@ -255,9 +354,11 @@ export default function App() {
                   host={selectedHost}
                   session={selectedSession}
                   onPing={() => handlePing(selectedHost)}
+                  onStop={() => stopPing(selectedHost.id)}
                   onEdit={() => setModal({ mode: "edit", host: selectedHost })}
                   onRefresh={() => clearSession(selectedHost.id)}
                   onOpenSSH={() => handleOpenSSH(selectedHost.id)}
+                  onSetActiveIp={(ip, type) => handleSetActiveIp(selectedHost.id, ip, type)}
                 />
               </div>
 
@@ -311,6 +412,11 @@ export default function App() {
         {/* Update modal */}
         {showUpdateModal && (
           <UpdateModal update={update} onClose={() => setShowUpdateModal(false)} />
+        )}
+
+        {/* Shortcuts cheatsheet */}
+        {showShortcuts && (
+          <ShortcutsModal onClose={() => setShowShortcuts(false)} />
         )}
       </div>
     </div>

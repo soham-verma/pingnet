@@ -23,7 +23,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
     (savedConfig?.auth_type as "password" | "key" | "keychain" | "agent" | "totp") ?? "password"
   );
   const [password, setPassword] = useState("");
-  const [keyPath, setKeyPath] = useState(savedConfig?.key_path ?? "~/.ssh/id_rsa");
+  const [keyPath, setKeyPath] = useState(savedConfig?.key_path ?? "~/.ssh/id_ed25519");
   const [keyPassphrase, setKeyPassphrase] = useState("");
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -213,7 +213,7 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                 <div className="flex gap-2">
                   <input
                     className={inputCls + " flex-1 min-w-0"}
-                    placeholder="~/.ssh/id_rsa"
+                    placeholder="~/.ssh/id_ed25519"
                     value={keyPath}
                     onChange={(e) => setKeyPath(e.target.value)}
                   />
@@ -231,6 +231,28 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
                   >
                     Browse
                   </button>
+                </div>
+                {/* Quick-pick common key types */}
+                <div className="flex gap-1.5 mt-2">
+                  {[
+                    { label: "ed25519", path: "~/.ssh/id_ed25519" },
+                    { label: "rsa",     path: "~/.ssh/id_rsa"     },
+                    { label: "ecdsa",   path: "~/.ssh/id_ecdsa"   },
+                  ].map(({ label, path }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setKeyPath(path)}
+                      className="px-2 py-0.5 rounded text-[11px] font-mono border transition-colors"
+                      style={
+                        keyPath === path
+                          ? { background: "#6366f1", color: "#fff", borderColor: "#6366f1" }
+                          : { background: "var(--bg1)", color: "var(--text3)", borderColor: "var(--border)" }
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div>

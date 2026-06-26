@@ -1,13 +1,29 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DockerContainer, DockerComposeProject, FileEntry } from "../../types";
+import { DockerContainer, DockerComposeProject, DockerVolume, DockerNetwork, DockerImage, FileEntry } from "../../types";
 import {
   parseContainerState,
   stateColor,
   formatContainerName,
   formatDockerPorts,
   composeStatusCategory,
+  formatDockerImageRef,
+  shortenDockerId,
+  isDefaultDockerNetwork,
 } from "../../utils/docker";
+import {
+  ComposeIcon,
+  ContainersIcon,
+  DockerLogoIcon,
+  FileIcon,
+  FolderIcon,
+  ImagesIcon,
+  NetworksIcon,
+  SystemIcon,
+  VolumesIcon,
+  YamlFileIcon,
+  type DockerIconProps,
+} from "./dockerIcons";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -18,7 +34,68 @@ interface Props {
   onSendToTerminal: (cmd: string) => void;
 }
 
-type DockerTab = "containers" | "compose" | "logs" | "system";
+type DockerTab = "containers" | "compose" | "volumes" | "networks" | "images" | "logs" | "system";
+type DockerPrimaryTab = "containers" | "compose" | "resources" | "system";
+
+const RESOURCE_TABS: { id: Extract<DockerTab, "volumes" | "networks" | "images">; label: string }[] = [
+  { id: "volumes", label: "Volumes" },
+  { id: "networks", label: "Networks" },
+  { id: "images", label: "Images" },
+];
+
+const SYSTEM_TABS: { id: Extract<DockerTab, "logs" | "system">; label: string }[] = [
+  { id: "logs", label: "Logs" },
+  { id: "system", label: "Disk & Prune" },
+];
+
+type DockerIconComponent = (props: DockerIconProps) => JSX.Element;
+
+const PRIMARY_TABS: { id: DockerPrimaryTab; label: string; Icon: DockerIconComponent }[] = [
+  { id: "containers", label: "Containers", Icon: ContainersIcon },
+  { id: "compose", label: "Compose", Icon: ComposeIcon },
+  { id: "resources", label: "Resources", Icon: VolumesIcon },
+  { id: "system", label: "System", Icon: SystemIcon },
+];
+
+function primaryTabOf(tab: DockerTab): DockerPrimaryTab {
+  if (tab === "containers" || tab === "compose") return tab;
+  if (tab === "volumes" || tab === "networks" || tab === "images") return "resources";
+  return "system";
+}
+
+function NavPill({
+  active,
+  onClick,
+  children,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="px-3 py-1 rounded-md text-[11px] font-medium transition-all"
+      style={
+        active
+          ? { background: "var(--border)", color: "var(--text)" }
+          : { color: "var(--text3)" }
+      }
+      onMouseEnter={(e) => {
+        if (!active) (e.currentTarget as HTMLElement).style.color = "var(--text2)";
+      }}
+      onMouseLeave={(e) => {
+        if (!active) (e.currentTarget as HTMLElement).style.color = "var(--text3)";
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,7 +199,7 @@ function OutputDrawer({
       </div>
       <div
         ref={ref}
-        className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-[#c9d1d9] whitespace-pre-wrap"
+        className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-[var(--text)] whitespace-pre-wrap"
         style={{ background: "var(--bg)" }}
       >
         {output || "(no output)"}
@@ -387,8 +464,16 @@ function ComposeFilePicker({
                     onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = ""; }}
                   >
                     {/* Icon */}
-                    <span className="text-base flex-shrink-0">
-                      {isDir ? "📁" : compose ? "🐙" : yaml ? "📄" : "·"}
+                    <span className="flex-shrink-0 flex items-center">
+                      {isDir ? (
+                        <FolderIcon size={14} className="text-[var(--text3)]" />
+                      ) : compose ? (
+                        <ComposeIcon size={14} className="text-[#00c8a8]" />
+                      ) : yaml ? (
+                        <YamlFileIcon size={14} className="text-[var(--text2)]" />
+                      ) : (
+                        <FileIcon size={14} className="text-[var(--text4)]" />
+                      )}
                     </span>
                     {/* Name */}
                     <span
@@ -581,7 +666,7 @@ function ContainersTab({
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ background: "#ef444410", border: "1px solid #ef444425" }}
             >
-              <span className="text-[#ef4444] text-lg">🐳</span>
+              <DockerLogoIcon size={18} className="text-[#ef4444]" />
             </div>
             <div className="text-center">
               <p className="text-[var(--text)] font-semibold mb-1">Docker unavailable</p>
@@ -590,7 +675,7 @@ function ContainersTab({
           </div>
         ) : filtered.length === 0 && !loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--text4)]">
-            <span className="text-3xl">🐳</span>
+            <DockerLogoIcon size={30} />
             <p className="text-sm">{filter ? `No containers match "${filter}"` : "No containers found"}</p>
           </div>
         ) : (
@@ -860,7 +945,7 @@ function ComposeTab({
       <div className="flex-1 overflow-y-auto relative">
         {error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
-            <span className="text-3xl">🐙</span>
+            <ComposeIcon size={30} className="text-[var(--text4)]" />
             <div className="text-center">
               <p className="text-[var(--text)] font-semibold mb-1">Docker Compose unavailable</p>
               <p className="text-[12px] text-[#6b3333] font-mono max-w-xs">{error}</p>
@@ -888,7 +973,7 @@ function ComposeTab({
                   className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors"
                   style={{ color: "#6366f1", background: "#6366f112", border: "1px solid #6366f130" }}
                 >
-                  <span>📁</span> Browse
+                  <FolderIcon size={12} /> Browse
                 </button>
               </div>
               {customFile.trim() && (
@@ -919,7 +1004,7 @@ function ComposeTab({
             {/* Detected projects */}
             {projects.length === 0 && !loading ? (
               <div className="flex flex-col items-center gap-2 py-8 text-[var(--text4)]">
-                <span className="text-2xl">🐙</span>
+                <ComposeIcon size={24} />
                 <p className="text-sm">No compose projects found</p>
                 <p className="text-[11px] text-[var(--text5)]">Use the custom file path above</p>
               </div>
@@ -960,11 +1045,11 @@ function ComposeTab({
                       className="flex gap-2 px-4 pb-3 flex-wrap border-b"
                       style={{ borderColor: "var(--border)" }}
                     >
-                      {(["up", "up-build", "down", "down-volumes", "restart", "build", "pull"] as const).map((a) => (
+                      {(["up", "up-build", "down", "down-volumes", "restart", "build", "rebuild", "pull"] as const).map((a) => (
                         <ActionBtn
                           key={a}
                           label={a.replace("-", " ")}
-                          danger={a === "down-volumes"}
+                          danger={a === "down-volumes" || a === "rebuild"}
                           onClick={() => runProjectAction(proj.name, a)}
                           loading={actionRunning === `${proj.name}::${a}`}
                           disabled={!!actionRunning}
@@ -1242,12 +1327,626 @@ function LogsTab({
         <div
           ref={logRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-[#c9d1d9] whitespace-pre-wrap leading-relaxed"
+          className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-[var(--text)] whitespace-pre-wrap leading-relaxed"
           style={{ background: "var(--bg)" }}
         >
           {logs}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Volumes tab ───────────────────────────────────────────────────────────────
+
+function VolumesTab({
+  sessionId,
+  sudoPassword,
+  onPermDenied,
+}: {
+  sessionId: string;
+  sudoPassword: string | null;
+  onPermDenied: () => void;
+}) {
+  const [volumes, setVolumes] = useState<DockerVolume[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [newName, setNewName] = useState("");
+  const [actionRunning, setActionRunning] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [lastOutput, setLastOutput] = useState<{ title: string; text: string } | null>(null);
+
+  const fetchVolumes = useCallback(async () => {
+    try {
+      const list = await invoke<DockerVolume[]>("docker_list_volumes", { sessionId, sudoPassword });
+      setVolumes(list);
+      setError(null);
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setError("sudo required — click 🔐 to enter password"); }
+      else setError(msg);
+    }
+  }, [sessionId, sudoPassword, onPermDenied]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchVolumes().finally(() => setLoading(false));
+  }, [fetchVolumes]);
+
+  const runCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setActionRunning("create");
+    try {
+      const out = await invoke<string>("docker_volume_create", {
+        sessionId, name, driver: "", sudoPassword,
+      });
+      setNewName("");
+      setLastOutput({ title: `Created volume ${name}`, text: out });
+      await fetchVolumes();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: "Create volume — ERROR", text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runInspect = async (name: string) => {
+    setActionRunning(`inspect:${name}`);
+    try {
+      const out = await invoke<string>("docker_volume_inspect", {
+        sessionId, name, sudoPassword,
+      });
+      setLastOutput({ title: `Inspect volume ${name}`, text: out });
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Inspect ${name} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runRemove = async (name: string) => {
+    setConfirmRemove(null);
+    setActionRunning(`remove:${name}`);
+    try {
+      const out = await invoke<string>("docker_volume_remove", {
+        sessionId, name, sudoPassword,
+      });
+      setLastOutput({ title: `Removed volume ${name}`, text: out });
+      await fetchVolumes();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Remove ${name} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const filtered = filter.trim()
+    ? volumes.filter((v) => v.name.toLowerCase().includes(filter.toLowerCase()))
+    : volumes;
+
+  return (
+    <ResourceListTab
+      toolbar={
+        <>
+          <input
+            type="text"
+            placeholder="Filter volumes…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+          />
+          <input
+            type="text"
+            placeholder="New volume name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-40 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+          />
+          <ActionBtn label="Create" onClick={runCreate} loading={actionRunning === "create"} disabled={!!actionRunning || !newName.trim()} />
+          <RefreshBtn loading={loading} onClick={() => { setLoading(true); fetchVolumes().finally(() => setLoading(false)); }} />
+        </>
+      }
+      error={error}
+      emptyIcon={<VolumesIcon size={30} />}
+      emptyMessage={filter ? `No volumes match "${filter}"` : "No volumes found"}
+      loading={loading}
+      filteredCount={filtered.length}
+    >
+      <table className="w-full border-collapse">
+        <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
+          <tr className="text-left border-b border-[var(--border)]">
+            {["Name", "Driver", "Mountpoint", "Actions"].map((h) => (
+              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((v) => (
+            <tr key={v.name} className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors">
+              <td className="px-4 py-2.5 text-[12px] font-mono text-[var(--text)]">{v.name}</td>
+              <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{v.driver}</td>
+              <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)] max-w-[240px] truncate" title={v.mountpoint}>{v.mountpoint}</td>
+              <td className="px-4 py-2.5">
+                <div className="flex gap-1">
+                  <ActionBtn label="Inspect" onClick={() => runInspect(v.name)} loading={actionRunning === `inspect:${v.name}`} disabled={!!actionRunning} />
+                  {confirmRemove === v.name ? (
+                    <>
+                      <ActionBtn label="Confirm" onClick={() => runRemove(v.name)} danger />
+                      <ActionBtn label="Cancel" onClick={() => setConfirmRemove(null)} />
+                    </>
+                  ) : (
+                    <ActionBtn label="Remove" onClick={() => setConfirmRemove(v.name)} danger disabled={!!actionRunning} />
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {lastOutput && <OutputDrawer title={lastOutput.title} output={lastOutput.text} onClose={() => setLastOutput(null)} />}
+    </ResourceListTab>
+  );
+}
+
+// ── Networks tab ──────────────────────────────────────────────────────────────
+
+function NetworksTab({
+  sessionId,
+  sudoPassword,
+  onPermDenied,
+  containers,
+}: {
+  sessionId: string;
+  sudoPassword: string | null;
+  onPermDenied: () => void;
+  containers: DockerContainer[];
+}) {
+  const [networks, setNetworks] = useState<DockerNetwork[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [newName, setNewName] = useState("");
+  const [connectNet, setConnectNet] = useState<string | null>(null);
+  const [connectContainer, setConnectContainer] = useState("");
+  const [actionRunning, setActionRunning] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [lastOutput, setLastOutput] = useState<{ title: string; text: string } | null>(null);
+
+  const fetchNetworks = useCallback(async () => {
+    try {
+      const list = await invoke<DockerNetwork[]>("docker_list_networks", { sessionId, sudoPassword });
+      setNetworks(list);
+      setError(null);
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setError("sudo required — click 🔐 to enter password"); }
+      else setError(msg);
+    }
+  }, [sessionId, sudoPassword, onPermDenied]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchNetworks().finally(() => setLoading(false));
+  }, [fetchNetworks]);
+
+  const runCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setActionRunning("create");
+    try {
+      const out = await invoke<string>("docker_network_create", {
+        sessionId, name, driver: "", sudoPassword,
+      });
+      setNewName("");
+      setLastOutput({ title: `Created network ${name}`, text: out });
+      await fetchNetworks();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: "Create network — ERROR", text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runInspect = async (name: string) => {
+    setActionRunning(`inspect:${name}`);
+    try {
+      const out = await invoke<string>("docker_network_inspect", { sessionId, name, sudoPassword });
+      setLastOutput({ title: `Inspect network ${name}`, text: out });
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Inspect ${name} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runRemove = async (name: string) => {
+    setConfirmRemove(null);
+    setActionRunning(`remove:${name}`);
+    try {
+      const out = await invoke<string>("docker_network_remove", { sessionId, name, sudoPassword });
+      setLastOutput({ title: `Removed network ${name}`, text: out });
+      await fetchNetworks();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Remove ${name} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runConnect = async (network: string) => {
+    if (!connectContainer) return;
+    setActionRunning(`connect:${network}`);
+    try {
+      const out = await invoke<string>("docker_network_connect", {
+        sessionId, network, containerId: connectContainer, sudoPassword,
+      });
+      setLastOutput({ title: `Connected ${connectContainer} → ${network}`, text: out });
+      setConnectNet(null);
+      setConnectContainer("");
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: "Connect — ERROR", text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runDisconnect = async (network: string, containerId: string) => {
+    setActionRunning(`disconnect:${network}:${containerId}`);
+    try {
+      const out = await invoke<string>("docker_network_disconnect", {
+        sessionId, network, containerId, sudoPassword,
+      });
+      setLastOutput({ title: `Disconnected ${containerId} from ${network}`, text: out });
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: "Disconnect — ERROR", text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const filtered = filter.trim()
+    ? networks.filter((n) => n.name.toLowerCase().includes(filter.toLowerCase()))
+    : networks;
+
+  return (
+    <ResourceListTab
+      toolbar={
+        <>
+          <input
+            type="text"
+            placeholder="Filter networks…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+          />
+          <input
+            type="text"
+            placeholder="New network name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-40 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+          />
+          <ActionBtn label="Create" onClick={runCreate} loading={actionRunning === "create"} disabled={!!actionRunning || !newName.trim()} />
+          <RefreshBtn loading={loading} onClick={() => { setLoading(true); fetchNetworks().finally(() => setLoading(false)); }} />
+        </>
+      }
+      error={error}
+      emptyIcon={<NetworksIcon size={30} />}
+      emptyMessage={filter ? `No networks match "${filter}"` : "No networks found"}
+      loading={loading}
+      filteredCount={filtered.length}
+    >
+      <table className="w-full border-collapse">
+        <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
+          <tr className="text-left border-b border-[var(--border)]">
+            {["Name", "Driver", "Scope", "ID", "Actions"].map((h) => (
+              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((n) => (
+            <tr key={n.id} className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors">
+              <td className="px-4 py-2.5 text-[12px] font-mono text-[var(--text)]">{n.name}</td>
+              <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{n.driver}</td>
+              <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{n.scope}</td>
+              <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)]">{shortenDockerId(n.id)}</td>
+              <td className="px-4 py-2.5">
+                <div className="flex gap-1 flex-wrap">
+                  <ActionBtn label="Inspect" onClick={() => runInspect(n.name)} loading={actionRunning === `inspect:${n.name}`} disabled={!!actionRunning} />
+                  {connectNet === n.name ? (
+                    <>
+                      <select
+                        value={connectContainer}
+                        onChange={(e) => setConnectContainer(e.target.value)}
+                        className="bg-[var(--bg3)] border border-[var(--border)] rounded px-2 py-1 text-[11px] text-[var(--text)] font-mono"
+                      >
+                        <option value="">Container…</option>
+                        {containers.map((c) => (
+                          <option key={c.id} value={c.id}>{formatContainerName(c.names)}</option>
+                        ))}
+                      </select>
+                      <ActionBtn label="Connect" onClick={() => runConnect(n.name)} loading={actionRunning === `connect:${n.name}`} disabled={!connectContainer} />
+                      <ActionBtn label="Cancel" onClick={() => { setConnectNet(null); setConnectContainer(""); }} />
+                    </>
+                  ) : (
+                    <ActionBtn label="Connect" onClick={() => setConnectNet(n.name)} disabled={!!actionRunning || containers.length === 0} />
+                  )}
+                  {!isDefaultDockerNetwork(n.name) && (
+                    confirmRemove === n.name ? (
+                      <>
+                        <ActionBtn label="Confirm" onClick={() => runRemove(n.name)} danger />
+                        <ActionBtn label="Cancel" onClick={() => setConfirmRemove(null)} />
+                      </>
+                    ) : (
+                      <ActionBtn label="Remove" onClick={() => setConfirmRemove(n.name)} danger disabled={!!actionRunning} />
+                    )
+                  )}
+                  {containers.length > 0 && (
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const cid = e.target.value;
+                        if (cid) runDisconnect(n.name, cid);
+                        e.target.value = "";
+                      }}
+                      disabled={!!actionRunning}
+                      className="bg-[var(--bg3)] border border-[var(--border)] rounded px-2 py-1 text-[10px] text-[var(--text3)] font-mono"
+                      title="Disconnect container"
+                    >
+                      <option value="">Disconnect…</option>
+                      {containers.map((c) => (
+                        <option key={c.id} value={c.id}>{formatContainerName(c.names)}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {lastOutput && <OutputDrawer title={lastOutput.title} output={lastOutput.text} onClose={() => setLastOutput(null)} />}
+    </ResourceListTab>
+  );
+}
+
+// ── Images tab ────────────────────────────────────────────────────────────────
+
+function ImagesTab({
+  sessionId,
+  sudoPassword,
+  onPermDenied,
+}: {
+  sessionId: string;
+  sudoPassword: string | null;
+  onPermDenied: () => void;
+}) {
+  const [images, setImages] = useState<DockerImage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [pullRef, setPullRef] = useState("");
+  const [actionRunning, setActionRunning] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [lastOutput, setLastOutput] = useState<{ title: string; text: string } | null>(null);
+
+  const fetchImages = useCallback(async () => {
+    try {
+      const list = await invoke<DockerImage[]>("docker_list_images", { sessionId, sudoPassword });
+      setImages(list);
+      setError(null);
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setError("sudo required — click 🔐 to enter password"); }
+      else setError(msg);
+    }
+  }, [sessionId, sudoPassword, onPermDenied]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchImages().finally(() => setLoading(false));
+  }, [fetchImages]);
+
+  const imageRef = (img: DockerImage) => formatDockerImageRef(img.repository, img.tag);
+
+  const runPull = async () => {
+    const ref = pullRef.trim();
+    if (!ref) return;
+    setActionRunning("pull");
+    try {
+      const out = await invoke<string>("docker_image_pull", { sessionId, imageRef: ref, sudoPassword });
+      setPullRef("");
+      setLastOutput({ title: `Pulled ${ref}`, text: out });
+      await fetchImages();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: "Pull — ERROR", text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runInspect = async (ref: string) => {
+    setActionRunning(`inspect:${ref}`);
+    try {
+      const out = await invoke<string>("docker_image_inspect", { sessionId, imageRef: ref, sudoPassword });
+      setLastOutput({ title: `Inspect ${ref}`, text: out });
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Inspect ${ref} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runRemove = async (ref: string, force: boolean) => {
+    setConfirmRemove(null);
+    setActionRunning(`remove:${ref}`);
+    try {
+      const out = await invoke<string>("docker_image_remove", {
+        sessionId, imageRef: ref, force, sudoPassword,
+      });
+      setLastOutput({ title: `Removed ${ref}`, text: out });
+      await fetchImages();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Remove ${ref} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const filtered = filter.trim()
+    ? images.filter((img) => imageRef(img).toLowerCase().includes(filter.toLowerCase()))
+    : images;
+
+  return (
+    <ResourceListTab
+      toolbar={
+        <>
+          <input
+            type="text"
+            placeholder="Filter images…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+          />
+          <input
+            type="text"
+            placeholder="Pull image (e.g. nginx:latest)"
+            value={pullRef}
+            onChange={(e) => setPullRef(e.target.value)}
+            className="w-52 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+          />
+          <ActionBtn label="Pull" onClick={runPull} loading={actionRunning === "pull"} disabled={!!actionRunning || !pullRef.trim()} />
+          <RefreshBtn loading={loading} onClick={() => { setLoading(true); fetchImages().finally(() => setLoading(false)); }} />
+        </>
+      }
+      error={error}
+      emptyIcon={<ImagesIcon size={30} />}
+      emptyMessage={filter ? `No images match "${filter}"` : "No images found"}
+      loading={loading}
+      filteredCount={filtered.length}
+    >
+      <table className="w-full border-collapse">
+        <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
+          <tr className="text-left border-b border-[var(--border)]">
+            {["Image", "ID", "Size", "Created", "Actions"].map((h) => (
+              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((img) => {
+            const ref = imageRef(img);
+            return (
+              <tr key={img.id + ref} className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors">
+                <td className="px-4 py-2.5 text-[12px] font-mono text-[var(--text)]">{ref}</td>
+                <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)]">{shortenDockerId(img.id)}</td>
+                <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{img.size}</td>
+                <td className="px-4 py-2.5 text-[11px] text-[var(--text3)] whitespace-nowrap">{img.created_at}</td>
+                <td className="px-4 py-2.5">
+                  <div className="flex gap-1">
+                    <ActionBtn label="Inspect" onClick={() => runInspect(ref)} loading={actionRunning === `inspect:${ref}`} disabled={!!actionRunning} />
+                    {confirmRemove === ref ? (
+                      <>
+                        <ActionBtn label="Confirm" onClick={() => runRemove(ref, false)} danger />
+                        <ActionBtn label="Force" onClick={() => runRemove(ref, true)} danger title="Remove even if in use" />
+                        <ActionBtn label="Cancel" onClick={() => setConfirmRemove(null)} />
+                      </>
+                    ) : (
+                      <ActionBtn label="Remove" onClick={() => setConfirmRemove(ref)} danger disabled={!!actionRunning} />
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {lastOutput && <OutputDrawer title={lastOutput.title} output={lastOutput.text} onClose={() => setLastOutput(null)} />}
+    </ResourceListTab>
+  );
+}
+
+// ── Shared resource list layout ───────────────────────────────────────────────
+
+function RefreshBtn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="text-[11px] px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+      style={{ color: "#00c8a8", background: "#00c8a812", border: "1px solid #00c8a830" }}
+    >
+      {loading ? "…" : "↻ Refresh"}
+    </button>
+  );
+}
+
+function ResourceListTab({
+  toolbar,
+  error,
+  emptyIcon,
+  emptyMessage,
+  loading,
+  filteredCount,
+  children,
+}: {
+  toolbar: ReactNode;
+  error: string | null;
+  emptyIcon: ReactNode;
+  emptyMessage: string;
+  loading: boolean;
+  filteredCount: number;
+  children: ReactNode;
+}) {
+  return (
+    <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
+      <div
+        className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0 flex-wrap"
+        style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
+      >
+        {toolbar}
+      </div>
+      <div className="flex-1 overflow-y-auto relative">
+        {error ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
+            {emptyIcon}
+            <p className="text-[var(--text)] font-semibold">Docker unavailable</p>
+            <p className="text-[12px] text-[#6b3333] font-mono max-w-xs">{error}</p>
+          </div>
+        ) : filteredCount === 0 && !loading ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--text4)]">
+            {emptyIcon}
+            <p className="text-sm">{emptyMessage}</p>
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </div>
   );
 }
@@ -1339,7 +2038,7 @@ function SystemTab({
           {dfError ? (
             <p className="px-4 py-3 text-[12px] text-[#6b3333] font-mono">{dfError}</p>
           ) : df ? (
-            <pre className="px-4 py-3 font-mono text-[11px] text-[#c9d1d9] overflow-x-auto">
+            <pre className="px-4 py-3 font-mono text-[11px] text-[var(--text)] overflow-x-auto">
               {df}
             </pre>
           ) : (
@@ -1447,6 +2146,32 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
     setActiveTab("logs");
   }, []);
 
+  const activePrimary = primaryTabOf(activeTab);
+
+  const setPrimaryTab = useCallback((primary: DockerPrimaryTab) => {
+    setActiveTab((current) => {
+      if (primaryTabOf(current) === primary) return current;
+      switch (primary) {
+        case "containers":
+          return "containers";
+        case "compose":
+          return "compose";
+        case "resources":
+          return "volumes";
+        case "system":
+          return "logs";
+      }
+    });
+  }, []);
+
+  // Keep container list warm for Logs / Networks tabs
+  useEffect(() => {
+    if (!sessionId) return;
+    invoke<DockerContainer[]>("docker_list_containers", { sessionId, sudoPassword })
+      .then(setContainers)
+      .catch(() => {});
+  }, [sessionId, sudoPassword]);
+
   const handleSendToTerminal = useCallback(
     (cmd: string) => {
       onSendToTerminal(cmd);
@@ -1457,19 +2182,12 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
   if (!sessionId) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text4)]">
-        <span className="text-4xl">🐳</span>
+        <DockerLogoIcon size={36} />
         <p className="text-sm font-medium">No active SSH session</p>
         <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
       </div>
     );
   }
-
-  const TABS: { id: DockerTab; label: string; icon: string }[] = [
-    { id: "containers", label: "Containers", icon: "□" },
-    { id: "compose",    label: "Compose",    icon: "🐙" },
-    { id: "logs",       label: "Logs",       icon: "📋" },
-    { id: "system",     label: "System",     icon: "💾" },
-  ];
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1483,10 +2201,10 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
           className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0"
           style={{ background: "#2563eb15", border: "1px solid #2563eb25" }}
         >
-          <span className="text-[12px]">🐳</span>
+          <DockerLogoIcon size={13} className="text-[#2563eb]" />
         </div>
         <span className="text-[12px] font-semibold text-[var(--text)]">Docker</span>
-        <span className="text-[11px] text-[var(--text4)]">Remote Docker control over SSH</span>
+        <span className="text-[11px] text-[var(--text4)] hidden sm:inline">Remote Docker control over SSH</span>
 
         {/* Sudo indicator */}
         {sudoPassword ? (
@@ -1508,27 +2226,65 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
             🔐 sudo
           </button>
         )}
+      </div>
 
-        <div className="flex-1" />
-
-        {/* Sub-tabs */}
-        <div className="flex items-center gap-1 bg-[var(--bg2)] rounded-lg p-0.5 border border-[var(--border)]">
-          {TABS.map((t) => (
-            <button
+      {/* Primary navigation */}
+      <div
+        className="flex items-center gap-1 px-3 py-1.5 border-b flex-shrink-0"
+        style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
+      >
+        <div className="flex items-center gap-0.5 bg-[var(--bg2)] rounded-lg p-0.5 border border-[var(--border)]">
+          {PRIMARY_TABS.map((t) => (
+            <NavPill
               key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
-                activeTab === t.id
-                  ? "bg-[var(--border)] text-[var(--text)]"
-                  : "text-[var(--text3)] hover:text-[var(--text2)]"
-              }`}
+              active={activePrimary === t.id}
+              onClick={() => setPrimaryTab(t.id)}
+              title={t.label}
             >
-              <span className="text-[10px]">{t.icon}</span>
-              {t.label}
-            </button>
+              <span className="flex items-center gap-1.5">
+                <t.Icon size={11} />
+                {t.label}
+              </span>
+            </NavPill>
           ))}
         </div>
       </div>
+
+      {/* Secondary navigation — Resources */}
+      {activePrimary === "resources" && (
+        <div
+          className="flex items-center gap-1 px-3 py-1 border-b flex-shrink-0"
+          style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+        >
+          {RESOURCE_TABS.map((t) => (
+            <NavPill
+              key={t.id}
+              active={activeTab === t.id}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </NavPill>
+          ))}
+        </div>
+      )}
+
+      {/* Secondary navigation — System */}
+      {activePrimary === "system" && (
+        <div
+          className="flex items-center gap-1 px-3 py-1 border-b flex-shrink-0"
+          style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+        >
+          {SYSTEM_TABS.map((t) => (
+            <NavPill
+              key={t.id}
+              active={activeTab === t.id}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </NavPill>
+          ))}
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex-1 overflow-hidden relative">
@@ -1544,6 +2300,28 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
         )}
         {activeTab === "compose" && (
           <ComposeTab
+            sessionId={sessionId}
+            sudoPassword={sudoPassword}
+            onPermDenied={handlePermDenied}
+          />
+        )}
+        {activeTab === "volumes" && (
+          <VolumesTab
+            sessionId={sessionId}
+            sudoPassword={sudoPassword}
+            onPermDenied={handlePermDenied}
+          />
+        )}
+        {activeTab === "networks" && (
+          <NetworksTab
+            sessionId={sessionId}
+            sudoPassword={sudoPassword}
+            onPermDenied={handlePermDenied}
+            containers={containers}
+          />
+        )}
+        {activeTab === "images" && (
+          <ImagesTab
             sessionId={sessionId}
             sudoPassword={sudoPassword}
             onPermDenied={handlePermDenied}
@@ -1630,6 +2408,7 @@ function ContainersTabInner({
   const [actionRunning, setActionRunning] = useState<string | null>(null);
   const [lastOutput, setLastOutput] = useState<{ title: string; text: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [confirmRebuild, setConfirmRebuild] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchContainers = useCallback(async () => {
@@ -1678,6 +2457,27 @@ function ContainersTabInner({
       const msg = String(e);
       if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
       else setLastOutput({ title: `docker ${action} ${name} — ERROR`, text: msg });
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
+  const runRebuild = async (containerId: string, name: string) => {
+    setConfirmRebuild(null);
+    const key = `${containerId}:rebuild`;
+    setActionRunning(key);
+    try {
+      const out = await invoke<string>("docker_container_rebuild", {
+        sessionId,
+        containerId,
+        sudoPassword,
+      });
+      setLastOutput({ title: `Rebuild ${name}`, text: out });
+      await fetchContainers();
+    } catch (e) {
+      const msg = String(e);
+      if (isPermissionDenied(msg)) { onPermDenied(); setLastOutput({ title: "sudo required", text: "Enter sudo password and try again." }); }
+      else setLastOutput({ title: `Rebuild ${name} — ERROR`, text: msg });
     } finally {
       setActionRunning(null);
     }
@@ -1742,7 +2542,7 @@ function ContainersTabInner({
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ background: "#ef444410", border: "1px solid #ef444425" }}
             >
-              <span className="text-lg">🐳</span>
+              <DockerLogoIcon size={18} className="text-[#ef4444]" />
             </div>
             <div className="text-center">
               <p className="text-[var(--text)] font-semibold mb-1">Docker unavailable</p>
@@ -1751,7 +2551,7 @@ function ContainersTabInner({
           </div>
         ) : filtered.length === 0 && !loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--text4)]">
-            <span className="text-3xl">🐳</span>
+            <DockerLogoIcon size={30} />
             <p className="text-sm">
               {filter ? `No containers match "${filter}"` : "No containers found"}
             </p>
@@ -1859,6 +2659,25 @@ function ContainersTabInner({
                             onClick={() => setConfirmRemove(c.id)}
                             danger
                             disabled={!!actionRunning}
+                          />
+                        )}
+                        {confirmRebuild === c.id ? (
+                          <>
+                            <ActionBtn
+                              label="Confirm"
+                              onClick={() => runRebuild(c.id, name)}
+                              danger
+                              loading={busy("rebuild")}
+                            />
+                            <ActionBtn label="Cancel" onClick={() => setConfirmRebuild(null)} />
+                          </>
+                        ) : (
+                          <ActionBtn
+                            label="Rebuild"
+                            onClick={() => setConfirmRebuild(c.id)}
+                            danger
+                            disabled={!!actionRunning}
+                            title="Stop, remove, and recreate container (compose-aware when applicable)"
                           />
                         )}
                       </div>

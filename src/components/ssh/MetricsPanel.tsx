@@ -6,6 +6,7 @@ import {
   CoreStat, NetIface, DiskIo, ThermalZone, GpuStat, ProcessEntry,
   IfaceDetails, SpeedtestResult, RouteEntry,
 } from "../../types";
+import PartitionManager from "./PartitionManager";
 
 interface Props { sessionId: string; isActive: boolean; }
 
@@ -583,9 +584,10 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
 
 // ── Section: Disk ─────────────────────────────────────────────────────────────
 
-function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail }: {
+function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail, sessionId }: {
   disks: DiskIo[]; available: boolean;
   usedPct: number | null; usedGb: number | null; totalGb: number | null; diskUnavail: string | null;
+  sessionId: string;
 }) {
   const freeGb = totalGb !== null && usedGb !== null ? totalGb - usedGb : null;
   const color = usedPct !== null ? pctColor(usedPct, 80, 95) : "var(--text3)";
@@ -647,6 +649,9 @@ function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail }
             </div>
         }
       </div>
+
+      {/* Partition manager */}
+      <PartitionManager sessionId={sessionId} />
     </div>
   );
 }
@@ -1175,7 +1180,7 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
             onClick={() => setSection(t.id)}
             className="relative flex items-center gap-1.5 px-4 py-3 text-[11px] font-medium transition-all flex-shrink-0"
             style={section === t.id
-              ? { color: "#fff", borderBottom: "2px solid #00c8a8" }
+              ? { color: "#00c8a8", borderBottom: "2px solid #00c8a8" }
               : { color: "var(--text4)", borderBottom: "2px solid transparent" }
             }
           >
@@ -1193,7 +1198,8 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
         {section === "network"   && <NetworkSection ifaces={metrics.net_ifaces} available={caps?.proc_net_dev ?? true} sessionId={sessionId} />}
         {section === "disk"      && <DiskSection disks={metrics.disk_io} available={caps?.proc_diskstats ?? true}
                                       usedPct={metrics.disk_used_pct} usedGb={metrics.disk_used_gb}
-                                      totalGb={metrics.disk_total_gb} diskUnavail={metrics.disk_unavailable_reason} />}
+                                      totalGb={metrics.disk_total_gb} diskUnavail={metrics.disk_unavailable_reason}
+                                      sessionId={sessionId} />}
         {section === "gpu"       && <GpuSection gpus={metrics.gpus} checkedTools={checkedGpuTools} />}
         {section === "temp"      && <TempSection zones={metrics.thermal} />}
         {section === "processes" && <ProcessesSection procs={metrics.processes} osType={metrics.os_type} />}

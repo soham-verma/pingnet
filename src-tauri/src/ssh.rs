@@ -501,6 +501,86 @@ pub async fn ssh_resize(
     Ok(())
 }
 
+/// Wrap a string in single quotes for safe shell embedding.
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Wrap a command with `printf '%s\n' '<pw>' | sudo -S` when a sudo password is provided.
+fn with_sudo(cmd: &str, sudo_password: &Option<String>) -> String {
+    match sudo_password {
+        Some(pw) if !pw.is_empty() => format!("printf '%s\\n' {} | sudo -S sh -c {}", shell_quote(pw), shell_quote(cmd)),
+        _ => cmd.to_string(),
+    }
+}
+
+fn strip_sudo_prompt(s: &str) -> String {
+    s.lines()
+        .filter(|line| !line.trim_start().starts_with("[sudo] password for"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Run a non-interactive command on the remote host via the existing SFTP session
+/// (a separate authenticated SSH connection), collect all stdout + stderr, and
+/// return the combined output as a String.  Used by the Partition Manager.
+#[tauri::command]
+pub async fn ssh_exec(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+    command: String,
+    sudo_password: Option<String>,
+) -> Result<String, String> {
+    let sessions = state.sessions.lock().await;
+    let conn = sessions
+        .get(&session_id)
+        .ok_or("SSH session not found")?
+        .clone();
+    drop(sessions); // release the lock before spawn_blocking
+
+    let wrapped = with_sudo(&command, &sudo_password);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Read;
+        let session = conn.sftp_session.lock().unwrap();
+        let mut channel = session
+            .channel_session()
+            .map_err(|e| format!("channel_session: {e}"))?;
+        channel
+            .exec(&wrapped)
+            .map_err(|e| format!("exec: {e}"))?;
+
+        let mut stdout = String::new();
+        channel
+            .read_to_string(&mut stdout)
+            .map_err(|e| format!("read stdout: {e}"))?;
+
+        let mut stderr_buf = String::new();
+        channel
+            .stderr()
+            .read_to_string(&mut stderr_buf)
+            .map_err(|e| format!("read stderr: {e}"))?;
+
+        channel.wait_close().map_err(|e| format!("wait_close: {e}"))?;
+
+        let exit = channel.exit_status().unwrap_or(0);
+        let combined = if stderr_buf.is_empty() {
+            stdout
+        } else if stdout.is_empty() {
+            stderr_buf
+        } else {
+            format!("{stdout}{stderr_buf}")
+        };
+        let cleaned = strip_sudo_prompt(&combined);
+        if exit != 0 && !cleaned.trim().is_empty() {
+            return Err(cleaned.trim().to_string());
+        }
+        Ok(cleaned)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ── SFTP helpers ──────────────────────────────────────────────────────────────
 
 fn format_permissions(mode: u32) -> String {

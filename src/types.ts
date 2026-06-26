@@ -1,7 +1,19 @@
+/** A labelled IP address associated with a host */
+export interface HostIp {
+  address: string;
+  /** Type/role of this IP — used for display only, does not affect ping behavior */
+  type: "local" | "wifi" | "vpn" | "public" | "tailscale" | "other";
+}
+
 export interface HostConfig {
   id: string;
   hostname: string;
+  /** The active IP used for pinging */
   ip: string;
+  /** Type/role label for the active IP */
+  ip_type?: HostIp["type"];
+  /** Additional IPs — stored for reference; not pinged automatically */
+  extra_ips?: HostIp[];
   notes?: string;
   created_at: number;
   // Alert settings
@@ -279,4 +291,25 @@ export interface DockerComposeProject {
   status: string;
   config_files: string;
   services: DockerService[];
+}
+
+export interface DockerVolume {
+  name: string;
+  driver: string;
+  mountpoint: string;
+}
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+}
+
+export interface DockerImage {
+  id: string;
+  repository: string;
+  tag: string;
+  size: string;
+  created_at: string;
 }

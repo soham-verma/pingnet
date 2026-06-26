@@ -98,3 +98,46 @@ export function composeStatusCount(status: string): number | null {
 export function formatDockerSize(raw: string): string {
   return raw.trim() || "0B";
 }
+
+/**
+ * Format repository + tag as a single image reference.
+ */
+export function formatDockerImageRef(repository: string, tag: string): string {
+  if (repository === "<none>") return "<untagged>";
+  if (tag === "<none>") return repository;
+  return `${repository}:${tag}`;
+}
+
+/**
+ * Shorten a Docker ID for display (strip sha256: prefix, truncate).
+ */
+export function shortenDockerId(id: string, len = 12): string {
+  const bare = id.replace(/^sha256:/, "");
+  return bare.length <= len ? bare : bare.slice(0, len);
+}
+
+/** Built-in Docker networks that cannot be removed. */
+export function isDefaultDockerNetwork(name: string): boolean {
+  return name === "bridge" || name === "host" || name === "none";
+}
+
+/**
+ * Extract compose project + service from docker inspect JSON (array or object).
+ */
+export function parseComposeLabelsFromInspect(
+  inspectJson: string
+): { project: string; service: string } | null {
+  try {
+    const parsed = JSON.parse(inspectJson) as unknown;
+    const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!obj || typeof obj !== "object") return null;
+    const labels = (obj as { Config?: { Labels?: Record<string, string> } }).Config?.Labels;
+    if (!labels) return null;
+    const project = labels["com.docker.compose.project"];
+    const service = labels["com.docker.compose.service"];
+    if (!project || !service) return null;
+    return { project, service };
+  } catch {
+    return null;
+  }
+}

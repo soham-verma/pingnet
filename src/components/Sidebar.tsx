@@ -12,6 +12,7 @@ interface Props {
   onOpenSSH: (id: string) => void;
   onAddHost: () => void;
   onOpenKeyManager: () => void;
+  onOpenShortcuts: () => void;
   currentVersion: string | null;
   updateAvailable: boolean;
   onOpenUpdate: () => void;
@@ -45,7 +46,7 @@ function MiniBar({ history }: { history: { latency: number | null; success: bool
   );
 }
 
-export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost, onOpenKeyManager, currentVersion, updateAvailable, onOpenUpdate, collapsed, onToggleCollapse, theme, onToggleTheme }: Props) {
+export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost, onOpenKeyManager, onOpenShortcuts, currentVersion, updateAvailable, onOpenUpdate, collapsed, onToggleCollapse, theme, onToggleTheme }: Props) {
 
   // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
@@ -256,6 +257,17 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
             <path d="M5 4.5h4M7.5 3v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
           </svg>
           SSH Keys
+        </button>
+        <button
+          onClick={onOpenShortcuts}
+          title="Keyboard shortcuts (?)"
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[var(--text3)] hover:text-[#f59e0b] hover:bg-[#f59e0b0a] border border-[var(--border)] hover:border-[#f59e0b20] transition-all text-xs font-medium"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <rect x="0.5" y="2" width="9" height="6" rx="1" stroke="currentColor" strokeWidth="1" />
+            <path d="M2 4h1M4 4h1M6 4h1M8 4h0M3 6h4" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
+          </svg>
+          Shortcuts
         </button>
 
         {/* Theme toggle */}

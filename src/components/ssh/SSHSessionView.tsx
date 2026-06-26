@@ -10,6 +10,12 @@ import CommandHistory from "./CommandHistory";
 import MetricsPanel from "./MetricsPanel";
 import ApiClient from "./ApiClient";
 import DockerManager from "./DockerManager";
+import {
+  TERMINAL_THEMES,
+  getTerminalTheme,
+  readTerminalThemeId,
+  saveTerminalThemeId,
+} from "../../utils/terminalThemes";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +121,12 @@ export default function SSHSessionView({
     readGrafanaConfig(grafanaStorageKey)
   );
   const [showGrafanaSettings, setShowGrafanaSettings] = useState(false);
+  const [terminalThemeId, setTerminalThemeId] = useState(readTerminalThemeId);
+
+  const handleTerminalThemeChange = useCallback((id: string) => {
+    setTerminalThemeId(id);
+    saveTerminalThemeId(id);
+  }, []);
 
   // Re-read Grafana config from localStorage whenever the host changes —
   // the useState initializer only runs on first mount, so without this,
@@ -589,11 +601,12 @@ export default function SSHSessionView({
                 <div className="relative h-full" style={{ width: splitTabId ? `${splitRatio}%` : "100%" }}>
                   {tabs.filter(t => t.id !== splitTabId).map((tab) => (
                     <div key={tab.id} className="absolute inset-0"
-                      style={{ display: tab.id === activeTabId ? "block" : "none", background: "var(--bg)" }}>
+                      style={{ display: tab.id === activeTabId ? "block" : "none", background: getTerminalTheme(terminalThemeId).xterm.background }}>
                       <TabContent
                         tab={tab}
                         ip={ip}
                         port={storedCreds?.config.port ?? 22}
+                        themeId={terminalThemeId}
                         suggestions={suggestions}
                         onCommand={handleCommand}
                         onRetry={() => storedCreds && connectTab(tab.id, storedCreds)}
@@ -681,6 +694,7 @@ export default function SSHSessionView({
                               tab={splitTab}
                               ip={ip}
                               port={storedCreds?.config.port ?? 22}
+                              themeId={terminalThemeId}
                               suggestions={suggestions}
                               onCommand={handleCommand}
                               onRetry={() => storedCreds && connectTab(splitTab.id, storedCreds)}
@@ -732,6 +746,8 @@ export default function SSHSessionView({
                 onSetTabIcon={(tabId, icon) =>
                   setTabs(prev => prev.map(t => t.id === tabId ? { ...t, icon } : t))
                 }
+                terminalThemeId={terminalThemeId}
+                onTerminalThemeChange={handleTerminalThemeChange}
               />
             </>
           )}
@@ -902,6 +918,7 @@ export default function SSHSessionView({
             onSendToTerminal={handleSendToTerminal}
           />
         </div>
+
       </div>
 
       {showModal && (
@@ -945,6 +962,7 @@ interface TabContentProps {
   tab: TerminalTab;
   ip: string;
   port: number;
+  themeId: string;
   suggestions: string[];
   onCommand: (cmd: string) => void;
   onRetry: () => void;
@@ -954,12 +972,12 @@ interface TabContentProps {
   broadcastTo?: string[];
 }
 
-function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect, onTrustNewKey, broadcastTo }: TabContentProps) {
+function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect, onTrustNewKey, broadcastTo }: TabContentProps) {
   const { status } = tab;
 
   // Connected — just render the terminal
   if (status === "connected") {
-    return <SSHTerminal sessionId={tab.id} isConnected suggestions={suggestions} onCommand={onCommand} broadcastTo={broadcastTo} />;
+    return <SSHTerminal sessionId={tab.id} isConnected themeId={themeId} suggestions={suggestions} onCommand={onCommand} broadcastTo={broadcastTo} />;
   }
 
   // Connection lost — show terminal output (preserved) + reconnect overlay
@@ -968,7 +986,7 @@ function TabContent({ tab, ip, port, suggestions, onCommand, onRetry, onRetrySki
       <div className="relative h-full">
         {/* Terminal output stays visible underneath */}
         <div className="absolute inset-0 opacity-40 pointer-events-none">
-          <SSHTerminal sessionId={tab.id} isConnected={false} suggestions={suggestions} onCommand={onCommand} broadcastTo={[]} />
+          <SSHTerminal sessionId={tab.id} isConnected={false} themeId={themeId} suggestions={suggestions} onCommand={onCommand} broadcastTo={[]} />
         </div>
         {/* Overlay */}
         <div className="absolute inset-0 flex items-center justify-center"
@@ -1198,6 +1216,8 @@ interface TabBarProps {
   onCancelRename: () => void;
   onSetTabColor: (tabId: string, color: string | undefined) => void;
   onSetTabIcon: (tabId: string, icon: string | undefined) => void;
+  terminalThemeId: string;
+  onTerminalThemeChange: (id: string) => void;
 }
 
 function TabBar({
@@ -1207,7 +1227,9 @@ function TabBar({
   onSplit, onToggleBroadcast,
   onStartRename, onEditChange, onCommitRename, onCancelRename,
   onSetTabColor, onSetTabIcon,
+  terminalThemeId, onTerminalThemeChange,
 }: TabBarProps) {
+  const activeTheme = getTerminalTheme(terminalThemeId);
   const [ctxMenu, setCtxMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
 
   // Close context menu on outside click
@@ -1309,6 +1331,25 @@ function TabBar({
 
       {/* ── Toolbar actions ── */}
       <div className="flex items-center gap-0.5 px-2 flex-shrink-0">
+
+        {/* Terminal theme */}
+        <div className="flex items-center gap-1.5 mr-1">
+          <span
+            className="w-3 h-3 rounded-sm flex-shrink-0 border border-white/10"
+            style={{ background: activeTheme.xterm.background }}
+            title="Terminal theme preview"
+          />
+          <select
+            value={terminalThemeId}
+            onChange={(e) => onTerminalThemeChange(e.target.value)}
+            title="Terminal color theme"
+            className="h-7 max-w-[120px] rounded px-1.5 text-[11px] font-medium bg-[var(--bg2)] border border-[var(--border)] text-[var(--text2)] focus:outline-none focus:border-[#6366f1] cursor-pointer"
+          >
+            {TERMINAL_THEMES.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Broadcast toggle */}
         <button
@@ -1714,7 +1755,7 @@ function AuditPanel({
                     </span>
                   </td>
                   <td className="px-4 py-2 text-[var(--text3)] whitespace-nowrap">{e.username}</td>
-                  <td className="px-4 py-2 text-[#c9d1d9] break-all">{e.command}</td>
+                  <td className="px-4 py-2 text-[var(--text2)] break-all">{e.command}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (

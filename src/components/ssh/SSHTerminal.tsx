@@ -5,10 +5,12 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getTerminalTheme, type TerminalThemeDef } from "../../utils/terminalThemes";
 
 interface Props {
   sessionId: string;
   isConnected: boolean;
+  themeId: string;
   /** Command strings sorted by recency — used for ghost-text suggestions. */
   suggestions?: string[];
   /** Called whenever the user submits a command (presses Enter). */
@@ -32,7 +34,7 @@ function getCellDims(term: Terminal): { w: number; h: number } {
   }
 }
 
-export default function SSHTerminal({ sessionId, isConnected, suggestions = [], onCommand, broadcastTo = [] }: Props) {
+export default function SSHTerminal({ sessionId, isConnected, themeId, suggestions = [], onCommand, broadcastTo = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
 
@@ -142,27 +144,34 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
     return "";
   };
 
+  const themeRef = useRef<TerminalThemeDef>(getTerminalTheme(themeId));
+  useEffect(() => { themeRef.current = getTerminalTheme(themeId); }, [themeId]);
+
+  // Apply theme when user switches (without recreating the terminal)
+  useEffect(() => {
+    const term = termRef.current;
+    const theme = getTerminalTheme(themeId);
+    themeRef.current = theme;
+    if (term) {
+      term.options.theme = theme.xterm;
+    }
+    if (ghostRef.current) {
+      ghostRef.current.style.color = theme.ghostColor;
+    }
+    if (containerRef.current) {
+      containerRef.current.style.background = theme.xterm.background ?? "#000";
+    }
+  }, [themeId]);
+
   // ── Terminal setup ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const theme = getTerminalTheme(themeId);
+
     const term = new Terminal({
-      theme: {
-        background:         "var(--bg)",
-        foreground:         "var(--text)",
-        cursor:             "#00c8a8",
-        cursorAccent:       "var(--bg)",
-        selectionBackground:"#6366f140",
-        black:        "var(--bg4)", brightBlack:   "var(--text4)",
-        red:          "#ef4444", brightRed:     "#f87171",
-        green:        "#22c55e", brightGreen:   "#4ade80",
-        yellow:       "#f59e0b", brightYellow:  "#fbbf24",
-        blue:         "#6366f1", brightBlue:    "#818cf8",
-        magenta:      "#a855f7", brightMagenta: "#c084fc",
-        cyan:         "#00c8a8", brightCyan:    "#34d399",
-        white:        "var(--text)", brightWhite:   "#f8fafc",
-      },
+      theme: theme.xterm,
       fontFamily:   '"JetBrains Mono", "Fira Code", monospace',
       fontSize:     13,
       lineHeight:   1.4,
@@ -177,6 +186,9 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
     term.loadAddon(fitAddon);
     term.loadAddon(linksAddon);
     term.open(containerRef.current);
+    if (containerRef.current) {
+      containerRef.current.style.background = theme.xterm.background ?? "#000";
+    }
     fitAddon.fit();
 
     termRef.current = term;
@@ -332,7 +344,7 @@ export default function SSHTerminal({ sessionId, isConnected, suggestions = [], 
           fontFamily: '"JetBrains Mono", "Fira Code", monospace',
           fontSize:   "13px",
           lineHeight: "1.4",
-          color:      "var(--text4)",   // muted — clearly "ghost"
+          color:      themeRef.current.ghostColor,
           whiteSpace: "pre",
           zIndex:     20,
         }}

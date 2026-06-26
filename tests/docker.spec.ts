@@ -11,6 +11,10 @@ import {
   composeStatusCategory,
   composeStatusCount,
   formatDockerSize,
+  formatDockerImageRef,
+  shortenDockerId,
+  isDefaultDockerNetwork,
+  parseComposeLabelsFromInspect,
 } from "../src/utils/docker";
 
 // ── parseContainerState ───────────────────────────────────────────────────────
@@ -184,4 +188,59 @@ test("formatDockerSize: empty string → '0B'", () => {
 
 test("formatDockerSize: whitespace-only → '0B'", () => {
   expect(formatDockerSize("   ")).toBe("0B");
+});
+
+// ── formatDockerImageRef ──────────────────────────────────────────────────────
+
+test("formatDockerImageRef: repo + tag", () => {
+  expect(formatDockerImageRef("nginx", "latest")).toBe("nginx:latest");
+});
+
+test("formatDockerImageRef: dangling tag", () => {
+  expect(formatDockerImageRef("myapp", "<none>")).toBe("myapp");
+});
+
+test("formatDockerImageRef: fully untagged", () => {
+  expect(formatDockerImageRef("<none>", "<none>")).toBe("<untagged>");
+});
+
+// ── shortenDockerId ───────────────────────────────────────────────────────────
+
+test("shortenDockerId: truncates long id", () => {
+  expect(shortenDockerId("sha256:abcdef1234567890")).toBe("abcdef123456");
+});
+
+test("shortenDockerId: short id unchanged", () => {
+  expect(shortenDockerId("abc123")).toBe("abc123");
+});
+
+// ── isDefaultDockerNetwork ────────────────────────────────────────────────────
+
+test("isDefaultDockerNetwork: bridge/host/none", () => {
+  expect(isDefaultDockerNetwork("bridge")).toBe(true);
+  expect(isDefaultDockerNetwork("host")).toBe(true);
+  expect(isDefaultDockerNetwork("none")).toBe(true);
+  expect(isDefaultDockerNetwork("mynet")).toBe(false);
+});
+
+// ── parseComposeLabelsFromInspect ─────────────────────────────────────────────
+
+test("parseComposeLabelsFromInspect: extracts project and service", () => {
+  const json = JSON.stringify([{
+    Config: {
+      Labels: {
+        "com.docker.compose.project": "myproj",
+        "com.docker.compose.service": "web",
+      },
+    },
+  }]);
+  expect(parseComposeLabelsFromInspect(json)).toEqual({ project: "myproj", service: "web" });
+});
+
+test("parseComposeLabelsFromInspect: missing labels → null", () => {
+  expect(parseComposeLabelsFromInspect("{}")).toBeNull();
+});
+
+test("parseComposeLabelsFromInspect: invalid json → null", () => {
+  expect(parseComposeLabelsFromInspect("not json")).toBeNull();
 });

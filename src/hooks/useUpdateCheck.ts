@@ -38,6 +38,11 @@ export interface UpdateInfo {
   checkNow: () => void;
 }
 
+/** Strip leading "v" and return bare semver string, e.g. "v0.4.2" → "0.4.2" */
+function normalizeVersion(v: string): string {
+  return v.replace(/^v/i, "").trim();
+}
+
 export function useUpdateCheck(): UpdateInfo {
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [latestVersion, setLatestVersion]   = useState<string | null>(null);
@@ -46,7 +51,14 @@ export function useUpdateCheck(): UpdateInfo {
   const [skipped, setSkipped]                = useState(false);
 
   useEffect(() => {
-    getVersion().then(setCurrentVersion).catch(() => setCurrentVersion(null));
+    getVersion()
+      .then((v) => {
+        const norm = normalizeVersion(v ?? "");
+        // Guard against Tauri placeholder "0.0.0" which would always
+        // trigger an update notification.
+        setCurrentVersion(norm && norm !== "0.0.0" ? norm : null);
+      })
+      .catch(() => setCurrentVersion(null));
   }, []);
 
   const doCheck = useCallback(async (currentVersion: string, force = false) => {
@@ -59,7 +71,7 @@ export function useUpdateCheck(): UpdateInfo {
           const cache: CacheEntry = JSON.parse(raw);
           if (Date.now() - cache.checkedAt < CACHE_TTL_MS) {
             if (cache.latestVersion) {
-              setLatestVersion(cache.latestVersion);
+              setLatestVersion(normalizeVersion(cache.latestVersion));
               setReleaseBody(cache.releaseBody);
             }
             return;
@@ -84,7 +96,9 @@ export function useUpdateCheck(): UpdateInfo {
       const raw: unknown = await res.json();
       if (typeof raw !== "object" || raw === null) return;
       const data = raw as Record<string, unknown>;
-      const tag:  string | null = typeof data.tag_name === "string" ? data.tag_name : null;
+      // Normalize: strip "v" prefix so comparisons are always bare semver
+      const rawTag = typeof data.tag_name === "string" ? data.tag_name : null;
+      const tag: string | null = rawTag ? normalizeVersion(rawTag) : null;
       const body: string | null = typeof data.body === "string" ? data.body : null;
 
       localStorage.setItem(key, JSON.stringify({

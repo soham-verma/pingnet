@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
-import { HostConfig } from "../types";
+import { HostConfig, HostIp } from "../types";
+
+const IP_TYPES: HostIp["type"][] = ["local", "wifi", "vpn", "public", "tailscale", "other"];
+const IP_TYPE_LABELS: Record<HostIp["type"], string> = {
+  local: "Local",
+  wifi: "WiFi",
+  vpn: "VPN",
+  public: "Public",
+  tailscale: "Tailscale",
+  other: "Other",
+};
 
 interface Props {
   existing?: HostConfig | null;
-  onSave: (data: Pick<HostConfig, "hostname" | "ip" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">) => void;
+  onSave: (data: Pick<HostConfig, "hostname" | "ip" | "ip_type" | "extra_ips" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">) => void;
   onClose: () => void;
   onDelete?: () => void;
 }
@@ -11,6 +21,8 @@ interface Props {
 export default function AddEditModal({ existing, onSave, onClose, onDelete }: Props) {
   const [hostname, setHostname] = useState(existing?.hostname ?? "");
   const [ip, setIp] = useState(existing?.ip ?? "");
+  const [ipType, setIpType] = useState<HostIp["type"]>(existing?.ip_type ?? "local");
+  const [extraIps, setExtraIps] = useState<HostIp[]>(existing?.extra_ips ?? []);
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [alertDown, setAlertDown] = useState(existing?.alert_on_down ?? false);
   const [alertRecovery, setAlertRecovery] = useState(existing?.alert_on_recovery ?? false);
@@ -64,6 +76,8 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
       onSave({
         hostname: hostname.trim(),
         ip: ip.trim(),
+        ip_type: ipType,
+        extra_ips: extraIps.filter((e) => e.address.trim()),
         notes: notes.trim(),
         alert_on_down: alertDown,
         alert_on_recovery: alertRecovery,
@@ -167,23 +181,86 @@ export default function AddEditModal({ existing, onSave, onClose, onDelete }: Pr
               )}
             </div>
 
-            {/* IP */}
+            {/* IP Addresses */}
             <div>
-              <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
-                IP Address / Hostname
-              </label>
-              <input
-                type="text"
-                value={ip}
-                onChange={(e) => setIp(e.target.value)}
-                placeholder="e.g. 192.168.1.10 or example.com"
-                className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                  errors.ip ? "border-[#ef4444]" : "border-[var(--border)]"
-                }`}
-              />
-              {errors.ip && (
-                <p className="text-[#ef4444] text-xs mt-1">{errors.ip}</p>
-              )}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase">
+                  IP Addresses
+                </label>
+              </div>
+
+              {/* Primary IP */}
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={ip}
+                  onChange={(e) => setIp(e.target.value)}
+                  placeholder="e.g. 192.168.1.10 or example.com"
+                  className={`flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
+                    errors.ip ? "border-[#ef4444]" : "border-[var(--border)]"
+                  }`}
+                />
+                <select
+                  value={ipType}
+                  onChange={(e) => setIpType(e.target.value as HostIp["type"])}
+                  className="px-2 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text3)] outline-none focus:border-[#6366f1] transition-all"
+                >
+                  {IP_TYPES.map((t) => (
+                    <option key={t} value={t}>{IP_TYPE_LABELS[t]}</option>
+                  ))}
+                </select>
+              </div>
+              {errors.ip && <p className="text-[#ef4444] text-xs mb-2">{errors.ip}</p>}
+
+              {/* Extra IPs */}
+              {extraIps.map((eip, idx) => (
+                <div key={idx} className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={eip.address}
+                    onChange={(e) => {
+                      const next = [...extraIps];
+                      next[idx] = { ...next[idx], address: e.target.value };
+                      setExtraIps(next);
+                    }}
+                    placeholder="e.g. 10.0.0.1"
+                    className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1]"
+                  />
+                  <select
+                    value={eip.type}
+                    onChange={(e) => {
+                      const next = [...extraIps];
+                      next[idx] = { ...next[idx], type: e.target.value as HostIp["type"] };
+                      setExtraIps(next);
+                    }}
+                    className="px-2 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text3)] outline-none focus:border-[#6366f1] transition-all"
+                  >
+                    {IP_TYPES.map((t) => (
+                      <option key={t} value={t}>{IP_TYPE_LABELS[t]}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setExtraIps(extraIps.filter((_, i) => i !== idx))}
+                    className="w-9 flex-shrink-0 flex items-center justify-center rounded-lg text-[var(--text4)] hover:text-[#ef4444] hover:bg-[#ef444415] border border-transparent hover:border-[#ef444430] transition-all"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setExtraIps([...extraIps, { address: "", type: "local" }])}
+                className="flex items-center gap-1.5 text-[11px] text-[var(--text3)] hover:text-[#6366f1] transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+                Add another IP
+              </button>
             </div>
 
             {/* Notes */}

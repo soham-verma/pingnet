@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HostState } from "../types";
+import { HostState, HostIp } from "../types";
 import { PingSession } from "../hooks/usePing";
 import { formatLatency, getRegionLabel } from "../utils/network";
 import LatencyChart from "./LatencyChart";
@@ -7,16 +7,36 @@ import NetworkRoute from "./NetworkRoute";
 import DiagnosticConsole from "./DiagnosticConsole";
 import VpnBanner from "./VpnBanner";
 
+const IP_TYPE_LABELS: Record<string, string> = {
+  local: "Local",
+  wifi: "WiFi",
+  vpn: "VPN",
+  public: "Public",
+  tailscale: "Tailscale",
+  other: "Other",
+};
+
+const IP_TYPE_COLORS: Record<string, string> = {
+  local:     "#6366f1",
+  wifi:      "#22c55e",
+  vpn:       "#f59e0b",
+  public:    "#00c8a8",
+  tailscale: "#818cf8",
+  other:     "var(--text4)",
+};
+
 interface Props {
   host: HostState;
   session: PingSession;
   onPing: () => void;
+  onStop: () => void;
   onEdit: () => void;
   onRefresh: () => void;
   onOpenSSH: () => void;
+  onSetActiveIp: (ip: string, type: HostIp["type"]) => void;
 }
 
-export default function HostDetailView({ host, session, onPing, onEdit, onRefresh, onOpenSSH }: Props) {
+export default function HostDetailView({ host, session, onPing, onStop, onEdit, onRefresh, onOpenSSH, onSetActiveIp }: Props) {
   const [vpnDismissed, setVpnDismissed] = useState(false);
 
   const { lastResult, isRunning, stats, logs, history, vpnAtFailure } = session;
@@ -67,17 +87,29 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handlePing}
-            disabled={isRunning}
-            title="Re-run ping"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all disabled:opacity-40"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={isRunning ? "animate-spin" : ""}>
-              <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M13 1v6h-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          {isRunning ? (
+            <button
+              onClick={onStop}
+              title="Stop ping"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-[#ef4444] hover:bg-[#ef444415] border border-transparent hover:border-[#ef444430] transition-all"
+            >
+              {/* Square stop icon */}
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handlePing}
+              title="Re-run ping"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M13 1v6h-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={onEdit}
             title="Edit host"
@@ -90,12 +122,13 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           <button
             onClick={onRefresh}
             title="Clear history"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
+            className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-[var(--text3)] hover:text-[#ef4444] hover:bg-[#ef444415] border border-transparent hover:border-[#ef444430] transition-all text-[11px] font-medium"
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2" />
-              <path d="M7 4v3l2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M1.5 3h9M4.5 3V2a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v1M10 3l-.6 7a.5.5 0 0 1-.5.5H3.1a.5.5 0 0 1-.5-.5L2 3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M5 5.5v3M7 5.5v3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
             </svg>
+            Clear
           </button>
 
           {/* SSH button */}
@@ -113,6 +146,39 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
           </button>
         </div>
       </div>
+
+      {/* IP selector — shown when a host has multiple IPs */}
+      {(host.extra_ips ?? []).length > 0 && (
+        <div
+          className="flex items-center gap-2 px-6 py-2.5 border-b border-[var(--border)] overflow-x-auto flex-shrink-0"
+          style={{ background: "var(--bg1)" }}
+        >
+          <span className="text-[10px] tracking-widest text-[var(--text4)] uppercase flex-shrink-0">Ping target</span>
+          {/* Active IP */}
+          <button
+            disabled
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border flex-shrink-0"
+            style={{ background: `${IP_TYPE_COLORS[host.ip_type ?? "local"]}18`, color: IP_TYPE_COLORS[host.ip_type ?? "local"], borderColor: `${IP_TYPE_COLORS[host.ip_type ?? "local"]}50` }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: IP_TYPE_COLORS[host.ip_type ?? "local"] }} />
+            {host.ip}
+            <span className="opacity-60 text-[9px]">{IP_TYPE_LABELS[host.ip_type ?? "local"] ?? host.ip_type}</span>
+          </button>
+          {/* Extra IPs — click to switch active */}
+          {(host.extra_ips ?? []).map((eip) => (
+            <button
+              key={eip.address}
+              onClick={() => onSetActiveIp(eip.address, eip.type as HostIp["type"])}
+              title={`Switch ping target to ${eip.address} (${IP_TYPE_LABELS[eip.type] ?? eip.type})`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+              style={{ borderColor: "var(--border)", color: "var(--text3)" }}
+            >
+              {eip.address}
+              <span className="text-[9px]">{IP_TYPE_LABELS[eip.type] ?? eip.type}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -280,30 +346,35 @@ export default function HostDetailView({ host, session, onPing, onEdit, onRefres
         className="flex-shrink-0 px-5 py-4 border-t border-[var(--border)] flex items-center justify-end"
         style={{ background: "var(--bg1)" }}
       >
-        <button
-          onClick={handlePing}
-          disabled={isRunning}
-          className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-          style={{
-            background: isRunning ? "#2d2d4a" : "#00c8a8",
-            color: isRunning ? "var(--text3)" : "#000",
-            boxShadow: isRunning ? "none" : "0 0 20px #00c8a840",
-          }}
-        >
-          {isRunning ? (
-            <>
-              <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        {isRunning ? (
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-2 text-[var(--text3)] text-sm">
+              <span className="w-3 h-3 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin" />
               Pinging...
-            </>
-          ) : (
-            <>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M3 2l7 4-7 4V2Z" fill="currentColor" />
+            </span>
+            <button
+              onClick={onStop}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition-all"
+              style={{ background: "#ef444420", color: "#ef4444", border: "1px solid #ef444440" }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor" />
               </svg>
-              Run Ping
-            </>
-          )}
-        </button>
+              Stop
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handlePing}
+            className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+            style={{ background: "#00c8a8", color: "#000", boxShadow: "0 0 20px #00c8a840" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 2l7 4-7 4V2Z" fill="currentColor" />
+            </svg>
+            Run Ping
+          </button>
+        )}
       </div>
     </div>
   );

@@ -114,8 +114,10 @@ async function notify(title: string, body: string) {
 export function usePing(hosts: HostConfig[] = []) {
   const [sessions, setSessions] = useState<Record<string, PingSession>>({});
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  // Per-host auto-ping interval refs
+  // Per-host auto-ping interval refs — populated only after the user's first manual ping
   const autoPingRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  // Abort tokens — incremented by stopPing() so stale doPing results are discarded
+  const pingGenRef = useRef<Record<string, number>>({});
   // Always-current snapshot of hosts so setInterval callbacks never read stale config
   const hostsRef = useRef<HostConfig[]>(hosts);
   useEffect(() => { hostsRef.current = hosts; }, [hosts]);
@@ -140,6 +142,11 @@ export function usePing(hosts: HostConfig[] = []) {
   // ── Core ping logic ──────────────────────────────────────────────────────────
 
   const doPing = useCallback(async (host: HostConfig) => {
+    // Snapshot the abort-token for this invocation. If stopPing() is called
+    // before the await resolves, the token will have been incremented and we
+    // discard the stale result instead of writing it to state.
+    const gen = pingGenRef.current[host.id] ?? 0;
+
     setSessions((prev) => {
       const existing = prev[host.id] ?? { ...DEFAULT_SESSION };
       return {
@@ -168,11 +175,29 @@ export function usePing(hosts: HostConfig[] = []) {
     try {
       const result = await invoke<PingResult>("ping_host", { ip: host.ip });
 
+      // Discard if this ping was stopped while in flight
+      if ((pingGenRef.current[host.id] ?? 0) !== gen) return;
+
       let vpnStatus: VpnStatus | null = null;
       if (!result.success) {
         try {
           vpnStatus = await invoke<VpnStatus>("detect_vpn");
         } catch { /* ignore */ }
+      }
+
+      // Check again after the VPN detect await
+      if ((pingGenRef.current[host.id] ?? 0) !== gen) return;
+
+      // Start the 30 s auto-ping interval for this host the first time it is
+      // manually pinged — but only if it has alert settings configured.
+      // This ensures nothing pings on startup without user action.
+      const needsAuto =
+        host.alert_on_down || host.alert_on_recovery || host.alert_latency_ms != null;
+      if (needsAuto && !autoPingRefs.current[host.id]) {
+        autoPingRefs.current[host.id] = setInterval(() => {
+          const latest = hostsRef.current.find((h) => h.id === host.id);
+          if (latest) doPing(latest);
+        }, 30_000);
       }
 
       setSessions((prev) => {
@@ -226,6 +251,7 @@ export function usePing(hosts: HostConfig[] = []) {
         };
       });
     } catch (err) {
+      if ((pingGenRef.current[host.id] ?? 0) !== gen) return;
       setSessions((prev) => {
         const s = prev[host.id] ?? { ...DEFAULT_SESSION };
         return {
@@ -250,46 +276,60 @@ export function usePing(hosts: HostConfig[] = []) {
     await doPing(host);
   }, [doPing]);
 
-  // ── Auto-ping scheduler — 30 s interval per host with alert_on_down set ─────
+  // ── Stop an in-flight ping ───────────────────────────────────────────────────
+  // Increments the abort token for the host so doPing() discards its result
+  // once it resolves from the OS. Resets isRunning immediately in the UI.
+
+  const stopPing = useCallback((hostId: string) => {
+    pingGenRef.current[hostId] = (pingGenRef.current[hostId] ?? 0) + 1;
+    clearTimers();
+    setSessions((prev) => {
+      const s = prev[hostId];
+      if (!s) return prev;
+      return {
+        ...prev,
+        [hostId]: {
+          ...s,
+          isRunning: false,
+          logs: [
+            ...s.logs.slice(-199),
+            { time: now(), level: "WARN", message: "Ping cancelled by user." },
+          ],
+        },
+      };
+    });
+  }, []);
+
+  // ── Auto-ping interval lifecycle ─────────────────────────────────────────────
+  // Intervals are started inside doPing (on the user's first manual ping) so
+  // nothing fires automatically on app startup. This effect only handles
+  // cleanup: stop intervals when a host is deleted or its alerts are removed.
 
   useEffect(() => {
     const refs = autoPingRefs.current;
-
-    // Clear any intervals for hosts that no longer exist or have alerts disabled
-    const hostIds = new Set(hosts.map((h) => h.id));
+    const hostMap = new Map(hosts.map((h) => [h.id, h]));
     Object.keys(refs).forEach((id) => {
-      if (!hostIds.has(id)) {
+      const h = hostMap.get(id);
+      const stillNeeds = h && (h.alert_on_down || h.alert_on_recovery || h.alert_latency_ms != null);
+      if (!stillNeeds) {
         clearInterval(refs[id]);
         delete refs[id];
       }
     });
-
-    // Start intervals for hosts that need alerting and don't have one yet
-    hosts.forEach((host) => {
-      const needsAuto =
-        host.alert_on_down || host.alert_on_recovery || host.alert_latency_ms != null;
-      if (needsAuto && !refs[host.id]) {
-        refs[host.id] = setInterval(() => {
-          // Read from ref to get the latest host config, not the snapshot
-          // captured at interval creation time (fixes stale closure — task #7)
-          const latest = hostsRef.current.find((h) => h.id === host.id);
-          if (latest) doPing(latest);
-        }, 30_000);
-      } else if (!needsAuto && refs[host.id]) {
-        clearInterval(refs[host.id]);
-        delete refs[host.id];
-      }
-    });
-
     return () => {
-      Object.values(refs).forEach(clearInterval);
+      Object.values(autoPingRefs.current).forEach(clearInterval);
       autoPingRefs.current = {};
     };
-  }, [hosts, doPing]);
+  }, [hosts]);
 
   // ── Clear a host session ─────────────────────────────────────────────────────
 
   const clearSession = useCallback((id: string) => {
+    // Also stop the auto-ping interval for this host
+    if (autoPingRefs.current[id]) {
+      clearInterval(autoPingRefs.current[id]);
+      delete autoPingRefs.current[id];
+    }
     setSessions((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -297,5 +337,5 @@ export function usePing(hosts: HostConfig[] = []) {
     });
   }, []);
 
-  return { getSession, ping, clearSession };
+  return { getSession, ping, stopPing, clearSession };
 }

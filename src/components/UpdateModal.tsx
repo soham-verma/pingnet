@@ -39,8 +39,15 @@ export default function UpdateModal({ update, onClose }: Props) {
       >
         {/* Header */}
         <div className="px-6 pt-7 pb-5 text-center border-b border-[var(--border)]">
-          <p className="text-[10px] tracking-[0.2em] text-[var(--text3)] uppercase mb-1">Software Update</p>
-          <p className="text-[11px] text-[var(--text5)] font-mono">Version {cur} (Stable)</p>
+          <p className="text-[10px] tracking-[0.2em] text-[var(--text3)] uppercase mb-2">Software Update</p>
+          {/* Version comparison — shows exactly what is being compared */}
+          <div className="flex items-center justify-center gap-2 font-mono text-[11px]">
+            <span className="text-[var(--text4)]">{cur || "—"}</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-40">
+              <path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span style={{ color: BUMP_COLOR[bump] }}>{ver || "—"}</span>
+          </div>
         </div>
 
         {/* Icon + headline */}

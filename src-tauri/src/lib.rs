@@ -157,6 +157,157 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
     file.write_all(content.as_bytes()).map_err(|e| e.to_string())
 }
 
+/// Local network info used to render the multi-hop Network Route visualiser.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct LocalNetworkInfo {
+    local_ip:    Option<String>,
+    iface_name:  Option<String>,
+    gateway:     Option<String>,
+    dns_servers: Vec<String>,
+    /// Best-guess: true when the local IP is in a private/RFC-1918 range (implies DHCP on home/office nets)
+    dhcp:        bool,
+}
+
+#[tauri::command]
+fn get_local_network_info() -> LocalNetworkInfo {
+    let mut info = LocalNetworkInfo {
+        local_ip: None, iface_name: None, gateway: None,
+        dns_servers: vec![], dhcp: false,
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        // Default gateway + interface
+        if let Ok(out) = std::process::Command::new("route").args(["get","default"]).output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(v) = line.strip_prefix("gateway: ") { info.gateway  = Some(v.trim().to_string()); }
+                if let Some(v) = line.strip_prefix("interface: ") { info.iface_name = Some(v.trim().to_string()); }
+            }
+        }
+        // Local IP for that interface
+        if let Some(ref iface) = info.iface_name.clone() {
+            if let Ok(out) = std::process::Command::new("ipconfig").args(["getifaddr", iface]).output() {
+                let ip = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !ip.is_empty() { info.local_ip = Some(ip); }
+            }
+        }
+        // DNS servers
+        if let Ok(out) = std::process::Command::new("scutil").args(["--dns"]).output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.strip_prefix("nameserver[") {
+                    if let Some(pos) = rest.find("] : ") {
+                        let server = rest[pos+4..].trim().to_string();
+                        if !info.dns_servers.contains(&server) { info.dns_servers.push(server); }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Default route: "default via <gw> dev <iface> ... src <ip>"
+        if let Ok(out) = std::process::Command::new("ip").args(["route","show","default"]).output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                if !line.starts_with("default via ") { continue; }
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 3 { info.gateway = Some(parts[2].to_string()); }
+                if let Some(i) = parts.iter().position(|&p| p == "dev") {
+                    if i+1 < parts.len() { info.iface_name = Some(parts[i+1].to_string()); }
+                }
+                if let Some(i) = parts.iter().position(|&p| p == "src") {
+                    if i+1 < parts.len() { info.local_ip = Some(parts[i+1].to_string()); }
+                }
+                break;
+            }
+        }
+        // Local IP from interface if "src" wasn't in the route line
+        if info.local_ip.is_none() {
+            if let Some(ref iface) = info.iface_name.clone() {
+                if let Ok(out) = std::process::Command::new("ip").args(["addr","show", iface.as_str()]).output() {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    for line in text.lines() {
+                        let line = line.trim();
+                        if line.starts_with("inet ") && !line.starts_with("inet6") {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                info.local_ip = Some(parts[1].split('/').next().unwrap_or("").to_string());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // DNS from /etc/resolv.conf
+        if let Ok(content) = std::fs::read_to_string("/etc/resolv.conf") {
+            for line in content.lines() {
+                if let Some(ns) = line.trim().strip_prefix("nameserver ") {
+                    let s = ns.trim().to_string();
+                    if !info.dns_servers.contains(&s) { info.dns_servers.push(s); }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        #[cfg(target_os = "windows")]
+        use std::os::windows::process::CommandExt;
+        let make_cmd = |prog: &str, args: &[&str]| {
+            let mut c = std::process::Command::new(prog);
+            c.args(args);
+            #[cfg(target_os = "windows")]
+            c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            c
+        };
+        if let Ok(out) = make_cmd("ipconfig", &["/all"]).output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let mut capture = false;
+            for line in text.lines() {
+                let lower = line.to_lowercase();
+                // Start capture on the first adapter section that has an IP
+                if lower.contains("ethernet adapter") || lower.contains("wireless lan adapter") || lower.contains("wi-fi") {
+                    capture = true;
+                }
+                if !capture { continue; }
+                if lower.contains("ipv4 address") && info.local_ip.is_none() {
+                    if let Some(pos) = line.rfind(':') {
+                        let ip = line[pos+1..].trim().trim_end_matches("(Preferred)").trim().to_string();
+                        if !ip.is_empty() { info.local_ip = Some(ip); }
+                    }
+                }
+                if lower.contains("default gateway") && info.gateway.is_none() {
+                    if let Some(pos) = line.rfind(':') {
+                        let gw = line[pos+1..].trim().to_string();
+                        if !gw.is_empty() { info.gateway = Some(gw); }
+                    }
+                }
+                if lower.contains("dns servers") {
+                    if let Some(pos) = line.rfind(':') {
+                        let dns = line[pos+1..].trim().to_string();
+                        if !dns.is_empty() && !info.dns_servers.contains(&dns) {
+                            info.dns_servers.push(dns);
+                        }
+                    }
+                }
+                if info.local_ip.is_some() && info.gateway.is_some() && !info.dns_servers.is_empty() {
+                    break;
+                }
+            }
+        }
+    }
+
+    info.dns_servers.truncate(2); // show at most 2
+    if let Some(ref ip) = info.local_ip { info.dhcp = ping::is_private_ip(ip); }
+    info
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -173,6 +324,7 @@ pub fn run() {
             ssh::ssh_disconnect,
             ssh::ssh_send,
             ssh::ssh_resize,
+            ssh::ssh_exec,
             ssh::sftp_list,
             ssh::sftp_download,
             ssh::sftp_mkdir,
@@ -193,6 +345,7 @@ pub fn run() {
             keys::generate_ssh_key,
             keys::delete_ssh_key,
             keys::regenerate_ssh_key,
+            get_local_network_info,
             open_url,
             write_text_file,
             audit::append_audit_log,
@@ -207,6 +360,21 @@ pub fn run() {
             docker::docker_compose_action,
             docker::docker_prune,
             docker::docker_system_df,
+            docker::docker_list_volumes,
+            docker::docker_volume_inspect,
+            docker::docker_volume_create,
+            docker::docker_volume_remove,
+            docker::docker_list_networks,
+            docker::docker_network_inspect,
+            docker::docker_network_create,
+            docker::docker_network_remove,
+            docker::docker_network_connect,
+            docker::docker_network_disconnect,
+            docker::docker_list_images,
+            docker::docker_image_inspect,
+            docker::docker_image_pull,
+            docker::docker_image_remove,
+            docker::docker_container_rebuild,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");
