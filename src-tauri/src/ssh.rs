@@ -58,8 +58,9 @@ enum ShellMsg {
 
 pub struct SshConnection {
     shell_tx: mpsc::SyncSender<ShellMsg>,
-    /// Separate session kept for SFTP — accessed only inside spawn_blocking
-    sftp_session: Mutex<Session>,
+    /// Separate session kept for SFTP — accessed only inside spawn_blocking.
+    /// pub(crate) so docker.rs and other modules can lock it for SSH exec calls.
+    pub(crate) sftp_session: Mutex<Session>,
     stop_flag: Arc<AtomicBool>,
 }
 
@@ -509,7 +510,7 @@ fn format_permissions(mode: u32) -> String {
     types.iter().map(|(c, m)| if mode & m != 0 { c } else { "-" }).collect()
 }
 
-fn get_conn(
+pub(crate) fn get_conn(
     sessions: &HashMap<String, Arc<SshConnection>>,
     session_id: &str,
 ) -> Result<Arc<SshConnection>, String> {

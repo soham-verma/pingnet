@@ -26,6 +26,9 @@ fn try_exec(session: &Session, cmd: &str) -> String {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Capabilities {
+    // OS detection
+    pub os_type: String,  // "linux" | "macos" | "windows" | "unknown"
+
     // Architecture / platform
     pub arch: String,
     pub kernel: String,
@@ -33,7 +36,7 @@ pub struct Capabilities {
     pub is_jetson: bool,
     pub is_rpi: bool,
 
-    // /proc availability
+    // /proc availability (Linux)
     pub proc_stat: bool,
     pub proc_meminfo: bool,
     pub proc_net_dev: bool,
@@ -46,6 +49,7 @@ pub struct Capabilities {
     pub has_top: bool,
     pub has_ps: bool,
     pub has_df: bool,
+    pub has_netstat: bool,    // macOS netstat -ib
 
     // GPU tools
     pub has_nvidia_smi: bool,
@@ -59,9 +63,28 @@ pub struct Capabilities {
     pub has_sensors: bool,
 }
 
-/// Run once on first metrics fetch. One SSH exec, parses key=value output.
+/// Run once on first metrics fetch — detects OS then probes capabilities.
 pub fn probe(session: &Session) -> Capabilities {
-    // One large script — all output is key=value lines
+    let uname = try_exec(session, "uname -s 2>/dev/null").trim().to_string();
+    match uname.as_str() {
+        "Linux"  => probe_linux(session),
+        "Darwin" => probe_macos(session),
+        _        => {
+            // Try Windows PowerShell
+            let test = try_exec(
+                session,
+                "powershell -NoProfile -NonInteractive -Command \"Write-Output 'windows'\" 2>/dev/null",
+            );
+            if test.trim() == "windows" {
+                probe_windows(session)
+            } else {
+                Capabilities { os_type: "unknown".to_string(), ..Default::default() }
+            }
+        }
+    }
+}
+
+fn probe_linux(session: &Session) -> Capabilities {
     let script = r#"
 echo "arch=$(uname -m)"
 echo "kernel=$(uname -r)"
@@ -90,10 +113,8 @@ command -v sensors  >/dev/null 2>&1 && echo "has_sensors=1"    || echo "has_sens
 TZ=$(ls /sys/class/thermal/thermal_zone*/temp 2>/dev/null | wc -l)
 echo "thermal_zone_count=$TZ"
 "#;
-
     let raw = try_exec(session, script);
-    let mut cap = Capabilities::default();
-
+    let mut cap = Capabilities { os_type: "linux".to_string(), ..Default::default() };
     for line in raw.lines() {
         if let Some((k, v)) = line.split_once('=') {
             match k.trim() {
@@ -123,12 +144,75 @@ echo "thermal_zone_count=$TZ"
             }
         }
     }
-
-    // Derive platform flags
     let model_lower = cap.model.to_lowercase();
     cap.is_jetson = model_lower.contains("jetson") || cap.has_tegrastats || cap.has_jetson_gpu_load;
     cap.is_rpi    = model_lower.contains("raspberry pi") || cap.has_vcgencmd;
+    cap
+}
 
+fn probe_macos(session: &Session) -> Capabilities {
+    let script = r#"
+echo "arch=$(uname -m)"
+echo "kernel=$(uname -r)"
+echo "model=$(sysctl -n hw.model 2>/dev/null)"
+command -v df      >/dev/null 2>&1 && echo "has_df=1"      || echo "has_df=0"
+command -v ps      >/dev/null 2>&1 && echo "has_ps=1"      || echo "has_ps=0"
+command -v top     >/dev/null 2>&1 && echo "has_top=1"     || echo "has_top=0"
+command -v netstat >/dev/null 2>&1 && echo "has_netstat=1" || echo "has_netstat=0"
+"#;
+    let raw = try_exec(session, script);
+    let mut cap = Capabilities {
+        os_type: "macos".to_string(),
+        free_format: "none".to_string(),
+        ..Default::default()
+    };
+    for line in raw.lines() {
+        if let Some((k, v)) = line.split_once('=') {
+            match k.trim() {
+                "arch"        => cap.arch        = v.trim().to_string(),
+                "kernel"      => cap.kernel      = v.trim().to_string(),
+                "model"       => cap.model       = v.trim().to_string(),
+                "has_df"      => cap.has_df      = v.trim() == "1",
+                "has_ps"      => cap.has_ps      = v.trim() == "1",
+                "has_top"     => cap.has_top     = v.trim() == "1",
+                "has_netstat" => cap.has_netstat = v.trim() == "1",
+                _ => {}
+            }
+        }
+    }
+    cap
+}
+
+fn probe_windows(session: &Session) -> Capabilities {
+    // PowerShell one-liner — works whether the SSH shell is cmd.exe or PS.
+    let script = concat!(
+        "powershell -NoProfile -NonInteractive -Command \"",
+        "$os = Get-CimInstance Win32_OperatingSystem;",
+        "$cs = Get-CimInstance Win32_ComputerSystem;",
+        "Write-Output ('arch=' + $env:PROCESSOR_ARCHITECTURE);",
+        "Write-Output ('kernel=' + $os.Version);",
+        "Write-Output ('model=' + $cs.Model)",
+        "\""
+    );
+    let raw = try_exec(session, script);
+    let mut cap = Capabilities {
+        os_type:     "windows".to_string(),
+        has_df:      true,
+        has_ps:      true,
+        has_netstat: true,
+        free_format: "none".to_string(),
+        ..Default::default()
+    };
+    for line in raw.lines() {
+        if let Some((k, v)) = line.split_once('=') {
+            match k.trim() {
+                "arch"   => cap.arch   = v.trim().to_string(),
+                "kernel" => cap.kernel = v.trim().to_string(),
+                "model"  => cap.model  = v.trim().to_string(),
+                _ => {}
+            }
+        }
+    }
     cap
 }
 
@@ -242,6 +326,7 @@ pub struct MetricsSnapshot {
     pub arch: String,
     pub kernel: String,
     pub model: String,
+    pub os_type: String,      // "linux" | "macos" | "windows" | "unknown"
     pub is_first_poll: bool,  // true on first call — CPU/net/disk deltas will be 0
 }
 
@@ -512,11 +597,365 @@ fn parse_processes(raw: &str) -> Vec<ProcessEntry> {
     }).collect()
 }
 
+// ── macOS parsers ─────────────────────────────────────────────────────────────
+
+/// Parse "CPU usage: 15.38% user, 8.46% sys, 76.15% idle" from `top -l 2 -n 0 -s 1`
+fn parse_top_cpu_macos(raw: &str) -> Option<f64> {
+    for line in raw.lines() {
+        if line.contains("CPU usage:") || line.contains("CPU usage") {
+            // Find the idle percentage — it's the last percentage before "idle"
+            if let Some(idle_pos) = line.find("% idle") {
+                // Walk back to the previous space or comma to find the number
+                let prefix = &line[..idle_pos];
+                let num_str = prefix.rsplit(|c: char| !c.is_ascii_digit() && c != '.').next()?;
+                let idle: f64 = num_str.trim().parse().ok()?;
+                return Some(((100.0 - idle) * 10.0).round() / 10.0);
+            }
+        }
+    }
+    None
+}
+
+/// Parse vm_stat output + hw.memsize/hw.pagesize sysctl values → (total_mb, used_mb)
+fn parse_vm_stat(vmstat: &str, memsize_raw: &str, pagesize_raw: &str) -> (Option<u64>, Option<u64>) {
+    let total_bytes: u64 = memsize_raw.trim().parse().unwrap_or(0);
+    let page_size:   u64 = pagesize_raw.trim().parse().unwrap_or(4096);
+    if total_bytes == 0 { return (None, None); }
+    let total_mb = total_bytes / 1_048_576;
+
+    let mut active:     u64 = 0;
+    let mut wired:      u64 = 0;
+    let mut compressor: u64 = 0;
+
+    for line in vmstat.lines() {
+        // Lines look like: "Pages active:                            234567."
+        let line = line.trim().trim_end_matches('.');
+        let val: u64 = line.split_whitespace().last()
+            .and_then(|s| s.trim_end_matches('.').parse().ok())
+            .unwrap_or(0);
+        if line.starts_with("Pages active:") {
+            active = val;
+        } else if line.starts_with("Pages wired down:") {
+            wired = val;
+        } else if line.starts_with("Pages occupied by compressor:") {
+            compressor = val;
+        }
+    }
+
+    let used_pages = active + wired + compressor;
+    let used_mb = (used_pages * page_size / 1_048_576).min(total_mb);
+    (Some(total_mb), Some(used_mb))
+}
+
+/// Parse `sysctl -n vm.loadavg` output: "{ 1.23 2.34 3.45 }"
+fn parse_sysctl_loadavg(raw: &str) -> (Option<f64>, Option<f64>, Option<f64>) {
+    let nums: Vec<f64> = raw
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '.' || *c == ' ')
+        .collect::<String>()
+        .split_whitespace()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    (nums.first().copied(), nums.get(1).copied(), nums.get(2).copied())
+}
+
+/// Parse `netstat -ib` output into interface → (rx_bytes, tx_bytes)
+fn parse_netstat_ib(raw: &str) -> HashMap<String, (u64, u64)> {
+    let mut map = HashMap::new();
+    for line in raw.lines() {
+        if !line.contains("<Link#") { continue; }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let name = match parts.first() { Some(n) => *n, None => continue };
+        if name.starts_with("lo") { continue; }
+        // Detect if field[3] is a MAC address (contains ':')
+        let has_mac = parts.get(3).map(|s| s.contains(':')).unwrap_or(false);
+        // Columns: Name Mtu <Link#N> [MAC] Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll [Drop]
+        let (ibytes_idx, obytes_idx) = if has_mac { (6, 9) } else { (5, 8) };
+        let ibytes: u64 = parts.get(ibytes_idx).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let obytes: u64 = parts.get(obytes_idx).and_then(|s| s.parse().ok()).unwrap_or(0);
+        map.insert(name.to_string(), (ibytes, obytes));
+    }
+    map
+}
+
+// ── Windows parsers ───────────────────────────────────────────────────────────
+
+/// Parse pipe-delimited "proc|PID|USER|CPU_S|MEM_MB|NAME" lines from PowerShell
+fn parse_windows_processes(raw: &str, total_mem_mb: u64) -> Vec<ProcessEntry> {
+    raw.lines()
+        .filter(|l| l.starts_with("proc|"))
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.splitn(6, '|').collect();
+            if parts.len() < 6 { return None; }
+            let pid: u32   = parts[1].parse().ok()?;
+            let user       = parts[2].to_string();
+            let cpu_pct: f64 = parts[3].parse().ok()?;   // CPU time in seconds
+            let mem_mb: f64  = parts[4].parse().ok()?;
+            let command: String = parts[5].chars().take(60).collect();
+            let mem_pct = if total_mem_mb > 0 {
+                (mem_mb / total_mem_mb as f64 * 100.0 * 10.0).round() / 10.0
+            } else { 0.0 };
+            Some(ProcessEntry { pid, user, cpu_pct, mem_pct, command })
+        })
+        .collect()
+}
+
+/// Parse pipe-delimited "net|NAME|RX_BYTES|TX_BYTES" lines from PowerShell
+fn parse_windows_net(raw: &str) -> HashMap<String, (u64, u64)> {
+    let mut map = HashMap::new();
+    for line in raw.lines().filter(|l| l.starts_with("net|")) {
+        let parts: Vec<&str> = line.splitn(4, '|').collect();
+        if parts.len() < 4 { continue; }
+        let rx: u64 = parts[2].trim().parse().unwrap_or(0);
+        let tx: u64 = parts[3].trim().parse().unwrap_or(0);
+        map.insert(parts[1].to_string(), (rx, tx));
+    }
+    map
+}
+
+// ── Shared helper ─────────────────────────────────────────────────────────────
+
+/// Compute per-interface kbps deltas from cumulative byte counters.
+fn compute_net_deltas(
+    cur: &HashMap<String, (u64, u64)>,
+    prev: &PrevSamples,
+    ts: u64,
+    is_first_poll: bool,
+) -> (Vec<NetIface>, HashMap<String, u64>, HashMap<String, u64>) {
+    let dt_s = if prev.net_ts > 0 { (ts - prev.net_ts) as f64 / 1000.0 } else { 1.0 };
+    let ifaces: Vec<NetIface> = cur.iter().map(|(name, &(rx, tx))| {
+        let prev_rx = prev.net_rx.get(name).copied().unwrap_or(rx);
+        let prev_tx = prev.net_tx.get(name).copied().unwrap_or(tx);
+        let rx_kbps = if !is_first_poll {
+            rx.saturating_sub(prev_rx) as f64 / 1024.0 / dt_s
+        } else { 0.0 };
+        let tx_kbps = if !is_first_poll {
+            tx.saturating_sub(prev_tx) as f64 / 1024.0 / dt_s
+        } else { 0.0 };
+        NetIface { name: name.clone(), rx_kbps, tx_kbps }
+    }).collect();
+    let new_rx: HashMap<String, u64> = cur.iter().map(|(k, &(rx, _))| (k.clone(), rx)).collect();
+    let new_tx: HashMap<String, u64> = cur.iter().map(|(k, &(_, tx))| (k.clone(), tx)).collect();
+    (ifaces, new_rx, new_tx)
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+// ── Platform-specific collection ──────────────────────────────────────────────
+
+fn collect_macos(
+    session:    &Session,
+    session_id: &str,
+    state:      &Arc<MetricsState>,
+    caps:       &Capabilities,
+) -> Result<MetricsSnapshot, String> {
+    let ts = now_ms();
+    let (prev, is_first_poll) = {
+        let map = state.samples.lock().unwrap();
+        let p = map.get(session_id).cloned().unwrap_or_default();
+        let first = p.cpu_total == 0 && p.net_ts == 0;
+        (p, first)
+    };
+
+    // Gather raw data
+    let top_raw = if caps.has_top {
+        // -l 2 takes two samples 1s apart so the second has accurate deltas
+        try_exec(session, "top -l 2 -n 0 -s 1 2>/dev/null | grep 'CPU usage'")
+    } else { String::new() };
+
+    let vmstat_raw   = try_exec(session, "vm_stat 2>/dev/null");
+    let memsize_raw  = try_exec(session, "sysctl -n hw.memsize 2>/dev/null");
+    let pagesize_raw = try_exec(session, "sysctl -n hw.pagesize 2>/dev/null");
+    let df_raw       = if caps.has_df { try_exec(session, "df -k / 2>/dev/null") } else { String::new() };
+    let loadavg_raw  = try_exec(session, "sysctl -n vm.loadavg 2>/dev/null");
+    // Calculate uptime: current epoch − boot epoch
+    let uptime_raw   = try_exec(session,
+        r#"BOOT=$(sysctl -n kern.boottime 2>/dev/null | awk -F'sec = ' '{print $2}' | awk -F',' '{print $1}'); echo $(($(date +%s) - BOOT))"#);
+    let netstat_raw  = if caps.has_netstat { try_exec(session, "netstat -ib 2>/dev/null") } else { String::new() };
+    let ps_raw       = if caps.has_ps {
+        try_exec(session, "ps -A -o pid,user,%cpu,%mem,comm -r 2>/dev/null | head -16 || ps aux -r 2>/dev/null | head -16")
+    } else { String::new() };
+
+    // Parse
+    let cpu_percent = parse_top_cpu_macos(&top_raw);
+    let (mem_total_mb, mem_used_mb) = parse_vm_stat(&vmstat_raw, &memsize_raw, &pagesize_raw);
+    let (disk_used_pct, disk_used_gb, disk_total_gb, disk_unavail) = if !df_raw.is_empty() {
+        match parse_df(&df_raw) {
+            Some((p, u, t)) => (Some(p), Some(u), Some(t), None),
+            None            => (None, None, None, Some("df parse failed".to_string())),
+        }
+    } else { (None, None, None, Some("df not available".to_string())) };
+
+    let (load_avg_1, load_avg_5, load_avg_15) = parse_sysctl_loadavg(&loadavg_raw);
+    let uptime_seconds: Option<u64>           = uptime_raw.trim().parse().ok();
+
+    // macOS ps -A -o pid,user,%cpu,%mem,comm has no header lines by default on some versions;
+    // fall back to the ps aux parser which skips one header line.
+    let processes = if !ps_raw.is_empty() { parse_processes(&ps_raw) } else { vec![] };
+
+    // Network deltas
+    let net_map = parse_netstat_ib(&netstat_raw);
+    let (net_ifaces, new_rx, new_tx) = compute_net_deltas(&net_map, &prev, ts, is_first_poll);
+
+    // Store samples
+    {
+        let mut map = state.samples.lock().unwrap();
+        map.insert(session_id.to_string(), PrevSamples {
+            net_rx: new_rx, net_tx: new_tx, net_ts: ts,
+            // cpu_total/idle stays 0 — we don't do delta CPU on macOS
+            ..Default::default()
+        });
+    }
+
+    Ok(MetricsSnapshot {
+        cpu_percent,
+        cpu_unavailable_reason: if cpu_percent.is_none() {
+            Some("top unavailable — install Xcode CLT".to_string()) } else { None },
+        mem_used_mb,
+        mem_total_mb,
+        mem_unavailable_reason: if mem_total_mb.is_none() {
+            Some("vm_stat / sysctl hw.memsize unavailable".to_string()) } else { None },
+        disk_used_pct,
+        disk_used_gb,
+        disk_total_gb,
+        disk_unavailable_reason: disk_unavail,
+        load_avg_1, load_avg_5, load_avg_15,
+        uptime_seconds,
+        cores:   vec![],   // per-core stats require sudo on macOS
+        net_ifaces,
+        disk_io: vec![],   // /proc/diskstats not available on macOS
+        thermal: vec![],   // thermal requires sudo powermetrics
+        gpus:    vec![],   // GPU stats require admin tools on macOS
+        processes,
+        arch:    caps.arch.clone(),
+        kernel:  caps.kernel.clone(),
+        model:   caps.model.clone(),
+        os_type: "macos".to_string(),
+        is_first_poll,
+    })
+}
+
+fn collect_windows(
+    session:    &Session,
+    session_id: &str,
+    state:      &Arc<MetricsState>,
+    caps:       &Capabilities,
+) -> Result<MetricsSnapshot, String> {
+    let ts = now_ms();
+    let (prev, is_first_poll) = {
+        let map = state.samples.lock().unwrap();
+        let p = map.get(session_id).cloned().unwrap_or_default();
+        let first = p.net_ts == 0;
+        (p, first)
+    };
+
+    // Single PowerShell script — outputs key=value lines plus tagged data rows.
+    // Use pipe (|) as field delimiter inside rows so spaces in names are safe.
+    let script = concat!(
+        "powershell -NoProfile -NonInteractive -Command \"",
+        "$cpu=(Get-CimInstance Win32_Processor|Measure-Object LoadPercentage -Average).Average;",
+        "$os=Get-CimInstance Win32_OperatingSystem;",
+        "$tmkb=[long]$os.TotalVisibleMemorySize;",
+        "$fmkb=[long]$os.FreePhysicalMemory;",
+        "$uptime=[math]::Round(((Get-Date)-$os.LastBootUpTime).TotalSeconds);",
+        "$d=Get-PSDrive C -EA 0;",
+        "Write-Output ('cpu_pct='+$cpu);",
+        "Write-Output ('mem_total_kb='+$tmkb);",
+        "Write-Output ('mem_used_kb='+($tmkb-$fmkb));",
+        "Write-Output ('uptime_s='+$uptime);",
+        "if($d){Write-Output ('disk_used_gb='+[math]::Round($d.Used/1GB,2));",
+        "Write-Output ('disk_total_gb='+[math]::Round(($d.Used+$d.Free)/1GB,2))};",
+        "foreach($a in (Get-NetAdapterStatistics -EA 0)){",
+        "Write-Output ('net|'+$a.Name+'|'+$a.ReceivedBytes+'|'+$a.SentBytes)};",
+        "foreach($p in (Get-Process|Sort-Object CPU -Descending|Select-Object -First 15)){",
+        "$cs=if($p.CPU){[math]::Round($p.CPU,1)}else{0};",
+        "$mb=[math]::Round($p.WorkingSet/1MB,1);",
+        "Write-Output ('proc|'+$p.Id+'|SYSTEM|'+$cs+'|'+$mb+'|'+$p.ProcessName)}",
+        "\""
+    );
+
+    let raw = try_exec(session, script);
+
+    // Parse key=value lines
+    let mut cpu_pct:        Option<f64> = None;
+    let mut mem_total_kb:   u64 = 0;
+    let mut mem_used_kb:    u64 = 0;
+    let mut disk_used_gb:   Option<f64> = None;
+    let mut disk_total_gb:  Option<f64> = None;
+    let mut uptime_seconds: Option<u64> = None;
+
+    for line in raw.lines() {
+        if line.starts_with("proc|") || line.starts_with("net|") { continue; }
+        if let Some((k, v)) = line.split_once('=') {
+            match k.trim() {
+                "cpu_pct"       => cpu_pct        = v.trim().parse().ok(),
+                "mem_total_kb"  => mem_total_kb   = v.trim().parse().unwrap_or(0),
+                "mem_used_kb"   => mem_used_kb    = v.trim().parse().unwrap_or(0),
+                "disk_used_gb"  => disk_used_gb   = v.trim().parse().ok(),
+                "disk_total_gb" => disk_total_gb  = v.trim().parse().ok(),
+                "uptime_s"      => uptime_seconds = v.trim().parse().ok(),
+                _ => {}
+            }
+        }
+    }
+
+    let mem_total_mb = if mem_total_kb > 0 { Some(mem_total_kb / 1024) } else { None };
+    let mem_used_mb  = if mem_used_kb  > 0 { Some(mem_used_kb  / 1024) } else { None };
+
+    let disk_used_pct: Option<u64> = match (disk_used_gb, disk_total_gb) {
+        (Some(u), Some(t)) if t > 0.0 => Some((u / t * 100.0).round() as u64),
+        _ => None,
+    };
+
+    let net_map  = parse_windows_net(&raw);
+    let (net_ifaces, new_rx, new_tx) = compute_net_deltas(&net_map, &prev, ts, is_first_poll);
+
+    let total_mb_for_pct = mem_total_mb.unwrap_or(0);
+    let processes = parse_windows_processes(&raw, total_mb_for_pct);
+
+    // Store samples
+    {
+        let mut map = state.samples.lock().unwrap();
+        map.insert(session_id.to_string(), PrevSamples {
+            net_rx: new_rx, net_tx: new_tx, net_ts: ts,
+            ..Default::default()
+        });
+    }
+
+    Ok(MetricsSnapshot {
+        cpu_percent: cpu_pct,
+        cpu_unavailable_reason: if cpu_pct.is_none() {
+            Some("Win32_Processor query failed".to_string()) } else { None },
+        mem_used_mb,
+        mem_total_mb,
+        mem_unavailable_reason: if mem_total_mb.is_none() {
+            Some("Win32_OperatingSystem query failed".to_string()) } else { None },
+        disk_used_pct,
+        disk_used_gb,
+        disk_total_gb,
+        disk_unavailable_reason: if disk_used_pct.is_none() {
+            Some("Get-PSDrive C failed".to_string()) } else { None },
+        load_avg_1:     None,   // no load average on Windows
+        load_avg_5:     None,
+        load_avg_15:    None,
+        uptime_seconds,
+        cores:   vec![],   // per-core requires separate WMI query
+        net_ifaces,
+        disk_io: vec![],   // disk I/O rates require WMI delta polling
+        thermal: vec![],   // thermal requires WMI or OpenHardwareMonitor
+        gpus:    vec![],   // GPU requires nvidia-smi or WMI
+        processes,
+        arch:    caps.arch.clone(),
+        kernel:  caps.kernel.clone(),
+        model:   caps.model.clone(),
+        os_type: "windows".to_string(),
+        is_first_poll,
+    })
 }
 
 // ── Main collection ───────────────────────────────────────────────────────────
@@ -541,6 +980,13 @@ pub fn collect(
         }
         caps_map.get(session_id).unwrap().clone()
     };
+
+    // ── Dispatch by OS ────────────────────────────────────────────────────────
+    match caps.os_type.as_str() {
+        "macos"   => return collect_macos(session, session_id, state, &caps),
+        "windows" => return collect_windows(session, session_id, state, &caps),
+        _         => {} // falls through to existing Linux path
+    }
 
     // ── Gather raw data in one batch (minimise round-trips) ──────────────────
     let stat_raw  = if caps.proc_stat    { try_exec(session, "cat /proc/stat") }    else { String::new() };
@@ -775,9 +1221,10 @@ pub fn collect(
         thermal,
         gpus,
         processes,
-        arch:   caps.arch.clone(),
-        kernel: caps.kernel.clone(),
-        model:  caps.model.clone(),
+        arch:    caps.arch.clone(),
+        kernel:  caps.kernel.clone(),
+        model:   caps.model.clone(),
+        os_type: "linux".to_string(),
         is_first_poll,
     })
 }

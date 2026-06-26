@@ -7,6 +7,64 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.2] — 2026-06-26
+
+### Added
+
+**Cross-platform SSH Metrics**
+- macOS support: CPU% via `top -l 2`, memory via `vm_stat` + `sysctl hw.memsize`, network rates via `netstat -ib`, processes via `ps -A`, load average via `sysctl vm.loadavg`, uptime via `kern.boottime`, disk via `df -k /`
+- Windows support: CPU% via `Win32_Processor`, memory/uptime via `Win32_OperatingSystem`, disk via `Get-PSDrive C`, network bytes via `Get-NetAdapterStatistics`, processes via `Get-Process` — all via a single PowerShell one-liner over SSH
+- OS auto-detected on connect (`uname -s` → Darwin/Linux, PowerShell fallback for Windows); metrics panel now works on any SSH target
+- `os_type` field added to `MetricsSnapshot` so the UI can adapt labels (e.g. CPU column shows "s" for Windows process CPU time, "%" for Linux/macOS)
+
+**Sortable Process Table**
+- Clicking any column header (PID, Name, CPU, MEM) sorts the process list by that field
+- Clicking the active column again reverses direction; a small arrow indicates sort state
+- Defaults to CPU descending on load
+
+**Docker Manager**
+- New **Docker** tab in SSH sessions — lists all containers with state, image, ports, and uptime
+- Start / stop / restart / remove individual containers; view last 200 log lines in a scrollable pane
+- Docker Compose project view — list stacks, bring them up/down/restart, pull latest images
+- `docker system df` disk usage summary; `docker system prune` with confirmation
+- Works over the existing SSH session — no extra connection or daemon port required
+
+---
+
+## [0.4.1] — 2026-06-26
+
+### Security
+
+- **`open_url` scheme allowlist** — only `https://`, `mailto:`, `vscode://`, `cursor://`, `windsurf://`, and JetBrains schemes are permitted; `file://`, `javascript:`, `data:` and all unlisted schemes are blocked
+- **`write_text_file` sensitive-path blocklist** — writes to `~/.ssh/`, `~/.aws/`, `~/.zshrc`, `~/.bashrc`, `~/.gitconfig`, `authorized_keys`, and ~10 other shell/credential files are rejected even within the home directory
+- **Host-key fingerprint hardened** — replaced MD5 `host_key_hash` with raw key bytes (hex-encoded, prefixed with key type) for collision-resistant TOFU verification
+- **CRLF injection fix in SSH tunnel** — `\r`/`\n` are now stripped from all caller-supplied method, path, and header values before being embedded in the raw HTTP request
+- **SSRF: cloud metadata blocked** — `make_http_request` rejects requests to `169.254.169.254`, GCP metadata, Alibaba Cloud, and Oracle Cloud IMDS endpoints
+- **Secret redaction extended** — command history now also redacts `-H "Authorization: Bearer …"`, `x-api-key:`, `x-auth-token:`, bare `authorization:bearer`, and JWT (`eyJ…`) patterns
+- **CSP `frame-src` tightened** — non-HTTPS frames restricted to loopback (`http://localhost:*`, `http://127.0.0.1:*`) only; HTTPS remote Grafana still works
+
+### Fixed
+
+- **BUG-01** — deleting a host now requires confirmation; one stray click no longer permanently destroys the host config
+- **BUG-02** — generating an SSH key with a duplicate name now warns before overwriting the existing keychain entry
+- **BUG-03** — Add/Edit Host modal is now scrollable with `max-height: 85vh`; header and action buttons are always reachable
+- **BUG-04** — Escape now reliably closes the Add/Edit Host modal (switched to `document` listener + `onKeyDown` fallback)
+- **BUG-05** — resizing the window can no longer push the sidebar off the left edge of the screen; position is clamped to monitor bounds on every resize event
+- **BUG-06** — deleting an SSH key now requires confirmation
+- **BUG-07** — IP validation now rejects octets > 255 (e.g. `999.999.999.999`); the over-broad `^[\w.-]+$` hostname fallback is removed
+- **BUG-08** — SSH Connect now shows an inline error on empty username or incomplete TOTP code instead of silently doing nothing
+- **BUG-09** — SSH Connect validates port range (1–65535) before connecting
+- **BUG-10** — the "KEY GENERATED" public-key banner is cleared when the key is deleted
+- **BUG-11** — alert toggles in the host form are now keyboard-accessible (`role="switch"`, `tabIndex`, Space/Enter support)
+
+### Other
+
+- Extract `computeNextAlertState` and `releaseNotes` utilities as pure, testable functions
+- Add 48 Playwright unit tests covering the alert state machine, network utilities, and semver helpers
+- CI: add `Swatinem/rust-cache` to release workflow to prevent transient crates.io failures
+
+---
+
 ## [0.2.0] — 2026-06-24
 
 ### Added

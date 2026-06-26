@@ -164,6 +164,7 @@ export interface MetricsSnapshot {
   arch: string;
   kernel: string;
   model: string;
+  os_type: string;   // "linux" | "macos" | "windows" | "unknown"
   is_first_poll: boolean;
 }
 
@@ -189,6 +190,7 @@ export interface Capabilities {
   has_vcgencmd: boolean;
   has_rocm_smi: boolean;
   has_sensors: boolean;
+  has_netstat: boolean;
   thermal_zone_count: number;
 }
 
@@ -248,4 +250,33 @@ export interface AuditEntry {
   host: string;
   username: string;
   command: string;
+}
+
+// ── Docker ────────────────────────────────────────────────────────────────────
+
+export interface DockerContainer {
+  id: string;
+  names: string;
+  image: string;
+  /** Raw docker state: "running" | "exited" | "paused" | "created" | "restarting" | "dead" | "removing" */
+  state: string;
+  /** Human-readable, e.g. "Up 2 hours", "Exited (0) 3 minutes ago" */
+  status: string;
+  ports: string;
+  created_at: string;
+}
+
+export interface DockerService {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+}
+
+export interface DockerComposeProject {
+  name: string;
+  status: string;
+  config_files: string;
+  services: DockerService[];
 }

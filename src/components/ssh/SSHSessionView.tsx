@@ -9,6 +9,7 @@ import TransferQueue from "./TransferQueue";
 import CommandHistory from "./CommandHistory";
 import MetricsPanel from "./MetricsPanel";
 import ApiClient from "./ApiClient";
+import DockerManager from "./DockerManager";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ interface Props {
   onSaveConfig: (config: SshConfig) => void;
 }
 
-type ViewTab = "terminal" | "files" | "history" | "metrics" | "grafana" | "api";
+type ViewTab = "terminal" | "files" | "history" | "metrics" | "grafana" | "api" | "docker";
 
 // Per-host Grafana configuration (stored in component state, persisted to localStorage)
 export interface GrafanaConfig {
@@ -475,6 +476,15 @@ export default function SSHSessionView({
     return (id: string) => connectedIds.filter(cid => cid !== id);
   }, [broadcastMode, connectedTabs]);
 
+  // ── Send to terminal (used by DockerManager for exec) ────────────────────
+
+  const handleSendToTerminal = useCallback((cmd: string) => {
+    if (!primarySessionId) return;
+    // Send the command string followed by Enter into the active SSH session
+    invoke("ssh_send", { sessionId: primarySessionId, data: cmd + "\n" }).catch(() => {});
+    setViewTab("terminal");
+  }, [primarySessionId]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -511,7 +521,7 @@ export default function SSHSessionView({
 
         {/* View tabs */}
         <div className="flex items-center gap-1 bg-[var(--bg2)] rounded-lg p-1 border border-[var(--border)]">
-          {(["terminal", "files", "history", "metrics", "grafana", "api"] as ViewTab[]).map((t) => (
+          {(["terminal", "files", "history", "metrics", "grafana", "api", "docker"] as ViewTab[]).map((t) => (
             <button key={t}
               onClick={() => setViewTab(t)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
@@ -880,6 +890,18 @@ export default function SSHSessionView({
             />
           </div>
         )}
+
+        {/* Docker panel — always mounted so state/refresh timers survive tab switches */}
+        <div
+          className="absolute inset-0 flex flex-col overflow-hidden"
+          style={{ display: viewTab === "docker" ? "flex" : "none" }}
+        >
+          <DockerManager
+            sessionId={primarySessionId}
+            isActive={viewTab === "docker"}
+            onSendToTerminal={handleSendToTerminal}
+          />
+        </div>
       </div>
 
       {showModal && (

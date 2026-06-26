@@ -811,20 +811,76 @@ function TempSection({ zones }: { zones: ThermalZone[] }) {
 
 // ── Section: Processes ────────────────────────────────────────────────────────
 
-function ProcessesSection({ procs }: { procs: ProcessEntry[] }) {
-  if (!procs.length) return <NA msg="ps not available on this system" />;
+type ProcSort = "cpu" | "mem" | "pid" | "name";
+
+function SortArrow({ dir }: { dir: "asc" | "desc" }) {
+  return (
+    <svg width="6" height="5" viewBox="0 0 6 5" fill="currentColor" style={{ flexShrink: 0 }}>
+      {dir === "desc"
+        ? <path d="M3 5L0 0h6L3 5z" />
+        : <path d="M3 0l3 5H0L3 0z" />
+      }
+    </svg>
+  );
+}
+
+function ProcessesSection({ procs, osType }: { procs: ProcessEntry[]; osType: string }) {
+  const [sortBy, setSortBy]   = useState<ProcSort>("cpu");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function handleSort(col: ProcSort) {
+    if (sortBy === col) {
+      setSortDir(d => d === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(col);
+      // Numeric cols default descending; name/pid default ascending
+      setSortDir(col === "name" ? "asc" : "desc");
+    }
+  }
+
+  if (!procs.length) return <NA msg="Process list unavailable on this system" />;
 
   const totalCpu = procs.reduce((a, p) => a + p.cpu_pct, 0);
   const totalMem = procs.reduce((a, p) => a + p.mem_pct, 0);
+
+  const sorted = [...procs].sort((a, b) => {
+    let cmp = 0;
+    switch (sortBy) {
+      case "cpu":  cmp = a.cpu_pct - b.cpu_pct; break;
+      case "mem":  cmp = a.mem_pct - b.mem_pct; break;
+      case "pid":  cmp = a.pid - b.pid; break;
+      case "name": cmp = a.command.localeCompare(b.command); break;
+    }
+    return sortDir === "desc" ? -cmp : cmp;
+  });
+
+  // On Windows, cpu_pct is CPU time in seconds (not %)
+  const isWindows = osType === "windows";
+  const cpuUnit   = isWindows ? "s" : "%";
+
+  function ColHeader({ col, label, className = "" }: { col: ProcSort; label: string; className?: string }) {
+    const active = sortBy === col;
+    return (
+      <button
+        onClick={() => handleSort(col)}
+        className={`flex items-center gap-1 text-[9px] tracking-widest uppercase transition-colors select-none ${className}`}
+        style={{ color: active ? "#00c8a8" : "var(--text5)" }}
+        title={`Sort by ${label}`}
+      >
+        {label}
+        {active && <SortArrow dir={sortDir} />}
+      </button>
+    );
+  }
 
   return (
     <div className="p-4 space-y-3">
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: "CPU Usage",     value: `${f1(Math.min(totalCpu, 100))}%`, color: pctColor(totalCpu) },
-          { label: "Memory Load",   value: `${f1(Math.min(totalMem, 100))}%`, color: pctColor(totalMem) },
-          { label: "Active Tasks",  value: procs.length.toString(), color: "var(--text3)" },
+          { label: isWindows ? "CPU Time" : "CPU Usage", value: isWindows ? `${f1(totalCpu)}s` : `${f1(Math.min(totalCpu, 100))}%`, color: pctColor(Math.min(totalCpu, 100)) },
+          { label: "Memory Load",  value: `${f1(Math.min(totalMem, 100))}%`, color: pctColor(totalMem) },
+          { label: "Active Tasks", value: procs.length.toString(), color: "var(--text3)" },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
             <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">{s.label}</p>
@@ -835,27 +891,25 @@ function ProcessesSection({ procs }: { procs: ProcessEntry[] }) {
 
       {/* Process table */}
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Active Systems</span>
-          <div className="flex gap-2">
-            <Chip label="Sort: CPU" color="#6366f1" />
-          </div>
+        {/* Clickable column headers */}
+        <div className="grid items-center px-4 py-2 border-b border-[var(--border)]"
+          style={{ gridTemplateColumns: "1fr 56px 72px 56px" }}>
+          <ColHeader col="name" label="Process" className="justify-start" />
+          <ColHeader col="pid"  label="PID"     className="justify-end" />
+          <ColHeader col="cpu"  label={`CPU (${cpuUnit})`} className="justify-end" />
+          <ColHeader col="mem"  label="MEM"     className="justify-end" />
         </div>
-        <div className="grid text-[9px] tracking-widest text-[var(--text5)] uppercase px-4 py-2 border-b border-[var(--border)]"
-          style={{ gridTemplateColumns: "1fr 56px 56px 56px" }}>
-          <span>Process</span>
-          <span className="text-right">PID</span>
-          <span className="text-right">CPU</span>
-          <span className="text-right">MEM</span>
-        </div>
+
         <div className="divide-y divide-[var(--bg2)]">
-          {procs.map((p) => {
-            const cpuColor = p.cpu_pct > 50 ? "#ef4444" : p.cpu_pct > 20 ? "#f59e0b" : "var(--text3)";
-            const isHot = p.cpu_pct > 50;
+          {sorted.map((p) => {
+            const cpuColor = p.cpu_pct > (isWindows ? 60 : 50) ? "#ef4444"
+              : p.cpu_pct > (isWindows ? 20 : 20) ? "#f59e0b"
+              : "var(--text3)";
+            const isHot = p.cpu_pct > (isWindows ? 60 : 50);
             return (
               <div key={p.pid}
                 className="grid items-center px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
-                style={{ gridTemplateColumns: "1fr 56px 56px 56px" }}>
+                style={{ gridTemplateColumns: "1fr 56px 72px 56px" }}>
                 <div className="min-w-0 pr-2">
                   <p className="text-[11px] font-mono text-[var(--text)] truncate">{p.command}</p>
                   <p className="text-[10px] text-[var(--text5)]">{p.user}</p>
@@ -865,9 +919,9 @@ function ProcessesSection({ procs }: { procs: ProcessEntry[] }) {
                   {isHot
                     ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
                         style={{ color: "#ef4444", background: "#ef444418", border: "1px solid #ef444430" }}>
-                        {f1(p.cpu_pct)}%
+                        {f1(p.cpu_pct)}{cpuUnit}
                       </span>
-                    : <span className="text-[10px] font-mono" style={{ color: cpuColor }}>{f1(p.cpu_pct)}%</span>
+                    : <span className="text-[10px] font-mono" style={{ color: cpuColor }}>{f1(p.cpu_pct)}{cpuUnit}</span>
                   }
                 </span>
                 <span className="text-right text-[10px] font-mono text-[var(--text4)]">{f1(p.mem_pct)}%</span>
@@ -1142,7 +1196,7 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
                                       totalGb={metrics.disk_total_gb} diskUnavail={metrics.disk_unavailable_reason} />}
         {section === "gpu"       && <GpuSection gpus={metrics.gpus} checkedTools={checkedGpuTools} />}
         {section === "temp"      && <TempSection zones={metrics.thermal} />}
-        {section === "processes" && <ProcessesSection procs={metrics.processes} />}
+        {section === "processes" && <ProcessesSection procs={metrics.processes} osType={metrics.os_type} />}
       </div>
     </div>
   );

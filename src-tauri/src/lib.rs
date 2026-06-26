@@ -1,5 +1,6 @@
 mod audit;
 mod command_history;
+mod docker;
 mod http_client;
 mod keys;
 mod metrics;
@@ -199,6 +200,13 @@ pub fn run() {
             audit::clear_audit_log,
             http_client::make_http_request,
             ssh::tunnel_http_request,
+            docker::docker_list_containers,
+            docker::docker_container_action,
+            docker::docker_logs_tail,
+            docker::docker_compose_list,
+            docker::docker_compose_action,
+            docker::docker_prune,
+            docker::docker_system_df,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");
