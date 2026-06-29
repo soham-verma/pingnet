@@ -368,6 +368,7 @@ export default function App() {
                 style={{ display: viewMode === "ssh" ? "flex" : "none", flexDirection: "column" }}
               >
                 <SSHSessionView
+                  key={selectedHost.id}
                   hostname={selectedHost.hostname}
                   ip={selectedHost.ip}
                   hostId={selectedHost.id}
