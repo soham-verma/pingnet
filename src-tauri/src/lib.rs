@@ -3,6 +3,7 @@ mod command_history;
 mod docker;
 mod http_client;
 mod keys;
+mod local_pty;
 mod metrics;
 mod ping;
 mod ssh;
@@ -314,7 +315,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(SshState::new())
+        .manage(local_pty::LocalPtyState::new())
         .invoke_handler(tauri::generate_handler![
             ping_host,
             detect_vpn,
@@ -375,6 +379,10 @@ pub fn run() {
             docker::docker_image_pull,
             docker::docker_image_remove,
             docker::docker_container_rebuild,
+            local_pty::local_pty_start,
+            local_pty::local_pty_send,
+            local_pty::local_pty_resize,
+            local_pty::local_pty_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");

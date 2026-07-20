@@ -17,6 +17,10 @@ interface Props {
   onCommand?: (cmd: string) => void;
   /** Additional session IDs to mirror all input to (broadcast mode). */
   broadcastTo?: string[];
+  /** Tauri command to call for sending input. Defaults to "ssh_send". */
+  sendCmd?: string;
+  /** Tauri command to call for resizing. Defaults to "ssh_resize". */
+  resizeCmd?: string;
 }
 
 // Pull xterm's internal cell dimensions — more accurate than measuring DOM.
@@ -34,7 +38,7 @@ function getCellDims(term: Terminal): { w: number; h: number } {
   }
 }
 
-export default function SSHTerminal({ sessionId, isConnected, themeId, suggestions = [], onCommand, broadcastTo = [] }: Props) {
+export default function SSHTerminal({ sessionId, isConnected, themeId, suggestions = [], onCommand, broadcastTo = [], sendCmd = "ssh_send", resizeCmd = "ssh_resize" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
 
@@ -207,7 +211,7 @@ export default function SSHTerminal({ sessionId, isConnected, themeId, suggestio
         event.preventDefault();
         if (hasCompletion) {
           const completion = ghostCompletionRef.current;
-          invoke("ssh_send", { sessionId, data: completion }).catch(() => {});
+          invoke(sendCmd, { sessionId, data: completion }).catch(() => {});
           inputBufRef.current += completion;
           hideGhost();
           return false; // consumed — don't let xterm send Tab to SSH
@@ -218,7 +222,7 @@ export default function SSHTerminal({ sessionId, isConnected, themeId, suggestio
       if (hasCompletion && event.key === "ArrowRight") {
         event.preventDefault();
         const completion = ghostCompletionRef.current;
-        invoke("ssh_send", { sessionId, data: completion }).catch(() => {});
+        invoke(sendCmd, { sessionId, data: completion }).catch(() => {});
         inputBufRef.current += completion;
         hideGhost();
         return false;
@@ -271,10 +275,10 @@ export default function SSHTerminal({ sessionId, isConnected, themeId, suggestio
         }
       }
 
-      invoke("ssh_send", { sessionId, data }).catch(() => {});
+      invoke(sendCmd, { sessionId, data }).catch(() => {});
       // Broadcast to mirrored sessions
       broadcastToRef.current.forEach(targetId => {
-        invoke("ssh_send", { sessionId: targetId, data }).catch(() => {});
+        invoke(sendCmd, { sessionId: targetId, data }).catch(() => {});
       });
     });
 
@@ -305,7 +309,7 @@ export default function SSHTerminal({ sessionId, isConnected, themeId, suggestio
     const ro = new ResizeObserver(() => {
       fitAddon.fit();
       const d = fitAddon.proposeDimensions();
-      if (d) invoke("ssh_resize", { sessionId, cols: d.cols, rows: d.rows }).catch(() => {});
+      if (d) invoke(resizeCmd, { sessionId, cols: d.cols, rows: d.rows }).catch(() => {});
     });
     if (containerRef.current) ro.observe(containerRef.current);
 

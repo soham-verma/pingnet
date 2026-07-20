@@ -7,8 +7,10 @@ import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { useTheme } from "./hooks/useTheme";
 import Sidebar from "./components/Sidebar";
 import HostDetailView from "./components/HostDetailView";
+import DashboardView from "./components/DashboardView";
 import AddEditModal from "./components/AddEditModal";
 import SSHSessionView from "./components/ssh/SSHSessionView";
+import LocalTerminalView from "./components/LocalTerminalView";
 import KeyManager from "./components/KeyManager";
 import UpdateModal from "./components/UpdateModal";
 import ShortcutsModal from "./components/ShortcutsModal";
@@ -30,19 +32,26 @@ function toHostState(config: HostConfig): HostState {
   };
 }
 
-type ViewMode = "ping" | "ssh";
+type ViewMode = "ping" | "ssh" | "dashboard";
+
+// Prefill value passed from Dashboard's connect bar into the Add Host modal
+type AddHostPrefill = { ip: string } | null;
 
 export default function App() {
   const [hosts, setHosts] = useState<HostState[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [modal, setModal] = useState<{ mode: "add" | "edit"; host?: HostState } | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("ping");
+  const [modal, setModal] = useState<{ mode: "add" | "edit"; host?: HostState; prefill?: AddHostPrefill } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [sshConfigs, setSshConfigs] = useState<Record<string, SshConfig>>({});
   const [showKeyManager, setShowKeyManager] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [theme, toggleTheme] = useTheme();
+  const [showLocalTerminal, setShowLocalTerminal] = useState(false);
+  // Track every host that has ever had SSH opened this session so we can keep
+  // their SSHSessionView mounted (and connections alive) while browsing other hosts.
+  const [sshOpenedIds, setSshOpenedIds] = useState<Set<string>>(new Set());
+  useTheme();
   const update = useUpdateCheck();
 
   // Auto-open the update modal once when an update is discovered
@@ -275,10 +284,12 @@ export default function App() {
     const updated = hosts.filter((h) => h.id !== id);
     setHosts(updated);
     clearSession(id);
+    setSshOpenedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     setModal(null);
     if (selectedId === id) {
-      setSelectedId(updated[0]?.id ?? null);
-      setViewMode("ping");
+      const next = updated[0]?.id ?? null;
+      setSelectedId(next);
+      setViewMode(next ? "ping" : "dashboard");
     }
     persistHosts(updated);
   }
@@ -306,15 +317,25 @@ export default function App() {
     persistHosts(updated);
   }
 
+  function handleOpenSSH(id: string) {
+    setSshOpenedIds((prev) => new Set([...prev, id]));
+    setSelectedId(id);
+    setViewMode("ssh");
+    setShowLocalTerminal(false);
+  }
+
   function handleSelectHost(id: string) {
     setSelectedId(id);
     setViewMode("ping");
+    setShowLocalTerminal(false);
   }
 
-  function handleOpenSSH(id: string) {
-    setSelectedId(id);
-    setViewMode("ssh");
+  function handleGoHome() {
+    setViewMode("dashboard");
+    setShowLocalTerminal(false);
   }
+
+  const showDashboard = !showLocalTerminal && (viewMode === "dashboard" || !selectedHost);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
@@ -327,80 +348,114 @@ export default function App() {
           viewMode={viewMode}
           onSelect={handleSelectHost}
           onOpenSSH={handleOpenSSH}
-          onAddHost={() => setModal({ mode: "add" })}
           onOpenKeyManager={() => setShowKeyManager(true)}
-          onOpenShortcuts={() => setShowShortcuts(true)}
+          onOpenLocalTerminal={() => setShowLocalTerminal(true)}
+          localTerminalActive={showLocalTerminal}
           currentVersion={update.currentVersion}
           updateAvailable={update.available && !update.skipped}
           onOpenUpdate={() => setShowUpdateModal(true)}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(v => !v)}
-          theme={theme}
-          onToggleTheme={toggleTheme}
+          onGoHome={handleGoHome}
         />
 
         {/* Main content */}
         <main className="flex-1 overflow-hidden relative">
-          {!selectedHost && <EmptyState onAdd={() => setModal({ mode: "add" })} />}
 
-          {selectedHost && selectedSession && (
-            <>
-              {/* Ping view */}
-              <div
-                className="absolute inset-0"
-                style={{ display: viewMode === "ping" ? "flex" : "none", flexDirection: "column" }}
-              >
-                <HostDetailView
-                  host={selectedHost}
-                  session={selectedSession}
-                  onPing={() => handlePing(selectedHost)}
-                  onStop={() => stopPing(selectedHost.id)}
-                  onEdit={() => setModal({ mode: "edit", host: selectedHost })}
-                  onRefresh={() => clearSession(selectedHost.id)}
-                  onOpenSSH={() => handleOpenSSH(selectedHost.id)}
-                  onSetActiveIp={(ip, type) => handleSetActiveIp(selectedHost.id, ip, type)}
-                />
-              </div>
-
-              {/* SSH view */}
-              <div
-                className="absolute inset-0"
-                style={{ display: viewMode === "ssh" ? "flex" : "none", flexDirection: "column" }}
-              >
-                <SSHSessionView
-                  key={selectedHost.id}
-                  hostname={selectedHost.hostname}
-                  ip={selectedHost.ip}
-                  hostId={selectedHost.id}
-                  savedConfig={sshConfigs[selectedHost.id] ?? null}
-                  onSaveConfig={(config) => {
-                    setSshConfigs((prev) => ({ ...prev, [selectedHost.id]: config }));
-                    // Persist SSH config (no password) into the host record so it survives restarts
-                    setHosts((prev) => {
-                      const updated = prev.map((h) =>
-                        h.id === selectedHost.id
-                          ? { ...h,
-                              ssh_port: config.port,
-                              ssh_username: config.username,
-                              ssh_auth_type: config.auth_type,
-                              ssh_key_path: config.key_path,
-                              ssh_key_name: config.key_name }
-                          : h
-                      );
-                      persistHosts(updated);
-                      return updated;
-                    });
-                  }}
-                />
-              </div>
-            </>
+          {/* ── Dashboard — home view, shown on launch and whenever no host is selected ── */}
+          {showDashboard && (
+            <div className="absolute inset-0 flex flex-col">
+              <DashboardView
+                hosts={hosts}
+                sessions={allSessions}
+                onSelectHost={handleSelectHost}
+                onOpenSSH={handleOpenSSH}
+                onAddHost={(prefillIp) => setModal({ mode: "add", prefill: prefillIp ? { ip: prefillIp } : null })}
+              />
+            </div>
           )}
+
+          {/* ── Ping view — shows the selected host's diagnostics ──────────── */}
+          {selectedHost && selectedSession && (
+            <div
+              className="absolute inset-0"
+              style={{ display: viewMode === "ping" && !showLocalTerminal ? "flex" : "none", flexDirection: "column" }}
+            >
+              <HostDetailView
+                host={selectedHost}
+                session={selectedSession}
+                onPing={() => handlePing(selectedHost)}
+                onStop={() => stopPing(selectedHost.id)}
+                onEdit={() => setModal({ mode: "edit", host: selectedHost })}
+                onRefresh={() => clearSession(selectedHost.id)}
+                onOpenSSH={() => handleOpenSSH(selectedHost.id)}
+                onSetActiveIp={(ip, type) => handleSetActiveIp(selectedHost.id, ip, type)}
+              />
+            </div>
+          )}
+
+          {/* ── SSH sessions — one per opened host, all mounted simultaneously.
+               Staying mounted while browsing other hosts keeps connections alive. ── */}
+          {hosts.filter((h) => sshOpenedIds.has(h.id)).map((host) => (
+            <div
+              key={host.id}
+              className="absolute inset-0"
+              style={{
+                display: selectedId === host.id && viewMode === "ssh" && !showLocalTerminal ? "flex" : "none",
+                flexDirection: "column",
+              }}
+            >
+              <SSHSessionView
+                hostname={host.hostname}
+                ip={host.ip}
+                hostId={host.id}
+                savedConfig={sshConfigs[host.id] ?? null}
+                onSaveConfig={(config) => {
+                  setSshConfigs((prev) => ({ ...prev, [host.id]: config }));
+                  setHosts((prev) => {
+                    const updated = prev.map((h) =>
+                      h.id === host.id
+                        ? { ...h,
+                            ssh_port: config.port,
+                            ssh_username: config.username,
+                            ssh_auth_type: config.auth_type,
+                            ssh_key_path: config.key_path,
+                            ssh_key_name: config.key_name }
+                        : h
+                    );
+                    persistHosts(updated);
+                    return updated;
+                  });
+                }}
+              />
+            </div>
+          ))}
+
+          {/* ── Local terminal overlay ─────────────────────────────────────── */}
+          <div
+            className="absolute inset-0 flex flex-col"
+            style={{ display: showLocalTerminal ? "flex" : "none", zIndex: 20, background: "var(--bg)" }}
+          >
+            <LocalTerminalView />
+          </div>
+
         </main>
+
+        {/* Floating add-host button */}
+        <button
+          onClick={() => setModal({ mode: "add" })}
+          title="Add device"
+          className="fixed bottom-6 right-6 w-12 h-12 rounded-full flex items-center justify-center text-2xl font-light text-black transition-transform hover:scale-105 z-30"
+          style={{ background: "#00c8a8", boxShadow: "0 4px 20px #00c8a850" }}
+        >
+          +
+        </button>
 
         {/* Add/Edit modal */}
         {modal && (
           <AddEditModal
             existing={modal.mode === "edit" ? modal.host : null}
+            initialIp={modal.prefill?.ip}
             onSave={modal.mode === "add" ? handleAddHost : handleEditHost}
             onClose={() => setModal(null)}
             onDelete={modal.mode === "edit" && modal.host ? () => handleDeleteHost(modal.host!.id) : undefined}
@@ -420,34 +475,6 @@ export default function App() {
           <ShortcutsModal onClose={() => setShowShortcuts(false)} />
         )}
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="relative mb-8">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "var(--bg3)" }}>
-          <svg width="44" height="44" viewBox="0 0 200 200" fill="none">
-            <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
-              stroke="#00c8a8" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="80" cy="148" r="10" fill="#00c8a8"/>
-          </svg>
-        </div>
-      </div>
-
-      <h2 className="text-xl font-semibold text-[var(--text)] mb-2">No Host Selected</h2>
-      <p className="text-[var(--text3)] text-sm max-w-xs mb-6">
-        Add a device to start monitoring. You can ping any IP address or hostname and get detailed diagnostics.
-      </p>
-      <button
-        onClick={onAdd}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
-      >
-        <span className="text-base leading-none">+</span>
-        Add your first host
-      </button>
     </div>
   );
 }

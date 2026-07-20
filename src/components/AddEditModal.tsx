@@ -13,14 +13,16 @@ const IP_TYPE_LABELS: Record<HostIp["type"], string> = {
 
 interface Props {
   existing?: HostConfig | null;
+  /** Pre-fills the IP/hostname field — used when adding a host from the Dashboard's connect bar */
+  initialIp?: string;
   onSave: (data: Pick<HostConfig, "hostname" | "ip" | "ip_type" | "extra_ips" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">) => void;
   onClose: () => void;
   onDelete?: () => void;
 }
 
-export default function AddEditModal({ existing, onSave, onClose, onDelete }: Props) {
+export default function AddEditModal({ existing, initialIp, onSave, onClose, onDelete }: Props) {
   const [hostname, setHostname] = useState(existing?.hostname ?? "");
-  const [ip, setIp] = useState(existing?.ip ?? "");
+  const [ip, setIp] = useState(existing?.ip ?? initialIp ?? "");
   const [ipType, setIpType] = useState<HostIp["type"]>(existing?.ip_type ?? "local");
   const [extraIps, setExtraIps] = useState<HostIp[]>(existing?.extra_ips ?? []);
   const [notes, setNotes] = useState(existing?.notes ?? "");

@@ -340,42 +340,6 @@ export default function HostDetailView({ host, session, onPing, onStop, onEdit, 
           <DiagnosticConsole logs={logs} />
         </div>
       </div>
-
-      {/* Footer: Run ping button */}
-      <div
-        className="flex-shrink-0 px-5 py-4 border-t border-[var(--border)] flex items-center justify-end"
-        style={{ background: "var(--bg1)" }}
-      >
-        {isRunning ? (
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 text-[var(--text3)] text-sm">
-              <span className="w-3 h-3 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin" />
-              Pinging...
-            </span>
-            <button
-              onClick={onStop}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition-all"
-              style={{ background: "#ef444420", color: "#ef4444", border: "1px solid #ef444440" }}
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor" />
-              </svg>
-              Stop
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={handlePing}
-            className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
-            style={{ background: "#00c8a8", color: "#000", boxShadow: "0 0 20px #00c8a840" }}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M3 2l7 4-7 4V2Z" fill="currentColor" />
-            </svg>
-            Run Ping
-          </button>
-        )}
-      </div>
     </div>
   );
 }

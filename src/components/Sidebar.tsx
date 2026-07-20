@@ -1,25 +1,23 @@
 import { HostState } from "../types";
 import { PingSession } from "../hooks/usePing";
 import { formatLatency } from "../utils/network";
-import { Theme } from "../hooks/useTheme";
 
 interface Props {
   hosts: HostState[];
   selectedId: string | null;
   sessions: Record<string, PingSession>;
-  viewMode: "ping" | "ssh";
+  viewMode: "ping" | "ssh" | "dashboard";
   onSelect: (id: string) => void;
   onOpenSSH: (id: string) => void;
-  onAddHost: () => void;
   onOpenKeyManager: () => void;
-  onOpenShortcuts: () => void;
+  onOpenLocalTerminal: () => void;
+  localTerminalActive: boolean;
   currentVersion: string | null;
   updateAvailable: boolean;
   onOpenUpdate: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  theme: Theme;
-  onToggleTheme: () => void;
+  onGoHome: () => void;
 }
 
 function MiniBar({ history }: { history: { latency: number | null; success: boolean }[] }) {
@@ -46,7 +44,7 @@ function MiniBar({ history }: { history: { latency: number | null; success: bool
   );
 }
 
-export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onAddHost, onOpenKeyManager, onOpenShortcuts, currentVersion, updateAvailable, onOpenUpdate, collapsed, onToggleCollapse, theme, onToggleTheme }: Props) {
+export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onOpenKeyManager, onOpenLocalTerminal, localTerminalActive, currentVersion, updateAvailable, onOpenUpdate, collapsed, onToggleCollapse, onGoHome }: Props) {
 
   // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
@@ -84,25 +82,30 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
             );
           })}
         </div>
-        {/* Theme toggle */}
+        {/* Local terminal */}
         <button
-          onClick={onToggleTheme}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={onOpenLocalTerminal}
+          title="Local Terminal"
           className="w-7 h-7 flex items-center justify-center rounded transition-all"
-          style={{ color: "var(--text3)" }}
+          style={localTerminalActive ? { color: "#00c8a8", background: "#00c8a815" } : { color: "var(--text4)" }}
         >
-          {theme === "dark"
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          }
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+            <rect x="0.5" y="1.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1"/>
+            <path d="M2 5.5L4 4L2 2.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M5 5.5H8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+          </svg>
         </button>
-        {/* Add device icon */}
+        {/* SSH keys */}
         <button
-          onClick={onAddHost}
-          title="Add device"
-          className="w-7 h-7 flex items-center justify-center rounded transition-all text-base"
-          style={{ color: "var(--text4)" }}
-        >+</button>
+          onClick={onOpenKeyManager}
+          title="SSH Keys"
+          className="w-7 h-7 flex items-center justify-center rounded transition-all text-[var(--text4)] hover:text-[#818cf8]"
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <circle cx="5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
+            <path d="M7 6h5.5M10.5 4.5V7.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+          </svg>
+        </button>
       </aside>
     );
   }
@@ -112,7 +115,11 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
     <aside className="w-56 flex-shrink-0 flex flex-col h-full border-r border-[var(--border)]" style={{ background: "var(--bg1)" }}>
       {/* Header */}
       <div className="px-4 pt-6 pb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <button
+          onClick={onGoHome}
+          title="Dashboard"
+          className="flex items-center gap-2 rounded transition-opacity hover:opacity-80"
+        >
           <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
             <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
               stroke="#00c8a8" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
@@ -121,7 +128,7 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
           <span className="text-[11px] font-semibold tracking-[0.2em] text-[var(--text2)] uppercase">
             Pingboard
           </span>
-        </div>
+        </button>
         <button
           onClick={onToggleCollapse}
           title="Collapse sidebar"
@@ -239,63 +246,47 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
         })}
       </div>
 
-      {/* Bottom actions */}
-      <div className="p-3 border-t border-[var(--border)] space-y-2">
-        <button
-          onClick={onAddHost}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-[var(--text3)] hover:text-[#00c8a8] hover:bg-[#0f1920] border border-[var(--border)] hover:border-[#00c8a820] transition-all text-xs font-medium"
-        >
-          <span className="text-base leading-none">+</span>
-          Add Device
-        </button>
-        <button
-          onClick={onOpenKeyManager}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[var(--text3)] hover:text-[#818cf8] hover:bg-[#6366f10a] border border-[var(--border)] hover:border-[#6366f120] transition-all text-xs font-medium"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <circle cx="3.5" cy="4.5" r="2" stroke="currentColor" strokeWidth="1" />
-            <path d="M5 4.5h4M7.5 3v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-          </svg>
-          SSH Keys
-        </button>
-        <button
-          onClick={onOpenShortcuts}
-          title="Keyboard shortcuts (?)"
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[var(--text3)] hover:text-[#f59e0b] hover:bg-[#f59e0b0a] border border-[var(--border)] hover:border-[#f59e0b20] transition-all text-xs font-medium"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <rect x="0.5" y="2" width="9" height="6" rx="1" stroke="currentColor" strokeWidth="1" />
-            <path d="M2 4h1M4 4h1M6 4h1M8 4h0M3 6h4" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
-          </svg>
-          Shortcuts
-        </button>
+      {/* Bottom toolbar — compact icon row + version */}
+      <div className="border-t border-[var(--border)]" style={{ background: "var(--bg1)" }}>
 
-        {/* Theme toggle */}
-        <button
-          onClick={onToggleTheme}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all border border-transparent hover:border-[var(--border)]"
-          style={{ color: "var(--text3)" }}
-        >
-          <span className="text-[11px] font-medium">
-            {theme === "dark" ? "Dark mode" : "Light mode"}
-          </span>
-          <span className="flex items-center gap-1.5">
-            {theme === "dark"
-              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-              : <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            }
-          </span>
-        </button>
+        {/* Icon row */}
+        <div className="flex items-center px-2 py-2 gap-0.5">
 
-        {/* Version / update indicator */}
+          {/* Local terminal */}
+          <button
+            onClick={onOpenLocalTerminal}
+            title="Local Terminal"
+            className="flex-1 flex items-center justify-center py-2.5 rounded-lg transition-all"
+            style={localTerminalActive
+              ? { color: "#00c8a8", background: "#00c8a812" }
+              : { color: "var(--text4)" }}
+            onMouseEnter={e => { if (!localTerminalActive) (e.currentTarget as HTMLElement).style.color = "#00c8a8"; }}
+            onMouseLeave={e => { if (!localTerminalActive) (e.currentTarget as HTMLElement).style.color = "var(--text4)"; }}
+          >
+            <svg width="15" height="15" viewBox="0 0 12 12" fill="none">
+              <rect x="0.5" y="1.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1"/>
+              <path d="M2 5.5L4 4L2 2.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M5 5.5H8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+            </svg>
+          </button>
+
+          {/* SSH keys */}
+          <button
+            onClick={onOpenKeyManager}
+            title="SSH Keys"
+            className="flex-1 flex items-center justify-center py-2.5 rounded-lg text-[var(--text4)] hover:text-[#818cf8] transition-all"
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none">
+              <circle cx="5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
+              <path d="M7 6h5.5M10.5 4.5V7.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Version / update */}
         <button
           onClick={onOpenUpdate}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all group"
-          style={updateAvailable
-            ? { background: "#00c8a808", border: "1px solid #00c8a820" }
-            : { border: "1px solid transparent" }
-          }
+          className="w-full flex items-center justify-between px-4 pb-3 transition-all group"
         >
           <span className="text-[10px] font-mono text-[var(--text5)] group-hover:text-[var(--text3)] transition-colors">
             v{currentVersion ?? "…"}

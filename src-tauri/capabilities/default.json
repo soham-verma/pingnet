@@ -16,6 +16,8 @@
     },
     "notification:default",
     "dialog:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "updater:default",
+    "process:default"
   ]
 }

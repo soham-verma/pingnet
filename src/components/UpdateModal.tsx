@@ -17,17 +17,28 @@ const BUMP_COLOR: Record<string, string> = {
   patch: "#22c55e",
 };
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)}KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 export default function UpdateModal({ update, onClose }: Props) {
   const ver = update.latestVersion?.replace(/^v/, "") ?? "";
   const cur = update.currentVersion ?? "";
   const bump = update.bump ?? "patch";
   const hasNotes = update.releaseNotes.length > 0;
+  const busy = update.downloading || update.installed;
+
+  const pct = update.progress?.total
+    ? Math.min(100, Math.round((update.progress.downloaded / update.progress.total) * 100))
+    : null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
     >
       <div
         className="w-full max-w-sm rounded-2xl overflow-hidden"
@@ -69,7 +80,7 @@ export default function UpdateModal({ update, onClose }: Props) {
                 transform="rotate(-90 32 32)"
                 style={{
                   filter: "drop-shadow(0 0 6px #00c8a880)",
-                  animation: "spin-slow 3s linear infinite",
+                  animation: busy ? "spin-fast 1s linear infinite" : "spin-slow 3s linear infinite",
                 }}
               />
             </svg>
@@ -86,14 +97,56 @@ export default function UpdateModal({ update, onClose }: Props) {
             </div>
           </div>
 
-          <h2 className="text-[var(--text)] text-lg font-semibold mb-1">A new version is available.</h2>
-          <p className="text-[var(--text3)] text-[13px] text-center">
-            Pingnet {ver} is ready to download.
-          </p>
+          {update.installed ? (
+            <>
+              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">Installed — restarting…</h2>
+              <p className="text-[var(--text3)] text-[13px] text-center">Pingnet {ver} will open in a moment.</p>
+            </>
+          ) : update.downloading ? (
+            <>
+              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">Downloading update…</h2>
+              <p className="text-[var(--text3)] text-[13px] text-center">
+                {pct !== null
+                  ? `${pct}%${update.progress?.total ? ` · ${formatBytes(update.progress.downloaded)} / ${formatBytes(update.progress.total)}` : ""}`
+                  : update.progress ? formatBytes(update.progress.downloaded) : "Starting…"}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">A new version is available.</h2>
+              <p className="text-[var(--text3)] text-[13px] text-center">
+                Pingnet {ver} will download and install automatically.
+              </p>
+            </>
+          )}
         </div>
 
+        {/* Progress bar while downloading */}
+        {update.downloading && (
+          <div className="mx-4 mb-4">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg1)" }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: pct !== null ? `${pct}%` : "35%",
+                  background: "#00c8a8",
+                  boxShadow: "0 0 8px #00c8a880",
+                  animation: pct === null ? "indeterminate 1.2s ease-in-out infinite" : undefined,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {update.error && (
+          <div className="mx-4 mb-4 rounded-xl px-4 py-3" style={{ background: "#ef444412", border: "1px solid #ef444440" }}>
+            <p className="text-[12px] text-[#ef4444]">{update.error}</p>
+          </div>
+        )}
+
         {/* Release notes */}
-        {hasNotes && (
+        {!busy && hasNotes && (
           <div className="mx-4 mb-4 rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
               <span className="text-[10px] tracking-[0.15em] text-[var(--text3)] uppercase">
@@ -123,47 +176,71 @@ export default function UpdateModal({ update, onClose }: Props) {
         )}
 
         {/* No notes fallback */}
-        {!hasNotes && (
+        {!busy && !hasNotes && !update.error && (
           <div className="mx-4 mb-4 rounded-xl px-4 py-3 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
             <p className="text-[11px] text-[var(--text4)]">See the full changelog on GitHub.</p>
           </div>
         )}
 
         {/* Buttons */}
-        <div className="px-4 pb-4 flex gap-2">
+        {!busy && (
+          <div className="px-4 pb-4 flex gap-2">
+            <button
+              onClick={() => update.installUpdate()}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+              style={{
+                background: "#00c8a8",
+                color: "#000",
+                boxShadow: "0 0 24px #00c8a840",
+              }}
+            >
+              {update.error ? "Try Again" : "Update Now"}
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              onClick={() => { update.skipVersion(); onClose(); }}
+              className="flex-1 py-3 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+              style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}
+            >
+              Remind Me Later
+            </button>
+          </div>
+        )}
+
+        {/* Manual fallback link — only surfaced if the in-app path failed */}
+        {update.error && (
           <button
             onClick={() => open(update.releaseUrl)}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
-            style={{
-              background: "#00c8a8",
-              color: "#000",
-              boxShadow: "0 0 24px #00c8a840",
-            }}
+            className="w-full text-center text-[11px] text-[var(--text4)] hover:text-[var(--text3)] pb-4 transition-colors"
           >
-            Update Now
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            Or download it manually from GitHub →
           </button>
-          <button
-            onClick={() => { update.skipVersion(); onClose(); }}
-            className="flex-1 py-3 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] transition-colors"
-            style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}
-          >
-            Remind Me Later
-          </button>
-        </div>
+        )}
 
         {/* Footer */}
-        <p className="text-center text-[10px] text-[var(--text5)] pb-4 px-4">
-          Opens the GitHub releases page to download the installer.
-        </p>
+        {!update.error && (
+          <p className="text-center text-[10px] text-[var(--text5)] pb-4 px-4">
+            {busy
+              ? "Please keep Pingnet open until this finishes."
+              : "Downloads, verifies, and installs in place — Pingnet will restart automatically."}
+          </p>
+        )}
       </div>
 
       <style>{`
         @keyframes spin-slow {
           from { transform: rotate(-90deg); transform-origin: 32px 32px; }
           to   { transform: rotate(270deg); transform-origin: 32px 32px; }
+        }
+        @keyframes spin-fast {
+          from { transform: rotate(-90deg); transform-origin: 32px 32px; }
+          to   { transform: rotate(270deg); transform-origin: 32px 32px; }
+        }
+        @keyframes indeterminate {
+          0% { margin-left: -35%; }
+          100% { margin-left: 100%; }
         }
       `}</style>
     </div>

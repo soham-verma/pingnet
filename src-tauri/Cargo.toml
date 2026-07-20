@@ -1,6 +1,6 @@
 [package]
 name = "pingnet"
-version = "0.4.4"
+version = "0.4.5"
 description = "Pingnet — a cross-platform ping testing app"
 authors = []
 edition = "2021"
@@ -25,8 +25,11 @@ ssh-key = { version = "0.6", features = ["ed25519", "rand_core", "std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 dirs = "5"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 ureq = { version = "2", features = ["json"] }
 open = "5"
+portable-pty = "0.8"
 
 [features]
 default = ["custom-protocol"]
