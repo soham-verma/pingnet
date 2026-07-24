@@ -445,7 +445,7 @@ export default function App() {
         <button
           onClick={() => setModal({ mode: "add" })}
           title="Add device"
-          className="fixed bottom-6 right-6 w-12 h-12 rounded-full flex items-center justify-center text-2xl font-light text-black transition-transform hover:scale-105 z-30"
+          className="fixed bottom-16 right-6 w-12 h-12 rounded-full flex items-center justify-center text-2xl font-light text-black transition-transform hover:scale-105 z-30"
           style={{ background: "#00c8a8", boxShadow: "0 4px 20px #00c8a850" }}
         >
           +
