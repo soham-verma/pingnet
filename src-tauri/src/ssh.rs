@@ -1097,89 +1097,36 @@ pub async fn get_iface_details(
 }
 
 // ── Speedtest (runs on the remote device via SSH) ─────────────────────────────
+//
+// Core logic (Cloudflare download/upload/latency, connectivity check,
+// interface binding) lives in crate::speedtest — shared with the local
+// (non-SSH) variant. This just supplies an SSH-channel-backed `exec`.
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SpeedtestResult {
-    pub download_mbps: f64,
-    pub upload_mbps: f64,
-    pub latency_ms:  f64,
-    pub jitter_ms:   f64,
-    pub server:      String,
-    pub error:       Option<String>,
-}
+pub use crate::speedtest::SpeedtestResult;
 
-fn run_speedtest_ssh(session: &Session) -> SpeedtestResult {
+fn run_speedtest_ssh(session: &Session, iface: Option<&str>, force: bool) -> SpeedtestResult {
     // NOTE: the caller holds the sftp_session Mutex for the duration of this
     // function (~45 s). This is intentional — libssh2 sessions are not
     // thread-safe, so the Mutex serialises all access. During a speedtest,
     // get_metrics calls will queue behind it. Each phase below opens/closes
     // its own SSH channel, but that does NOT release the Mutex.
-    fn phase(session: &Session, cmd: &str) -> Result<String, String> {
+    let exec = |cmd: &str| -> Result<String, String> {
         let mut ch = session.channel_session().map_err(|e| format!("channel: {}", e))?;
         ch.exec(cmd).map_err(|e| format!("exec: {}", e))?;
         let mut out = String::new();
         ch.read_to_string(&mut out).map_err(|e| e.to_string())?;
         let _ = ch.close();
         Ok(out)
-    }
-
-    // Phase 1: latency — 5 tiny HTTP round-trips on one channel
-    let lat_script = r#"for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total}\n" --max-time 3 "https://speed.cloudflare.com/__down?measId=0&bytes=0" 2>/dev/null || echo "0"; done"#;
-    let lat_raw = match phase(session, lat_script) {
-        Err(e) => return SpeedtestResult {
-            download_mbps: 0.0, upload_mbps: 0.0, latency_ms: 0.0,
-            jitter_ms: 0.0, server: String::new(),
-            error: Some(format!("curl unavailable or no internet on remote device: {}", e)),
-        },
-        Ok(s) => s,
     };
-
-    let times: Vec<f64> = lat_raw.lines()
-        .filter_map(|l| l.trim().parse::<f64>().ok())
-        .filter(|&t| t > 0.0)
-        .collect();
-
-    if times.is_empty() {
-        return SpeedtestResult {
-            download_mbps: 0.0, upload_mbps: 0.0, latency_ms: 0.0,
-            jitter_ms: 0.0, server: String::new(),
-            error: Some("curl not available or no internet access on the remote device".to_string()),
-        };
-    }
-
-    let latency_ms = times.iter().sum::<f64>() / times.len() as f64 * 1000.0;
-    let jitter_ms = if times.len() > 1 {
-        let mean = times.iter().sum::<f64>() / times.len() as f64;
-        let var  = times.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / times.len() as f64;
-        var.sqrt() * 1000.0
-    } else { 0.0 };
-
-    // Phase 2: download 10 MB — own channel, mutex released between phases
-    let dl_bps: f64 = phase(
-        session,
-        r#"curl -s -o /dev/null -w "%{speed_download}" --max-time 15 "https://speed.cloudflare.com/__down?measId=0&bytes=10000000" 2>/dev/null || echo "0""#,
-    ).unwrap_or_default().trim().parse().unwrap_or(0.0);
-
-    // Phase 3: upload 2 MB — own channel
-    let ul_bps: f64 = phase(
-        session,
-        r#"dd if=/dev/zero bs=1M count=2 2>/dev/null | curl -s -X POST --data-binary @- -o /dev/null -w "%{speed_upload}" --max-time 15 "https://speed.cloudflare.com/__up?measId=0" 2>/dev/null || echo "0""#,
-    ).unwrap_or_default().trim().parse().unwrap_or(0.0);
-
-    SpeedtestResult {
-        download_mbps: dl_bps / 1_000_000.0 * 8.0,
-        upload_mbps:   ul_bps / 1_000_000.0 * 8.0,
-        latency_ms,
-        jitter_ms,
-        server: "speed.cloudflare.com".to_string(),
-        error: None,
-    }
+    crate::speedtest::run_core(&exec, iface, force)
 }
 
 #[tauri::command]
 pub async fn run_speedtest(
     state: tauri::State<'_, SshState>,
     session_id: String,
+    iface: Option<String>,
+    force: bool,
 ) -> Result<SpeedtestResult, String> {
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -1188,7 +1135,7 @@ pub async fn run_speedtest(
         // get_metrics calls will block until the speedtest completes.
         let session_guard = conn.sftp_session.lock()
             .unwrap_or_else(|e| e.into_inner());
-        let result = run_speedtest_ssh(&session_guard);
+        let result = run_speedtest_ssh(&session_guard, iface.as_deref(), force);
         Ok(result)
     })
     .await

@@ -11,7 +11,10 @@ interface Props {
   onOpenSSH: (id: string) => void;
   onOpenKeyManager: () => void;
   onOpenLocalTerminal: () => void;
+  onOpenSpeedtest: () => void;
+  onAddHost: () => void;
   localTerminalActive: boolean;
+  localSpeedtestActive: boolean;
   currentVersion: string | null;
   updateAvailable: boolean;
   onOpenUpdate: () => void;
@@ -44,7 +47,7 @@ function MiniBar({ history }: { history: { latency: number | null; success: bool
   );
 }
 
-export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onOpenKeyManager, onOpenLocalTerminal, localTerminalActive, currentVersion, updateAvailable, onOpenUpdate, collapsed, onToggleCollapse, onGoHome }: Props) {
+export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelect, onOpenSSH, onOpenKeyManager, onOpenLocalTerminal, onOpenSpeedtest, onAddHost, localTerminalActive, localSpeedtestActive, currentVersion, updateAvailable, onOpenUpdate, collapsed, onToggleCollapse, onGoHome }: Props) {
 
   // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
@@ -95,6 +98,19 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
             <path d="M5 5.5H8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
           </svg>
         </button>
+        {/* Speed test (this device) */}
+        <button
+          onClick={onOpenSpeedtest}
+          title="Speed Test"
+          className="w-7 h-7 flex items-center justify-center rounded transition-all"
+          style={localSpeedtestActive ? { color: "#00c8a8", background: "#00c8a815" } : { color: "var(--text4)" }}
+        >
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+            <path d="M2 9a4 4 0 0 1 8 0" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+            <path d="M6 9L8 5.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+            <circle cx="6" cy="9" r="0.9" fill="currentColor"/>
+          </svg>
+        </button>
         {/* SSH keys */}
         <button
           onClick={onOpenKeyManager}
@@ -104,6 +120,16 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
           <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
             <circle cx="5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
             <path d="M7 6h5.5M10.5 4.5V7.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+          </svg>
+        </button>
+        {/* Add device */}
+        <button
+          onClick={onAddHost}
+          title="Add device"
+          className="w-7 h-7 flex items-center justify-center rounded transition-all text-[var(--text4)] hover:text-[#00c8a8]"
+        >
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+            <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
           </svg>
         </button>
       </aside>
@@ -270,6 +296,24 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
             </svg>
           </button>
 
+          {/* Speed test (this device) */}
+          <button
+            onClick={onOpenSpeedtest}
+            title="Speed Test"
+            className="flex-1 flex items-center justify-center py-2.5 rounded-lg transition-all"
+            style={localSpeedtestActive
+              ? { color: "#00c8a8", background: "#00c8a812" }
+              : { color: "var(--text4)" }}
+            onMouseEnter={e => { if (!localSpeedtestActive) (e.currentTarget as HTMLElement).style.color = "#00c8a8"; }}
+            onMouseLeave={e => { if (!localSpeedtestActive) (e.currentTarget as HTMLElement).style.color = "var(--text4)"; }}
+          >
+            <svg width="15" height="15" viewBox="0 0 12 12" fill="none">
+              <path d="M2 9a4 4 0 0 1 8 0" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+              <path d="M6 9L8 5.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+              <circle cx="6" cy="9" r="0.9" fill="currentColor"/>
+            </svg>
+          </button>
+
           {/* SSH keys */}
           <button
             onClick={onOpenKeyManager}
@@ -279,6 +323,17 @@ export default function Sidebar({ hosts, selectedId, sessions, viewMode, onSelec
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none">
               <circle cx="5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
               <path d="M7 6h5.5M10.5 4.5V7.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+            </svg>
+          </button>
+
+          {/* Add device */}
+          <button
+            onClick={onAddHost}
+            title="Add device"
+            className="flex-1 flex items-center justify-center py-2.5 rounded-lg text-[var(--text4)] hover:text-[#00c8a8] transition-all"
+          >
+            <svg width="15" height="15" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
             </svg>
           </button>
         </div>

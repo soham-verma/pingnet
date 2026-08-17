@@ -6,6 +6,7 @@ mod keys;
 mod local_pty;
 mod metrics;
 mod ping;
+mod speedtest;
 mod ssh;
 mod storage;
 mod vpn;
@@ -341,6 +342,7 @@ pub fn run() {
             ssh::get_iface_details,
             ssh::get_routes,
             ssh::run_speedtest,
+            speedtest::run_local_speedtest,
             ssh::clear_host_key,
             ssh::trust_host_key,
             command_history::load_command_history,

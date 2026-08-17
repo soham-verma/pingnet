@@ -237,6 +237,8 @@ export interface IfaceDetails {
 }
 
 export interface SpeedtestResult {
+  interface: string | null;      // NIC the test was bound to, or null for the default route
+  connectivity_ok: boolean;      // whether the pre-flight reachability check to Cloudflare passed
   download_mbps: number;
   upload_mbps: number;
   latency_ms: number;

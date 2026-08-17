@@ -105,8 +105,9 @@ export default function HostDetailView({ host, session, onPing, onStop, onEdit, 
               className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M13 1v6h-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M2.3 6.3L4 6.3L5 3.3L6.6 8.3L7.6 6.3L9.7 6.3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M9.2 9.2L13 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </button>
           )}

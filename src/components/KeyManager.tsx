@@ -173,14 +173,14 @@ export default function KeyManager({ onClose }: Props) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Key name (e.g. work-vps)"
-                className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none focus:border-[#6366f1] transition-all"
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none focus:border-[#6366f1] transition-all"
               />
               <input
                 type="text"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Comment (optional)"
-                className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none focus:border-[#6366f1] transition-all"
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none focus:border-[#6366f1] transition-all"
               />
               <button
                 type="submit"

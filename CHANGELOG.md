@@ -7,6 +7,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.5.0] — 2026-08-17
+
+### Added
+
+**Speed Test**
+- New **Speedtest** tab in SSH sessions — Ookla-style animated dial UI (ping/download/upload), backed by plain `curl` requests to Cloudflare over the existing SSH session, no extra binary needed on the remote host
+- Optional per-interface testing — pick a NIC from the host's active interfaces (e.g. WiFi vs. LTE on a dual-homed box) instead of whatever the kernel's default route picks; one click runs the whole test (connectivity check → latency → download → upload)
+- Pre-flight connectivity check before committing to the full download/upload; if it fails, a "Run anyway" (force) option is offered instead of just erroring out
+- New **Speed Test** icon in the sidebar (next to Local Terminal / SSH Keys) runs the same test against this machine directly — no SSH session required. macOS/Linux only for now; Windows shows a clear "not supported yet" message rather than silently failing
+- The old inline "Cloudflare Speedtest" card in the Metrics → Network tab is retired in favour of the dedicated tab
+
+### Fixed
+
+- **Floating "Add device" button removed** — the teal `+` no longer floats over the bottom-right of the window; it now lives inline in the sidebar's icon row next to Local Terminal and SSH Keys, both expanded and collapsed
+- **SSH Key Manager modal overflow** — the "Generate New Key" name/comment inputs now shrink properly (`min-w-0`) instead of overflowing the modal width and forcing a horizontal scrollbar
+- **Host detail ping icon** — the re-run-ping button now uses a magnifying-glass-with-pulse icon instead of the generic refresh icon
+
+---
+
 ## [0.4.2] — 2026-06-26
 
 ### Added

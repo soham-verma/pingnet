@@ -10,6 +10,7 @@ import HostDetailView from "./components/HostDetailView";
 import DashboardView from "./components/DashboardView";
 import AddEditModal from "./components/AddEditModal";
 import SSHSessionView from "./components/ssh/SSHSessionView";
+import Speedtest from "./components/ssh/Speedtest";
 import LocalTerminalView from "./components/LocalTerminalView";
 import KeyManager from "./components/KeyManager";
 import UpdateModal from "./components/UpdateModal";
@@ -48,6 +49,7 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showLocalTerminal, setShowLocalTerminal] = useState(false);
+  const [showLocalSpeedtest, setShowLocalSpeedtest] = useState(false);
   // Track every host that has ever had SSH opened this session so we can keep
   // their SSHSessionView mounted (and connections alive) while browsing other hosts.
   const [sshOpenedIds, setSshOpenedIds] = useState<Set<string>>(new Set());
@@ -322,20 +324,23 @@ export default function App() {
     setSelectedId(id);
     setViewMode("ssh");
     setShowLocalTerminal(false);
+    setShowLocalSpeedtest(false);
   }
 
   function handleSelectHost(id: string) {
     setSelectedId(id);
     setViewMode("ping");
     setShowLocalTerminal(false);
+    setShowLocalSpeedtest(false);
   }
 
   function handleGoHome() {
     setViewMode("dashboard");
     setShowLocalTerminal(false);
+    setShowLocalSpeedtest(false);
   }
 
-  const showDashboard = !showLocalTerminal && (viewMode === "dashboard" || !selectedHost);
+  const showDashboard = !showLocalTerminal && !showLocalSpeedtest && (viewMode === "dashboard" || !selectedHost);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
@@ -349,8 +354,11 @@ export default function App() {
           onSelect={handleSelectHost}
           onOpenSSH={handleOpenSSH}
           onOpenKeyManager={() => setShowKeyManager(true)}
-          onOpenLocalTerminal={() => setShowLocalTerminal(true)}
+          onOpenLocalTerminal={() => { setShowLocalTerminal(true); setShowLocalSpeedtest(false); }}
+          onOpenSpeedtest={() => { setShowLocalSpeedtest(true); setShowLocalTerminal(false); }}
+          onAddHost={() => setModal({ mode: "add" })}
           localTerminalActive={showLocalTerminal}
+          localSpeedtestActive={showLocalSpeedtest}
           currentVersion={update.currentVersion}
           updateAvailable={update.available && !update.skipped}
           onOpenUpdate={() => setShowUpdateModal(true)}
@@ -379,7 +387,7 @@ export default function App() {
           {selectedHost && selectedSession && (
             <div
               className="absolute inset-0"
-              style={{ display: viewMode === "ping" && !showLocalTerminal ? "flex" : "none", flexDirection: "column" }}
+              style={{ display: viewMode === "ping" && !showLocalTerminal && !showLocalSpeedtest ? "flex" : "none", flexDirection: "column" }}
             >
               <HostDetailView
                 host={selectedHost}
@@ -401,7 +409,7 @@ export default function App() {
               key={host.id}
               className="absolute inset-0"
               style={{
-                display: selectedId === host.id && viewMode === "ssh" && !showLocalTerminal ? "flex" : "none",
+                display: selectedId === host.id && viewMode === "ssh" && !showLocalTerminal && !showLocalSpeedtest ? "flex" : "none",
                 flexDirection: "column",
               }}
             >
@@ -439,17 +447,15 @@ export default function App() {
             <LocalTerminalView />
           </div>
 
-        </main>
+          {/* ── Local speed test overlay — tests this machine, no host needed ── */}
+          <div
+            className="absolute inset-0 flex flex-col"
+            style={{ display: showLocalSpeedtest ? "flex" : "none", zIndex: 20, background: "var(--bg)" }}
+          >
+            <Speedtest sessionId={null} isActive={showLocalSpeedtest} mode="local" />
+          </div>
 
-        {/* Floating add-host button */}
-        <button
-          onClick={() => setModal({ mode: "add" })}
-          title="Add device"
-          className="fixed bottom-16 right-6 w-12 h-12 rounded-full flex items-center justify-center text-2xl font-light text-black transition-transform hover:scale-105 z-30"
-          style={{ background: "#00c8a8", boxShadow: "0 4px 20px #00c8a850" }}
-        >
-          +
-        </button>
+        </main>
 
         {/* Add/Edit modal */}
         {modal && (

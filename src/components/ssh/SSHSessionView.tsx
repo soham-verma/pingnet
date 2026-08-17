@@ -10,6 +10,7 @@ import CommandHistory from "./CommandHistory";
 import MetricsPanel from "./MetricsPanel";
 import ApiClient from "./ApiClient";
 import DockerManager from "./DockerManager";
+import Speedtest from "./Speedtest";
 import {
   TERMINAL_THEMES,
   getTerminalTheme,
@@ -41,7 +42,7 @@ interface Props {
   onSaveConfig: (config: SshConfig) => void;
 }
 
-type ViewTab = "terminal" | "files" | "history" | "metrics" | "grafana" | "api" | "docker";
+type ViewTab = "terminal" | "files" | "history" | "metrics" | "speedtest" | "grafana" | "api" | "docker";
 
 // Per-host Grafana configuration (stored in component state, persisted to localStorage)
 export interface GrafanaConfig {
@@ -533,7 +534,7 @@ export default function SSHSessionView({
 
         {/* View tabs */}
         <div className="flex items-center gap-1 bg-[var(--bg2)] rounded-lg p-1 border border-[var(--border)]">
-          {(["terminal", "files", "history", "metrics", "grafana", "api", "docker"] as ViewTab[]).map((t) => (
+          {(["terminal", "files", "history", "metrics", "speedtest", "grafana", "api", "docker"] as ViewTab[]).map((t) => (
             <button key={t}
               onClick={() => setViewTab(t)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
@@ -884,6 +885,14 @@ export default function SSHSessionView({
             <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
           </div>
         ) : null}
+
+        {/* Speed test panel */}
+        <div
+          className="absolute inset-0 flex flex-col overflow-hidden"
+          style={{ display: viewTab === "speedtest" ? "flex" : "none" }}
+        >
+          <Speedtest sessionId={primarySessionId} isActive={viewTab === "speedtest"} />
+        </div>
 
         {/* Grafana embed panel — always mounted when grafana tab active */}
         {viewTab === "grafana" && (

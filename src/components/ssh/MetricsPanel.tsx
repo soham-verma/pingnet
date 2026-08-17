@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   MetricsSnapshot, Capabilities,
   CoreStat, NetIface, DiskIo, ThermalZone, GpuStat, ProcessEntry,
-  IfaceDetails, SpeedtestResult, RouteEntry,
+  IfaceDetails, RouteEntry,
 } from "../../types";
 import PartitionManager from "./PartitionManager";
 
@@ -377,87 +377,6 @@ function RoutingGraph({ sessionId, ifaces }: { sessionId: string; ifaces: NetIfa
   );
 }
 
-// ── Speedtest card ────────────────────────────────────────────────────────────
-
-function SpeedtestCard({ sessionId }: { sessionId: string }) {
-  const [phase, setPhase]   = useState<"idle" | "running" | "done" | "error">("idle");
-  const [result, setResult] = useState<SpeedtestResult | null>(null);
-  const [statusMsg, setStatusMsg] = useState("");
-
-  async function run() {
-    setPhase("running");
-    setResult(null);
-    setStatusMsg("Testing latency…");
-    // Simulate phase messages (actual work is server-side, ~30s total)
-    const timer1 = setTimeout(() => setStatusMsg("Testing download…"), 5000);
-    const timer2 = setTimeout(() => setStatusMsg("Testing upload…"), 18000);
-    try {
-      const r = await invoke<SpeedtestResult>("run_speedtest", { sessionId });
-      clearTimeout(timer1); clearTimeout(timer2);
-      if (r.error) { setPhase("error"); setStatusMsg(r.error); }
-      else { setResult(r); setPhase("done"); }
-    } catch (e) {
-      clearTimeout(timer1); clearTimeout(timer2);
-      setPhase("error"); setStatusMsg(String(e));
-    }
-  }
-
-  return (
-    <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Cloudflare Speedtest</span>
-          <Chip label="Remote" color="#f59e0b" />
-        </div>
-        {phase !== "running" && (
-          <button onClick={run}
-            className="text-[10px] font-medium px-3 py-1 rounded-lg transition-all"
-            style={{ background: "#00c8a818", color: "#00c8a8", border: "1px solid #00c8a830" }}>
-            {phase === "idle" ? "Run Test" : "Re-run"}
-          </button>
-        )}
-        {phase === "running" && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" />
-            <span className="text-[10px] text-[#00c8a8]">{statusMsg}</span>
-          </div>
-        )}
-      </div>
-
-      {phase === "error" && (
-        <div className="px-4 py-3">
-          <p className="text-[11px] text-[#ef4444] italic">{statusMsg}</p>
-          <p className="text-[10px] text-[var(--text5)] mt-1">Requires curl on the remote device with internet access.</p>
-        </div>
-      )}
-
-      {phase === "done" && result && (
-        <div className="grid grid-cols-2 divide-x divide-y divide-[var(--border)]">
-          {[
-            { label: "Download",  value: `${result.download_mbps.toFixed(1)}`, unit: "Mbps", color: "#00c8a8" },
-            { label: "Upload",    value: `${result.upload_mbps.toFixed(1)}`,   unit: "Mbps", color: "#818cf8" },
-            { label: "Latency",   value: `${result.latency_ms.toFixed(1)}`,    unit: "ms",   color: result.latency_ms < 20 ? "#22c55e" : result.latency_ms < 80 ? "#f59e0b" : "#ef4444" },
-            { label: "Jitter",    value: `${result.jitter_ms.toFixed(1)}`,     unit: "ms",   color: result.jitter_ms < 5 ? "#22c55e" : "#f59e0b" },
-          ].map((s) => (
-            <div key={s.label} className="p-4 text-center">
-              <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">{s.label}</p>
-              <p className="text-xl font-semibold font-mono" style={{ color: s.color }}>
-                {s.value}<span className="text-xs text-[var(--text4)] ml-0.5">{s.unit}</span>
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {phase === "idle" && (
-        <div className="px-4 py-4 text-center">
-          <p className="text-[11px] text-[var(--text5)] italic">Tests download, upload and latency from the remote device to speed.cloudflare.com</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Section: Network ──────────────────────────────────────────────────────────
 
 type NetSort = "name" | "rx" | "tx" | "total";
@@ -466,7 +385,6 @@ const NET_SORT_KEY = "pingnet_net_sort";
 function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; available: boolean; sessionId: string }) {
   const [sortBy, setSortBy]           = useState<NetSort>(() => (localStorage.getItem(NET_SORT_KEY) as NetSort) ?? "rx");
   const [selectedIface, setSelected]  = useState<string | null>(null);
-  const [showSpeedtest, setSpeedtest] = useState(false);
 
   if (!available) return <NA msg="/proc/net/dev not available on this kernel" />;
   if (!ifaces.length) return <NA msg="No active interfaces" />;
@@ -562,20 +480,14 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
         {/* Routing graph */}
         <RoutingGraph sessionId={sessionId} ifaces={ifaces} />
 
-        {/* Speedtest */}
-        <div>
-          {!showSpeedtest
-            ? <button onClick={() => setSpeedtest(true)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-medium transition-all text-[var(--text4)] hover:text-[#00c8a8] hover:bg-[#00c8a808]"
-                style={{ border: "1px dashed var(--border)" }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1"/>
-                  <path d="M5 3v2l1.5 1.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-                </svg>
-                Run Cloudflare Speedtest
-              </button>
-            : <SpeedtestCard sessionId={sessionId} />
-          }
+        {/* Speedtest now lives in its own top-level "Speedtest" tab */}
+        <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-medium text-[var(--text5)]"
+          style={{ border: "1px dashed var(--border)" }}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1"/>
+            <path d="M5 3v2l1.5 1.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+          </svg>
+          Run a Cloudflare speed test from the Speedtest tab above
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 [package]
 name = "pingnet"
-version = "0.4.7"
+version = "0.5.0"
 description = "Pingnet — a cross-platform ping testing app"
 authors = []
 edition = "2021"
