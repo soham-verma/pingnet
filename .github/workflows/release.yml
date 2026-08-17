@@ -60,6 +60,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Write Apple API key (notarization)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          echo "${{ secrets.APPLE_API_KEY_CONTENT }}" | base64 --decode > "$RUNNER_TEMP/private_keys/apple_api_key.p8"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -68,13 +74,17 @@ jobs:
           # Required for auto-update — see CLAUDE.md for how the key was generated.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS code signing (optional — remove if not signing)
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS code signing + notarization — Developer ID Application cert (signing)
+          # + App Store Connect API key (notarization). Only acted on for macOS targets;
+          # harmless no-ops on Linux/Windows runners. See project doc
+          # "macos-code-signing-notarization.md" for how these were generated.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/private_keys/apple_api_key.p8
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Pingnet ${{ github.ref_name }}'

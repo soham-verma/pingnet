@@ -73,6 +73,10 @@ pub fn local_pty_start(
 
     let shell = detect_shell();
     let mut cmd = CommandBuilder::new(&shell);
+    // Force a login shell so PATH setup in ~/.zprofile (Homebrew, nvm, ~/.local/bin, etc.)
+    // actually runs — CommandBuilder's argv[0] has no leading "-", so without this the
+    // shell silently comes up non-login and misses anything path_helper/.zprofile adds.
+    cmd.arg("-l");
 
     // Pass through the user's environment so PATH, TERM, etc. are set correctly
     cmd.env("TERM", "xterm-256color");
