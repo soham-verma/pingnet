@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { usePolling } from "../../hooks/usePolling";
+import NetworkInfoPanel from "../NetworkInfoPanel";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -8,7 +10,12 @@ import {
 } from "../../types";
 import PartitionManager from "./PartitionManager";
 
-interface Props { sessionId: string; isActive: boolean; }
+interface Props {
+  sessionId: string;
+  isActive: boolean;
+  /** Address the SSH session connects to — used for the Ports tab scan */
+  targetHost?: string;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -122,125 +129,119 @@ function fmtBigBytes(b: number) {
   return `${(b / 1024 ** 3).toFixed(2)} GB`;
 }
 
-function IfaceDetailPanel({ sessionId, iface, onClose }: {
-  sessionId: string; iface: string; onClose: () => void;
-}) {
+/** Inline, full-width details for one interface — rendered directly under its
+ *  row in the Interfaces table (accordion), not as an overlay. */
+function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: string }) {
   const [data, setData]   = useState<IfaceDetails | null>(null);
   const [err, setErr]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
+    setLoading(true); setErr(null);
     invoke<IfaceDetails>("get_iface_details", { sessionId, iface })
-      .then((d) => { setData(d); setLoading(false); })
-      .catch((e) => { setErr(String(e)); setLoading(false); });
+      .then((d) => { if (alive) { setData(d); setLoading(false); } })
+      .catch((e) => { if (alive) { setErr(String(e)); setLoading(false); } });
+    return () => { alive = false; };
   }, [sessionId, iface]);
 
   const stateColor = data?.operstate === "up" ? "#00c8a8" : data?.operstate === "down" ? "#ef4444" : "var(--text3)";
+  const card = { background: "var(--bg)", border: "1px solid var(--border)" };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-4 text-[var(--text5)]">
+        <div className="w-3.5 h-3.5 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" />
+        <span className="text-[11px]">Loading interface details…</span>
+      </div>
+    );
+  }
+  if (err) return <div className="px-4 py-3 text-[11px] text-[#ef4444] font-mono">{err}</div>;
+  if (!data) return null;
 
   return (
-    <div className="absolute inset-0 z-10 flex flex-col overflow-hidden"
-      style={{ background: "var(--bg)" }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]"
-        style={{ background: "var(--bg1)" }}>
-        <div className="flex items-center gap-2">
-          <button onClick={onClose}
-            className="text-[var(--text4)] hover:text-[var(--text)] transition-colors p-1 rounded"
-            style={{ background: "#ffffff08" }}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M7 1L2 6l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          <span className="text-[11px] font-mono font-semibold text-[var(--text)]">{iface}</span>
-          {data?.operstate && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
-              style={{ color: stateColor, background: `${stateColor}18`, border: `1px solid ${stateColor}30` }}>
-              {data.operstate}
-            </span>
-          )}
+    <div className="px-4 pb-4 pt-1">
+      {data.operstate && (
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Link state</span>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+            style={{ color: stateColor, background: `${stateColor}18`, border: `1px solid ${stateColor}30` }}>
+            {data.operstate}
+          </span>
         </div>
-        <span className="text-[10px] text-[var(--text5)]">Interface Details</span>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {loading && (
-          <div className="flex items-center justify-center py-12 gap-2 text-[var(--text5)]">
-            <div className="w-4 h-4 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" />
-            <span className="text-[11px]">Loading interface details…</span>
+      {/* Cards flow side-by-side when there's room, stack when narrow */}
+      <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+        {/* Identity */}
+        <div className="rounded-lg overflow-hidden" style={card}>
+          <div className="px-3 py-1.5 border-b border-[var(--border)]">
+            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Identity</span>
           </div>
-        )}
-        {err && <div className="text-[11px] text-[#ef4444] font-mono px-2">{err}</div>}
-        {data && !loading && (
-          <>
-            {/* Identity */}
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-2 border-b border-[var(--border)]">
-                <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Identity</span>
+          <div className="divide-y divide-[var(--bg2)]">
+            {[
+              { label: "MAC Address", value: data.mac ?? "—" },
+              { label: "MTU", value: data.mtu != null ? `${data.mtu} bytes` : "—" },
+              { label: "Link Speed", value: data.speed_mbps != null && data.speed_mbps > 0 ? `${data.speed_mbps} Mbps` : "N/A" },
+              { label: "Driver", value: data.driver ?? "—" },
+              { label: "Bus", value: data.bus_info ?? "—" },
+            ].map(r => (
+              <div key={r.label} className="flex justify-between gap-3 px-3 py-2">
+                <span className="text-[10px] text-[var(--text4)] flex-shrink-0">{r.label}</span>
+                <span className="text-[10px] font-mono text-[var(--text)] text-right break-all">{r.value}</span>
               </div>
-              <div className="divide-y divide-[var(--bg2)]">
-                {[
-                  { label: "MAC Address", value: data.mac ?? "—" },
-                  { label: "MTU", value: data.mtu != null ? `${data.mtu} bytes` : "—" },
-                  { label: "Link Speed", value: data.speed_mbps != null && data.speed_mbps > 0 ? `${data.speed_mbps} Mbps` : "N/A" },
-                  { label: "Driver", value: data.driver ?? "—" },
-                  { label: "Bus", value: data.bus_info ?? "—" },
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between px-4 py-2.5">
-                    <span className="text-[10px] text-[var(--text4)]">{r.label}</span>
-                    <span className="text-[10px] font-mono text-[var(--text)]">{r.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            {/* IP addresses */}
-            {(data.ipv4.length > 0 || data.ipv6.length > 0) && (
-              <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-                <div className="px-4 py-2 border-b border-[var(--border)]">
-                  <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Addresses</span>
-                </div>
-                <div className="divide-y divide-[var(--bg2)]">
-                  {data.ipv4.map((ip) => (
-                    <div key={ip} className="flex justify-between px-4 py-2.5">
-                      <span className="text-[10px] text-[var(--text4)]">IPv4</span>
-                      <span className="text-[10px] font-mono" style={{ color: "#00c8a8" }}>{ip}</span>
-                    </div>
-                  ))}
-                  {data.ipv6.map((ip) => (
-                    <div key={ip} className="flex justify-between px-4 py-2.5">
-                      <span className="text-[10px] text-[var(--text4)]">IPv6</span>
-                      <span className="text-[10px] font-mono text-[#818cf8] truncate max-w-[180px]">{ip}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+        {/* Addresses */}
+        <div className="rounded-lg overflow-hidden" style={card}>
+          <div className="px-3 py-1.5 border-b border-[var(--border)]">
+            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Addresses</span>
+          </div>
+          <div className="divide-y divide-[var(--bg2)]">
+            {data.ipv4.length === 0 && data.ipv6.length === 0 && (
+              <div className="px-3 py-2 text-[10px] text-[var(--text5)] italic">No addresses assigned</div>
             )}
+            {data.ipv4.map((ip) => (
+              <div key={ip} className="flex justify-between gap-3 px-3 py-2">
+                <span className="text-[10px] text-[var(--text4)] flex-shrink-0">IPv4</span>
+                <span className="text-[10px] font-mono text-right break-all" style={{ color: "#00c8a8" }}>{ip}</span>
+              </div>
+            ))}
+            {data.ipv6.map((ip) => (
+              <div key={ip} className="flex justify-between gap-3 px-3 py-2">
+                <span className="text-[10px] text-[var(--text4)] flex-shrink-0">IPv6</span>
+                <span className="text-[10px] font-mono text-[#818cf8] text-right break-all">{ip}</span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-            {/* Traffic stats */}
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-2 border-b border-[var(--border)]">
-                <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Cumulative Traffic</span>
+        {/* Cumulative traffic */}
+        <div className="rounded-lg overflow-hidden" style={card}>
+          <div className="px-3 py-1.5 border-b border-[var(--border)]">
+            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Cumulative Traffic</span>
+          </div>
+          <div className="grid grid-cols-2">
+            {[
+              { label: "RX Bytes",   value: fmtBigBytes(data.rx_bytes),   color: "#00c8a8" },
+              { label: "TX Bytes",   value: fmtBigBytes(data.tx_bytes),   color: "#818cf8" },
+              { label: "RX Packets", value: data.rx_packets.toLocaleString(), color: "#00c8a8" },
+              { label: "TX Packets", value: data.tx_packets.toLocaleString(), color: "#818cf8" },
+              { label: "RX Errors",  value: data.rx_errors.toString(),    color: data.rx_errors > 0 ? "#ef4444" : "var(--text4)" },
+              { label: "TX Errors",  value: data.tx_errors.toString(),    color: data.tx_errors > 0 ? "#ef4444" : "var(--text4)" },
+              { label: "RX Dropped", value: data.rx_dropped.toString(),   color: data.rx_dropped > 0 ? "#f59e0b" : "var(--text4)" },
+              { label: "TX Dropped", value: data.tx_dropped.toString(),   color: data.tx_dropped > 0 ? "#f59e0b" : "var(--text4)" },
+            ].map((st, idx) => (
+              <div key={st.label}
+                className={`px-2 py-2 text-center ${idx < 6 ? "border-b" : ""} ${idx % 2 === 0 ? "border-r" : ""} border-[var(--border)]`}>
+                <p className="text-[9px] text-[var(--text5)] uppercase tracking-wider mb-0.5">{st.label}</p>
+                <p className="text-[11px] font-mono font-semibold" style={{ color: st.color }}>{st.value}</p>
               </div>
-              <div className="grid grid-cols-2 divide-x divide-[var(--border)]">
-                {[
-                  { label: "RX Bytes",   value: fmtBigBytes(data.rx_bytes),   color: "#00c8a8" },
-                  { label: "TX Bytes",   value: fmtBigBytes(data.tx_bytes),   color: "#818cf8" },
-                  { label: "RX Packets", value: data.rx_packets.toLocaleString(), color: "#00c8a8" },
-                  { label: "TX Packets", value: data.tx_packets.toLocaleString(), color: "#818cf8" },
-                  { label: "RX Errors",  value: data.rx_errors.toString(),    color: data.rx_errors > 0 ? "#ef4444" : "var(--text4)" },
-                  { label: "TX Errors",  value: data.tx_errors.toString(),    color: data.tx_errors > 0 ? "#ef4444" : "var(--text4)" },
-                  { label: "RX Dropped", value: data.rx_dropped.toString(),   color: data.rx_dropped > 0 ? "#f59e0b" : "var(--text4)" },
-                  { label: "TX Dropped", value: data.tx_dropped.toString(),   color: data.tx_dropped > 0 ? "#f59e0b" : "var(--text4)" },
-                ].map((s, idx) => (
-                  <div key={s.label} className={`p-3 text-center ${idx % 2 === 0 && idx < 6 ? "border-b border-[var(--border)]" : idx < 6 ? "border-b border-[var(--border)]" : ""}`}>
-                    <p className="text-[9px] text-[var(--text5)] uppercase tracking-wider mb-1">{s.label}</p>
-                    <p className="text-[12px] font-mono font-semibold" style={{ color: s.color }}>{s.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -384,7 +385,14 @@ const NET_SORT_KEY = "pingnet_net_sort";
 
 function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; available: boolean; sessionId: string }) {
   const [sortBy, setSortBy]           = useState<NetSort>(() => (localStorage.getItem(NET_SORT_KEY) as NetSort) ?? "rx");
-  const [selectedIface, setSelected]  = useState<string | null>(null);
+  // Expanded interface rows (accordion) — several can be open at once
+  const [expanded, setExpanded]       = useState<Set<string>>(new Set());
+  const toggleIface = (name: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
 
   if (!available) return <NA msg="/proc/net/dev not available on this kernel" />;
   if (!ifaces.length) return <NA msg="No active interfaces" />;
@@ -404,12 +412,7 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
   });
 
   return (
-    <div className="relative flex flex-col h-full">
-      {/* Interface detail overlay */}
-      {selectedIface && (
-        <IfaceDetailPanel sessionId={sessionId} iface={selectedIface} onClose={() => setSelected(null)} />
-      )}
-
+    <div className="flex flex-col">
       <div className="p-4 space-y-3">
         {/* Totals */}
         <div className="grid grid-cols-2 gap-2">
@@ -447,31 +450,37 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
           <div className="divide-y divide-[var(--bg2)]">
             {sorted.map((i) => {
               const active = i.rx_kbps > 0 || i.tx_kbps > 0;
+              const isOpen = expanded.has(i.name);
               return (
-                <button key={i.name}
-                  onClick={() => setSelected(i.name)}
-                  className="w-full text-left hover:bg-white/[0.025] transition-colors group"
-                >
-                  <div className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "80px 1fr 1fr 32px" }}>
-                    <div>
-                      <p className="text-[11px] font-mono text-[var(--text)] font-medium">{i.name}</p>
-                      <Chip label={active ? "Active" : "Idle"} color={active ? "#00c8a8" : "var(--text4)"} />
+                <div key={i.name} style={isOpen ? { background: "#ffffff04" } : undefined}>
+                  <button
+                    onClick={() => toggleIface(i.name)}
+                    aria-expanded={isOpen}
+                    className="w-full text-left hover:bg-white/[0.025] transition-colors group"
+                  >
+                    <div className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "80px 1fr 1fr 32px" }}>
+                      <div>
+                        <p className="text-[11px] font-mono text-[var(--text)] font-medium">{i.name}</p>
+                        <Chip label={active ? "Active" : "Idle"} color={active ? "#00c8a8" : "var(--text4)"} />
+                      </div>
+                      <div className="pr-3 space-y-1">
+                        <span className="text-[10px] font-mono" style={{ color: "#00c8a8" }}>↓ {fmtBytes(i.rx_kbps)}</span>
+                        <Track value={i.rx_kbps} max={Math.max(totalRx, 1)} color="#00c8a8" />
+                      </div>
+                      <div className="pr-2 space-y-1">
+                        <span className="text-[10px] font-mono" style={{ color: "#818cf8" }}>↑ {fmtBytes(i.tx_kbps)}</span>
+                        <Track value={i.tx_kbps} max={Math.max(totalTx, 1)} color="#818cf8" />
+                      </div>
+                      {/* Chevron — rotates when expanded */}
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
+                        className={`justify-self-end transition-all flex-shrink-0 ${isOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                        style={{ transform: isOpen ? "rotate(90deg)" : "none" }}>
+                        <path d="M2 1l3 3-3 3" stroke={isOpen ? "#00c8a8" : "var(--text3)"} strokeWidth="1.2" strokeLinecap="round"/>
+                      </svg>
                     </div>
-                    <div className="pr-3 space-y-1">
-                      <span className="text-[10px] font-mono" style={{ color: "#00c8a8" }}>↓ {fmtBytes(i.rx_kbps)}</span>
-                      <Track value={i.rx_kbps} max={Math.max(totalRx, 1)} color="#00c8a8" />
-                    </div>
-                    <div className="pr-2 space-y-1">
-                      <span className="text-[10px] font-mono" style={{ color: "#818cf8" }}>↑ {fmtBytes(i.tx_kbps)}</span>
-                      <Track value={i.tx_kbps} max={Math.max(totalTx, 1)} color="#818cf8" />
-                    </div>
-                    {/* Chevron */}
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <path d="M2 1l3 3-3 3" stroke="var(--text3)" strokeWidth="1.2" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                </button>
+                  </button>
+                  {isOpen && <IfaceDetailBody sessionId={sessionId} iface={i.name} />}
+                </div>
               );
             })}
           </div>
@@ -853,16 +862,15 @@ function ProcessesSection({ procs, osType }: { procs: ProcessEntry[]; osType: st
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-type Section = "cores" | "network" | "disk" | "gpu" | "temp" | "processes";
+type Section = "cores" | "network" | "disk" | "gpu" | "temp" | "processes" | "ports";
 
-export default function MetricsPanel({ sessionId, isActive }: Props) {
+export default function MetricsPanel({ sessionId, isActive, targetHost }: Props) {
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [caps, setCaps]       = useState<Capabilities | null>(null);
   const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState<Section>("cores");
   const [pulse, setPulse]     = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Logging state ────────────────────────────────────────────────────────
   const [logging, setLogging]   = useState(false);
@@ -874,9 +882,10 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
   // Keep ref in sync so fetchMetrics never needs to re-subscribe to `logging`
   useEffect(() => { loggingRef.current = logging; }, [logging]);
 
-  const fetchMetrics = useCallback(async () => {
+  const fetchMetrics = useCallback(async (isCurrent: () => boolean = () => true) => {
     try {
       const m = await invoke<MetricsSnapshot>("get_metrics", { sessionId });
+      if (!isCurrent()) return; // hidden / session changed while in flight
       setMetrics(m);
       setError(null);
       setPulse(true);
@@ -892,9 +901,9 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
         setLogCount(logBufRef.current.length);
       }
     } catch (e) {
-      setError(String(e));
+      if (isCurrent()) setError(String(e));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [sessionId]); // `logging` intentionally omitted — use loggingRef instead
 
@@ -902,12 +911,9 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
     invoke<Capabilities>("probe_capabilities", { sessionId }).then(setCaps).catch(() => {});
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!isActive) { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } return; }
-    fetchMetrics();
-    intervalRef.current = setInterval(fetchMetrics, 3000);
-    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
-  }, [isActive, fetchMetrics]);
+  // Next poll starts 3 s after the previous one finishes (never overlapping),
+  // and only while this panel's host and tab are actually on screen.
+  usePolling(fetchMetrics, 3000, isActive);
 
   if (loading) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[var(--text5)]">
@@ -919,7 +925,7 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
   if (error) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
       <p className="text-[#ef4444] text-xs font-mono text-center">{error}</p>
-      <button onClick={fetchMetrics} className="text-[11px] text-[#00c8a8] hover:text-[var(--text)] underline">Retry</button>
+      <button onClick={() => fetchMetrics()} className="text-[11px] text-[#00c8a8] hover:text-[var(--text)] underline">Retry</button>
     </div>
   );
 
@@ -943,6 +949,7 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
     { id: "gpu",       label: "GPU",  alert: metrics.gpus.length > 0 },
     { id: "temp",      label: "Temp", alert: metrics.thermal.some(z => z.temp_c >= 70) },
     { id: "processes", label: "Procs" },
+    ...(targetHost ? [{ id: "ports" as const, label: "Ports" }] : []),
   ];
 
   const summaryItems = [
@@ -1115,6 +1122,11 @@ export default function MetricsPanel({ sessionId, isActive }: Props) {
         {section === "gpu"       && <GpuSection gpus={metrics.gpus} checkedTools={checkedGpuTools} />}
         {section === "temp"      && <TempSection zones={metrics.thermal} />}
         {section === "processes" && <ProcessesSection procs={metrics.processes} osType={metrics.os_type} />}
+        {section === "ports" && targetHost && (
+          <div className="p-4">
+            <NetworkInfoPanel target={targetHost} sessionId={sessionId} />
+          </div>
+        )}
       </div>
     </div>
   );

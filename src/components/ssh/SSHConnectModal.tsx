@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useDialog } from "../../hooks/useDialog";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { SshConfig, KeyInfo } from "../../types";
@@ -17,6 +18,7 @@ function totpSecondsLeft(): number {
 }
 
 export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, onClose }: Props) {
+  const dialog = useDialog(onClose);
   const [port, setPort] = useState(savedConfig?.port ?? 22);
   const [username, setUsername] = useState(savedConfig?.username ?? "");
   const [authType, setAuthType] = useState<"password" | "key" | "keychain" | "agent" | "totp">(
@@ -108,7 +110,9 @@ export default function SSHConnectModal({ hostname, ip, savedConfig, onConnect, 
   const labelCls = "block text-[11px] text-[var(--text3)] tracking-widest uppercase mb-1.5";
 
   return (
-    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      {...dialog}
+      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="w-full max-w-md rounded-2xl border border-[var(--border)] overflow-hidden"
         style={{ background: "var(--bg2)" }}

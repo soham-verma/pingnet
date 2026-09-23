@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { newId } from "../../utils/id";
 import { invoke } from "@tauri-apps/api/core";
 import {
   PART_SCAN_SCRIPT,
@@ -15,6 +16,7 @@ import {
 } from "../../utils/partitions";
 import {
   buildPartCommand,
+  shQuote,
   actionAvailable,
   type PartAction,
   type PartCommandPlan,
@@ -60,7 +62,9 @@ function ConfirmCheckbox({
 async function remoteExec(sessionId: string, command: string, sudoPassword: string | null, needsSudo: boolean) {
   return invoke<string>("ssh_exec", {
     sessionId,
-    command,
+    // Plans are POSIX sh scripts (set -eu, multi-line) — run them under sh
+    // regardless of the login shell (zsh, fish, …).
+    command: `sh -c ${shQuote(command)}`,
     sudoPassword: needsSudo ? sudoPassword : null,
   });
 }
@@ -261,7 +265,7 @@ export default function PartitionManager({ sessionId }: Props) {
   };
 
   const queuePlan = (plan: PartCommandPlan) => {
-    setPending((prev) => [...prev, { id: crypto.randomUUID(), plan }]);
+    setPending((prev) => [...prev, { id: newId(), plan }]);
     setModal({ kind: "none" });
     setLastOutput(`Queued: ${plan.summary} (not applied yet)`);
   };
@@ -491,7 +495,7 @@ export default function PartitionManager({ sessionId }: Props) {
                     />
                   </label>
                   <label className="text-[10px] text-[var(--text4)]">
-                    Size (MB)
+                    Size (MiB)
                     <input
                       value={sizeMb}
                       onChange={(e) => setSizeMb(e.target.value)}

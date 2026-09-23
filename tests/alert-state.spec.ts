@@ -139,3 +139,27 @@ test.describe("latency alert", () => {
     expect(nextState).toBe("slow");
   });
 });
+
+// ── Auto-ping reconciliation (audit BUG-004) ─────────────────────────────────
+import { reconcileAutoPing } from "../src/hooks/usePing";
+
+const hostCfg = (id: string, alerts: boolean) => ({
+  id, alert_on_down: alerts, alert_on_recovery: false, alert_latency_ms: null,
+});
+
+test("reconcileAutoPing keeps intervals for retained hosts when the list changes", () => {
+  const refs: Record<string, number> = { a: 1 };
+  const cleared: number[] = [];
+  // host B added, A unchanged → A keeps polling
+  reconcileAutoPing(refs, [hostCfg("a", true), hostCfg("b", false)], (t) => cleared.push(t));
+  expect(refs).toEqual({ a: 1 });
+  expect(cleared).toEqual([]);
+});
+
+test("reconcileAutoPing stops intervals for deleted hosts and hosts without alerts", () => {
+  const refs: Record<string, number> = { a: 1, b: 2, c: 3 };
+  const cleared: number[] = [];
+  reconcileAutoPing(refs, [hostCfg("a", true), hostCfg("b", false)], (t) => cleared.push(t));
+  expect(refs).toEqual({ a: 1 });
+  expect(cleared.sort()).toEqual([2, 3]);
+});

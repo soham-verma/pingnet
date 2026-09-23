@@ -49,7 +49,7 @@ npm run tauri dev
 | Tool | Minimum |
 |------|---------|
 | Rust | stable (latest) |
-| Node.js | 18 |
+| Node.js | 20.19+ or 22.12+ (`.nvmrc`: 22) |
 | npm | 9 |
 
 ---

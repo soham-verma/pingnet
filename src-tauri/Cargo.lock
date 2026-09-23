@@ -1006,6 +1006,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dns-lookup"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf5597a4b7fe5275fc9dcf88ce26326bc8e4cb87d0130f33752d4c5f717793cf"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "socket2 0.6.4",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
 name = "dom_query"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3278,15 +3290,19 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pingnet"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
+ "base64 0.22.1",
  "dirs 5.0.1",
+ "dns-lookup",
  "keyring",
  "open",
  "portable-pty",
  "rand_core 0.6.4",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "ssh-key",
  "ssh2",
  "tauri",
@@ -3298,6 +3314,8 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "ureq",
+ "url",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

@@ -56,3 +56,7 @@ npm-debug.log*
 # ── OS ────────────────────────────────────────────────────────────────────────
 Thumbs.db
 ehthumbs.db
+
+# ── Test output ──
+test-results/
+playwright-report/

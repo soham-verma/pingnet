@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useDialog } from "../hooks/useDialog";
 import { HostConfig, HostIp } from "../types";
 
 const IP_TYPES: HostIp["type"][] = ["local", "wifi", "vpn", "public", "tailscale", "other"];
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export default function AddEditModal({ existing, initialIp, onSave, onClose, onDelete }: Props) {
+  const dialog = useDialog(onClose);
   const [hostname, setHostname] = useState(existing?.hostname ?? "");
   const [ip, setIp] = useState(existing?.ip ?? initialIp ?? "");
   const [ipType, setIpType] = useState<HostIp["type"]>(existing?.ip_type ?? "local");
@@ -135,11 +137,12 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
   );
 
   return (
-    // BUG-04 fallback: onKeyDown on backdrop catches Escape even if document listener misses it
+    // Escape, focus trap and dialog semantics come from useDialog (spread below)
     <div
+      {...dialog}
+     
       className="fixed inset-0 z-50 flex items-start justify-center modal-backdrop overflow-y-auto py-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
       {/* BUG-03 fix: modal is now max-height capped and scrollable, matching KeyManager.
           Using flex-col so header stays fixed and only the form body scrolls. */}

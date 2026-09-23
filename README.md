@@ -56,13 +56,17 @@ Download the latest release for your platform from the [Releases page](../../rel
 
 ### macOS
 
-> **"Pingnet.app is damaged and can't be opened"** — this is macOS Gatekeeper blocking an unsigned app. Run this in Terminal after dragging Pingnet.app to your Applications folder:
->
-> ```bash
-> xattr -cr /Applications/Pingnet.app
-> ```
->
-> Then open it normally.
+Requires **macOS 10.15 (Catalina) or later**. Release builds are signed with a Developer ID certificate and notarized by Apple, so they open normally after you drag Pingnet.app into Applications.
+
+If macOS refuses to open it, don't strip the quarantine flag — that hides a real problem (a damaged download or a broken signature). Check the app instead:
+
+```bash
+codesign --verify --deep --strict --verbose=2 /Applications/Pingnet.app
+spctl --assess --type execute --verbose /Applications/Pingnet.app   # expect: accepted, source=Notarized Developer ID
+xcrun stapler validate /Applications/Pingnet.app
+```
+
+If any of these fail, delete the app, download it again from the [Releases page](../../releases/latest), and [open an issue](../../issues/new) with the output if it still fails.
 
 ### Linux
 
@@ -87,7 +91,7 @@ Run the `.msi` installer or the `.exe` setup file. If Windows Defender blocks it
 | Tool | Install |
 |------|---------|
 | Rust + Cargo | https://rustup.rs |
-| Node.js 18+ | https://nodejs.org |
+| Node.js 20.19+ or 22.12+ (see `.nvmrc`) | https://nodejs.org |
 | Xcode CLI (macOS) | `xcode-select --install` |
 
 ### Dev

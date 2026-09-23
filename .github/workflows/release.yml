@@ -9,7 +9,12 @@ permissions:
   contents: write
 
 jobs:
+  checks:
+    # Typecheck, unit tests and native tests must pass before anything is built
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: checks
     strategy:
       fail-fast: false
       matrix:
@@ -71,7 +76,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the updater bundles so the in-app updater can verify them.
-          # Required for auto-update — see CLAUDE.md for how the key was generated.
+          # Required for auto-update (minisign key pair; the public half is in tauri.conf.json).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS code signing + notarization — Developer ID Application cert (signing)

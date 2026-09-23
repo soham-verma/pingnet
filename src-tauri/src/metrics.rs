@@ -960,6 +960,21 @@ fn collect_windows(
 
 // ── Main collection ───────────────────────────────────────────────────────────
 
+/// Return cached capabilities or probe them. The global `caps` mutex is only
+/// held for the lookup/insert — never across SSH I/O — so it can't participate
+/// in a lock-order cycle with a session mutex (audit BUG-005). Callers must
+/// already hold this session's `sftp_session` lock.
+pub fn cached_or_probe(session: &Session, session_id: &str, state: &Arc<MetricsState>) -> Capabilities {
+    if let Some(c) = state.caps.lock().unwrap_or_else(|e| e.into_inner()).get(session_id) {
+        return c.clone();
+    }
+    let probed = probe(session);
+    state.caps.lock().unwrap_or_else(|e| e.into_inner())
+        .entry(session_id.to_string())
+        .or_insert(probed)
+        .clone()
+}
+
 pub fn collect(
     session: &Session,
     session_id: &str,
@@ -972,14 +987,7 @@ pub fn collect(
     // current blocking mode (set once at connect time in ssh_connect).
 
     // ── Get or probe capabilities ─────────────────────────────────────────────
-    let caps = {
-        let mut caps_map = state.caps.lock().unwrap();
-        if !caps_map.contains_key(session_id) {
-            let c = probe(session);
-            caps_map.insert(session_id.to_string(), c);
-        }
-        caps_map.get(session_id).unwrap().clone()
-    };
+    let caps = cached_or_probe(session, session_id, state);
 
     // ── Dispatch by OS ────────────────────────────────────────────────────────
     match caps.os_type.as_str() {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { currentLogicalLine } from "../../utils/terminalBuffer";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -131,12 +132,8 @@ export default function SSHTerminal({ sessionId, isConnected, themeId, suggestio
   //
   // Handles: $  #  %  ❯  ›  (covers bash/zsh/fish default prompts)
   const extractCommandFromLine = (term: Terminal): string => {
-    const cy = term.buffer.active.cursorY;
-    const line = term.buffer.active.getLine(cy);
-    if (!line) return "";
-
-    // translateToString(true) trims trailing whitespace automatically
-    const text = line.translateToString(true);
+    const text = currentLogicalLine(term);
+    if (!text) return "";
 
     // Only record if the line starts with a recognisable shell prompt.
     // This prevents saving commands typed inside sub-tools (python REPL,

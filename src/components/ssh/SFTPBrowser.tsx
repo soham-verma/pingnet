@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { newId } from "../../utils/id";
 import { FileEntry } from "../../types";
 
 interface Props {
@@ -103,7 +105,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
   };
 
   const handleDownload = async (entry: FileEntry) => {
-    const id = crypto.randomUUID();
+    const id = newId();
     onDownloadStart(id, entry.name);
     try {
       await invoke("sftp_download", {
@@ -111,8 +113,8 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
         remotePath: entry.path,
         transferId: id,
       });
-    } catch (e) {
-      console.error("Download failed:", e);
+    } catch {
+      // Backend emits a terminal "error" transfer event — the queue shows it
     }
     setContextMenu(null);
   };
@@ -168,34 +170,58 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
     }
   };
 
+  const UPLOAD_CHUNK = 1024 * 1024; // 1 MiB binary chunks — never the whole file in memory
+
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
+    // Reset input so the same file can be re-uploaded if needed
+    const reset = () => { input.value = ""; };
     if (!file) return;
-    const id = crypto.randomUUID();
     const remotePath = `${path.replace(/\/$/, "")}/${file.name}`;
-    onUploadStart(id, file.name, file.size);
-    // Read file as ArrayBuffer and write to a temp path the Rust backend can access
-    // We need the actual file path — use the webkitRelativePath or name
-    // In Tauri webview, we can read files via the file object
-    // But sftp_upload expects a local file path on the host OS
-    // We'll use a workaround: write to a temp file first
+
+    // Confirm before replacing an existing remote file
     try {
-      const arrayBuf = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuf);
-      await invoke("sftp_upload_bytes", {
-        sessionId,
-        bytes: Array.from(bytes),
-        remotePath,
-        transferId: id,
-        localName: file.name,
-      });
-      // Reload immediately — invoke is already awaited so the upload is done
-      load(path);
+      const exists = await invoke<boolean>("sftp_path_exists", { sessionId, path: remotePath });
+      if (exists) {
+        const ok = await ask(`"${file.name}" already exists in ${path}. Replace it?`, {
+          title: "Replace file?", kind: "warning", okLabel: "Replace", cancelLabel: "Cancel",
+        });
+        if (!ok) { reset(); return; }
+      }
     } catch (err) {
       setError(`Upload failed: ${String(err)}`);
+      reset();
+      return;
     }
-    // Reset input so the same file can be re-uploaded if needed
-    e.target.value = "";
+
+    const id = newId();
+    onUploadStart(id, file.name, file.size);
+    const headers = (offset: number) => ({
+      "x-session-id": encodeURIComponent(sessionId),
+      "x-transfer-id": id,
+      "x-remote-path": encodeURIComponent(remotePath),
+      "x-name": encodeURIComponent(file.name),
+      "x-offset": String(offset),
+      "x-total": String(file.size),
+    });
+    try {
+      // Stream into a temp file beside the destination; the original is only
+      // replaced by sftp_upload_commit once every byte has arrived.
+      for (let offset = 0; offset < file.size || offset === 0; offset += UPLOAD_CHUNK) {
+        const chunk = new Uint8Array(await file.slice(offset, offset + UPLOAD_CHUNK).arrayBuffer());
+        await invoke("sftp_upload_chunk", chunk, { headers: headers(offset) });
+        if (file.size === 0) break;
+      }
+      await invoke("sftp_upload_commit", {
+        sessionId, remotePath, transferId: id, name: file.name, totalBytes: file.size,
+      });
+      load(path);
+    } catch (err) {
+      // Backend already marked the transfer as failed and removed the temp file
+      setError(`Upload failed: ${String(err)}`);
+    }
+    reset();
   };
 
   const breadcrumbs = ["~", ...path.replace(/^\//, "").split("/").filter(Boolean)];

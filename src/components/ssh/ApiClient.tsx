@@ -1,10 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { newId } from "../../utils/id";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  isSecret, looksSecretName as looksAutoSecret, splitSecrets, secretRefs, mergeSecrets, hasPlaintextSecrets,
+  type ApiHeader, type ApiEnvVar,
+} from "../../utils/apiStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Header { id: string; enabled: boolean; name: string; value: string; }
-interface EnvVar  { id: string; enabled: boolean; key: string; value: string; }
+type Header = ApiHeader;
+type EnvVar  = ApiEnvVar;
 
 type BodyType = "none" | "json" | "form" | "text";
 type ReqTab   = "headers" | "body" | "params" | "env";
@@ -36,22 +41,77 @@ interface HttpResponse {
 
 function storageKey(hostId: string) { return `pingnet_api_${hostId}`; }
 
-function loadStorage(hostId: string): { collections: SavedRequest[]; envVars: EnvVar[] } {
+interface StoredApiData { collections: SavedRequest[]; envVars: EnvVar[] }
+
+function readLocal(hostId: string): StoredApiData {
   try {
     const raw = localStorage.getItem(storageKey(hostId));
     if (!raw) return { collections: [], envVars: [] };
-    return JSON.parse(raw);
+    const d = JSON.parse(raw);
+    return { collections: d.collections ?? [], envVars: d.envVars ?? [] };
   } catch { return { collections: [], envVars: [] }; }
 }
 
-function saveStorage(hostId: string, collections: SavedRequest[], envVars: EnvVar[]) {
-  localStorage.setItem(storageKey(hostId), JSON.stringify({ collections, envVars }));
+/**
+ * Persist collections + env vars. Secret values go to the OS keychain and
+ * only blanked references go to localStorage (audit SEC-005). `written`
+ * caches what's already in the keychain so typing doesn't write on every
+ * keystroke unless the value changed; keys that disappear are deleted.
+ */
+async function persistApiData(hostId: string, data: StoredApiData, written: Map<string, string>) {
+  const env = splitSecrets(hostId, data.envVars, (v) => v.key);
+  const allSecrets: Record<string, string> = { ...env.secrets };
+  const collections = data.collections.map((c) => {
+    const hs = splitSecrets(hostId, c.headers, (h) => h.name);
+    Object.assign(allSecrets, hs.secrets);
+    return { ...c, headers: hs.stored };
+  });
+
+  for (const [key, value] of Object.entries(allSecrets)) {
+    if (written.get(key) === value) continue;
+    await invoke("api_secret_set", { key, value });
+    written.set(key, value);
+  }
+  for (const key of [...written.keys()]) {
+    if (!(key in allSecrets)) {
+      await invoke("api_secret_delete", { key }).catch(() => {});
+      written.delete(key);
+    }
+  }
+  localStorage.setItem(storageKey(hostId), JSON.stringify({ collections, envVars: env.stored }));
+}
+
+/** Load, migrate any legacy plaintext secrets into the keychain, then hydrate values. */
+async function loadApiData(hostId: string, written: Map<string, string>): Promise<StoredApiData> {
+  const local = readLocal(hostId);
+  const legacy =
+    hasPlaintextSecrets(local.envVars, (v) => v.key) ||
+    local.collections.some((c) => hasPlaintextSecrets(c.headers, (h) => h.name));
+
+  const fetchAll = async <T extends ApiHeader | ApiEnvVar>(items: T[]): Promise<T[]> => {
+    const refs = secretRefs(hostId, items);
+    const values: Record<string, string | null> = {};
+    for (const r of refs) {
+      const v = await invoke<string | null>("api_secret_get", { key: r.key }).catch(() => null);
+      values[r.id] = v;
+      if (v != null) written.set(r.key, v);
+    }
+    return mergeSecrets(items, values);
+  };
+
+  const data: StoredApiData = {
+    envVars: await fetchAll(local.envVars),
+    collections: await Promise.all(local.collections.map(async (c) => ({ ...c, headers: await fetchAll(c.headers) }))),
+  };
+  // Legacy data had secrets in localStorage: move them to the keychain now
+  if (legacy) await persistApiData(hostId, data, written);
+  return data;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// crypto.randomUUID() provides full RFC 4122 UUID entropy vs ~30 bits from Math.random()
-function uid() { return crypto.randomUUID(); }
+// newId() (crypto.randomUUID with a getRandomValues fallback) provides full RFC 4122 UUID entropy vs ~30 bits from Math.random()
+function uid() { return newId(); }
 
 function emptyHeader(): Header { return { id: uid(), enabled: true, name: "", value: "" }; }
 function emptyEnvVar(): EnvVar  { return { id: uid(), enabled: true, key: "", value: "" }; }
@@ -63,12 +123,15 @@ function interpolate(s: string, envVars: EnvVar[]): string {
   });
 }
 
-function parseUrl(url: string): { host: string; port: number; path: string } | null {
+function parseUrl(url: string): { host: string; port: number; path: string; tls: boolean } | null {
   try {
     const u = new URL(url);
-    const port = u.port ? Number(u.port) : (u.protocol === "https:" ? 443 : 80);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    const tls = u.protocol === "https:";
+    const port = u.port ? Number(u.port) : (tls ? 443 : 80);
     const path = (u.pathname || "/") + (u.search || "");
-    return { host: u.hostname, port, path };
+    // URL keeps brackets on IPv6 hosts; the tunnel wants the bare address
+    return { host: u.hostname.replace(/^\[|\]$/g, ""), port, path, tls };
   } catch { return null; }
 }
 
@@ -130,6 +193,26 @@ function tryPrettyJson(raw: string): { pretty: string; isJson: boolean } {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+/** Lock icon: auto-on for credential-looking names, user-toggleable otherwise. */
+function SecretToggle({ field, name, onToggle }: { field: { secret?: boolean }; name: string; onToggle: (v: boolean) => void }) {
+  const auto = looksAutoSecret(name);
+  const on = field.secret === true || auto;
+  return (
+    <button
+      type="button"
+      onClick={() => { if (!auto) onToggle(!field.secret); }}
+      title={auto ? "Stored in the OS keychain (credential name)" : on ? "Stored in the OS keychain — click to store normally" : "Store this value in the OS keychain"}
+      className="w-5 h-5 flex items-center justify-center shrink-0 transition-colors"
+      style={{ color: on ? "#00c8a8" : "var(--text5)", cursor: auto ? "default" : "pointer" }}
+    >
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+        <rect x="2" y="5.5" width="8" height="5.5" rx="1.2" stroke="currentColor" strokeWidth="1.1" />
+        <path d={on ? "M4 5.5V4a2 2 0 0 1 4 0v1.5" : "M4 5.5V4a2 2 0 0 1 3.9-.6"} stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
 function HeaderRow({ h, onChange, onRemove }: {
   h: Header;
   onChange: (field: keyof Header, val: string | boolean) => void;
@@ -152,9 +235,12 @@ function HeaderRow({ h, onChange, onRemove }: {
       <input
         className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
         placeholder="Value"
+        type={isSecret(h, h.name) ? "password" : "text"}
+        autoComplete="off"
         value={h.value}
         onChange={e => onChange("value", e.target.value)}
       />
+      <SecretToggle field={h} name={h.name} onToggle={(v) => onChange("secret", v)} />
       <button
         onClick={onRemove}
         className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded text-[var(--text4)] hover:text-[#ef4444] transition-all shrink-0"
@@ -199,10 +285,20 @@ export default function ApiClient({ hostId, sessionId }: Props) {
   const [saveName, setSaveName]       = useState("");
   const [showCollections, setShowCollections] = useState(true);
 
+  // What's already in the keychain for this host (see persistApiData)
+  const writtenSecrets = useRef(new Map<string, string>());
+
   useEffect(() => {
-    const stored = loadStorage(hostId);
-    setCollections(stored.collections);
-    setEnvVars(stored.envVars.length ? stored.envVars : [emptyEnvVar()]);
+    let alive = true;
+    writtenSecrets.current = new Map();
+    loadApiData(hostId, writtenSecrets.current)
+      .then((stored) => {
+        if (!alive) return;
+        setCollections(stored.collections);
+        setEnvVars(stored.envVars.length ? stored.envVars : [emptyEnvVar()]);
+      })
+      .catch((e) => { if (alive) setError(`Couldn't load saved requests: ${String(e)}`); });
+    return () => { alive = false; };
   }, [hostId]);
 
   // Close method dropdown on outside click
@@ -217,7 +313,8 @@ export default function ApiClient({ hostId, sessionId }: Props) {
   }, []);
 
   const persistCollections = useCallback((c: SavedRequest[], e: EnvVar[]) => {
-    saveStorage(hostId, c, e);
+    persistApiData(hostId, { collections: c, envVars: e }, writtenSecrets.current)
+      .catch((err) => setError(`Couldn't save securely: ${String(err)}`));
   }, [hostId]);
 
   // ── Send ──────────────────────────────────────────────────────────────────
@@ -251,6 +348,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
           path: parsed.path,
           headers: activeHeaders,
           body: bodyPayload ?? null,
+          tls: parsed.tls,
         });
       } else {
         resp = await invoke<HttpResponse>("make_http_request", {
@@ -591,9 +689,12 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                       <input
                         className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
                         placeholder="value"
+                        type={isSecret(v, v.key) ? "password" : "text"}
+                        autoComplete="off"
                         value={v.value}
                         onChange={e => updateEnvVar(v.id, "value", e.target.value)}
                       />
+                      <SecretToggle field={v} name={v.key} onToggle={(on) => updateEnvVar(v.id, "secret", on)} />
                       <button
                         onClick={() => removeEnvVar(v.id)}
                         className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-[var(--text4)] hover:text-[#ef4444] transition-all shrink-0"

@@ -1,3 +1,4 @@
+mod api_secrets;
 mod audit;
 mod command_history;
 mod docker;
@@ -5,15 +6,20 @@ mod http_client;
 mod keys;
 mod local_pty;
 mod metrics;
+mod netinfo;
 mod ping;
+mod remote;
+mod secrets;
 mod speedtest;
 mod ssh;
 mod storage;
+mod tunnel_tls;
+mod utf8_stream;
 mod vpn;
 
 use ping::PingResult;
 use ssh::SshState;
-use storage::HostConfig;
+use storage::{HostConfig, HostFolder};
 use vpn::VpnStatus;
 
 /// Open a URL or custom-scheme URI using the OS default handler.
@@ -69,13 +75,23 @@ async fn detect_vpn() -> VpnStatus {
 }
 
 #[tauri::command]
-fn load_hosts(app: tauri::AppHandle) -> Result<Vec<HostConfig>, String> {
+fn load_hosts(app: tauri::AppHandle) -> Result<storage::Loaded<HostConfig>, String> {
     storage::load_hosts(&app)
 }
 
 #[tauri::command]
 fn save_hosts(app: tauri::AppHandle, hosts: Vec<HostConfig>) -> Result<(), String> {
     storage::save_hosts(&app, &hosts)
+}
+
+#[tauri::command]
+fn load_folders(app: tauri::AppHandle) -> Result<storage::Loaded<HostFolder>, String> {
+    storage::load_folders(&app)
+}
+
+#[tauri::command]
+fn save_folders(app: tauri::AppHandle, folders: Vec<HostFolder>) -> Result<(), String> {
+    storage::save_folders(&app, &folders)
 }
 
 /// Write arbitrary text content to a caller-specified absolute path.
@@ -170,8 +186,16 @@ struct LocalNetworkInfo {
     dhcp:        bool,
 }
 
+/// Spawns route/ipconfig/scutil — runs off the main thread so a slow tool
+/// can't freeze the window.
 #[tauri::command]
-fn get_local_network_info() -> LocalNetworkInfo {
+async fn get_local_network_info() -> LocalNetworkInfo {
+    tauri::async_runtime::spawn_blocking(collect_local_network_info)
+        .await
+        .unwrap_or(LocalNetworkInfo { local_ip: None, iface_name: None, gateway: None, dns_servers: vec![], dhcp: false })
+}
+
+fn collect_local_network_info() -> LocalNetworkInfo {
     let mut info = LocalNetworkInfo {
         local_ip: None, iface_name: None, gateway: None,
         dns_servers: vec![], dhcp: false,
@@ -325,6 +349,8 @@ pub fn run() {
             detect_vpn,
             load_hosts,
             save_hosts,
+            load_folders,
+            save_folders,
             ssh::ssh_connect,
             ssh::ssh_disconnect,
             ssh::ssh_send,
@@ -335,7 +361,10 @@ pub fn run() {
             ssh::sftp_mkdir,
             ssh::sftp_delete,
             ssh::sftp_rename,
-            ssh::sftp_upload_bytes,
+            ssh::sftp_path_exists,
+            ssh::sftp_upload_chunk,
+            ssh::sftp_upload_commit,
+            ssh::sftp_upload_abort,
             ssh::get_metrics,
             ssh::probe_capabilities,
             ssh::invalidate_metrics_cache,
@@ -347,6 +376,10 @@ pub fn run() {
             ssh::trust_host_key,
             command_history::load_command_history,
             command_history::save_command,
+            secrets::is_sensitive_command,
+            api_secrets::api_secret_set,
+            api_secrets::api_secret_get,
+            api_secrets::api_secret_delete,
             keys::list_ssh_keys,
             keys::generate_ssh_key,
             keys::delete_ssh_key,
@@ -385,6 +418,10 @@ pub fn run() {
             local_pty::local_pty_send,
             local_pty::local_pty_resize,
             local_pty::local_pty_stop,
+            netinfo::lookup_hostnames,
+            netinfo::scan_ports,
+            netinfo::ssh_listening_ports,
+            netinfo::ssh_device_identity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pingnet");

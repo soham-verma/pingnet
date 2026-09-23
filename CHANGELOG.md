@@ -7,6 +7,53 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.6.0] — 2026-09-23
+
+### Added
+
+- **Device folders & drag-to-sort** — reorder devices by dragging, group them into collapsible folders (create, rename, delete); order and folders persist across restarts
+- **Network Info** — reverse-DNS hostnames for each device address, a TCP port scan from this machine (common ports or a custom list), and — over SSH — the device's own hostname/FQDN, public IP + hostname, and the sockets actually listening on it (new **Ports** tab in Metrics)
+- **Host key verification** — first SSH connection shows the server's `SHA256:` fingerprint to confirm before trusting it
+- **Keychain-backed API secrets** — Authorization/Cookie/token/password headers and env vars in the API client are stored in the OS keychain (existing values migrate automatically)
+- CI workflow (typecheck, unit tests, build, `cargo test --locked`, macOS/Windows compile checks); releases now require it to pass
+
+### Changed
+
+- Selecting a device returns to the screen you were last on for it (SSH instead of always Ping)
+- Interface details in Metrics → Network expand inline at full width instead of a clipped overlay
+- Round cyan add-device button
+- Container **Rebuild** recreates standalone containers with their full configuration and restores the original automatically if the new one fails; compose projects are rebuilt with their own compose files
+- Partition resize grows only (shrinking is refused); size field is in MiB
+- HTTPS requests through an SSH tunnel now use real TLS with certificate verification
+- Minimum macOS version declared as 10.15; Node.js 20.19+/22.12+ for development
+
+### Fixed
+
+- **Update checker** showed "0.5.0 → —" and a "new version" message when already up to date; "Remind Me Later" permanently skipped the version
+- **Partitions:** broken shell quoting; a failed create could format an existing partition; resize used the size as the end offset
+- **SFTP uploads** truncated the existing file before the transfer finished — uploads now stream to a temp file and replace the original only when complete (with overwrite confirmation)
+- Damaged `hosts.json`/`folders.json` could be silently overwritten — originals are now preserved and reported
+- Alert monitoring stopped after adding, editing or reordering hosts
+- Possible deadlock between metrics polling and capability probing
+- Orphaned SSH sessions after failed/cancelled connections or host deletion; no connect/handshake timeouts
+- TOTP login failed on servers that reject code reuse
+- Terminal scrollback lost on disconnect; command history read the wrong line; multi-byte characters garbled across reads
+- Local terminal processes kept running after closing the tab; Windows used a Unix shell
+- Docker: rebuild failed on inspect output; compose actions couldn't find projects outside the SSH home; permission errors showed as an empty list
+- Direct HTTP requests could freeze the app (now async with timeouts and a 10 MB body cap)
+- Failed file transfers stayed "running"; save failures were only logged to the console
+- Metrics/Docker polling kept running for hidden hosts and could pile up requests
+
+### Security
+
+- sudo passwords are sent via stdin, never in the remote command line
+- Commands containing credentials are redacted from the audit log (existing logs are cleaned on load); audit logs are capped
+- Corrupt/unreadable known-hosts store now refuses connections instead of trusting any key
+- Cloud-metadata blocklist checks resolved addresses on every redirect hop
+- Accessible modal dialogs (focus trap, Escape, labelled dialogs)
+
+---
+
 ## [0.5.0] — 2026-08-17
 
 ### Added

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { newId } from "../../utils/id";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { SshConfig, SshConnectionStatus, TransferItem, PingResult, CommandEntry, AuditEntry } from "../../types";
@@ -25,6 +26,8 @@ interface TerminalTab {
   name: string;
   status: SshConnectionStatus;
   error: string | null;
+  /** Address this tab's session actually connected to (audit BUG-018) */
+  target?: string;
   color?: string;   // hex accent colour for tab top-border + dot
   icon?: string;    // emoji shown in tab label
 }
@@ -34,12 +37,18 @@ interface StoredCreds {
   password: string;
 }
 
+
+/** Audit entries kept in memory / rendered (the file keeps more, see audit.rs). */
+const AUDIT_MEMORY_LIMIT = 500;
+
 interface Props {
   hostname: string;
   ip: string;
   hostId: string;
   savedConfig: SshConfig | null;
   onSaveConfig: (config: SshConfig) => void;
+  /** False while another host / view is on screen — pauses background polling (PERF-002) */
+  visible?: boolean;
 }
 
 type ViewTab = "terminal" | "files" | "history" | "metrics" | "speedtest" | "grafana" | "api" | "docker";
@@ -54,9 +63,9 @@ export interface GrafanaConfig {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function uid(): string {
-  // crypto.randomUUID() provides full RFC 4122 UUID entropy — much safer than
+  // newId() (crypto.randomUUID with a getRandomValues fallback) provides full RFC 4122 UUID entropy — much safer than
   // Math.random() (~30 bits) for IDs used as Tauri event listener names.
-  return crypto.randomUUID();
+  return newId();
 }
 
 function defaultName(existing: TerminalTab[]): string {
@@ -87,6 +96,7 @@ export default function SSHSessionView({
   hostId,
   savedConfig,
   onSaveConfig,
+  visible = true,
 }: Props) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -162,29 +172,32 @@ export default function SSHSessionView({
     const base = cmd.trim().split(/\s+/)[0] ?? "";
     if (!base) return;
 
-    const isNewBase = await invoke<boolean>("save_command", {
+    // One secret policy for every sink (audit SEC-001): the backend redacts
+    // credential-bearing commands before they touch disk, and we only keep
+    // the redacted form in memory / suggestions.
+    const sensitive = await invoke<boolean>("is_sensitive_command", { command: cmd.trim() }).catch(() => true);
+
+    const isNewBase = sensitive ? false : await invoke<boolean>("save_command", {
       host: ip,
       command: cmd.trim(),
       helpSummary: null,
     }).catch(() => false);
 
-    // Append to per-host audit log (JSONL file via Rust)
+    // Append to per-host audit log (JSONL file via Rust) — returns what was stored
     const ts = Date.now();
-    const entry: AuditEntry = {
-      ts,
+    const stored = await invoke<string>("append_audit_log", {
+      hostId,
       host: ip,
       username: storedCreds?.config.username ?? "",
       command: cmd.trim(),
-    };
-    invoke("append_audit_log", {
-      hostId,
-      host: entry.host,
-      username: entry.username,
-      command: entry.command,
       ts,
-    }).catch(() => {});
-    setAuditLog(prev => [entry, ...prev]);
-    setAuditNewCount(prev => prev + 1);
+    }).catch(() => null);
+    if (stored) {
+      const entry: AuditEntry = { ts, host: ip, username: storedCreds?.config.username ?? "", command: stored };
+      setAuditLog(prev => [entry, ...prev].slice(0, AUDIT_MEMORY_LIMIT));
+      setAuditNewCount(prev => prev + 1);
+    }
+    if (sensitive) return; // never offered as a suggestion
 
     setCommands(prev => {
       const ts = Date.now();
@@ -224,7 +237,7 @@ export default function SSHSessionView({
       invoke<CommandEntry[]>("load_command_history", { host: ip })
         .then(setCommands)
         .catch(() => {});
-      invoke<AuditEntry[]>("load_audit_log", { hostId })
+      invoke<AuditEntry[]>("load_audit_log", { hostId, limit: AUDIT_MEMORY_LIMIT })
         .then(entries => setAuditLog([...entries].reverse())) // newest first
         .catch(() => {});
     }
@@ -258,10 +271,20 @@ export default function SSHSessionView({
 
   // ── Cleanup all listeners on unmount ─────────────────────────────────────
 
+  // Latest tabs for the unmount cleanup below
+  const tabsRef = useRef<TerminalTab[]>([]);
+  tabsRef.current = tabs;
+
   useEffect(() => {
     return () => {
       unlistenMap.current.forEach((fn) => fn());
       unlistenMap.current.clear();
+      // The view unmounts when its host is deleted — close every session
+      // (including ones still connecting) instead of leaving them running
+      // in the backend with no UI (audit BUG-006).
+      for (const t of tabsRef.current) {
+        invoke("ssh_disconnect", { sessionId: t.id }).catch(() => {});
+      }
     };
   }, []);
 
@@ -317,7 +340,17 @@ export default function SSHSessionView({
 
   // ── Connect (with pre-flight) ─────────────────────────────────────────────
 
+  // One-time codes can't be reused: after a code has been sent to the server,
+  // reconnects / new tabs ask for a fresh one (audit BUG-012).
+  const usedTotpRef = useRef<string | null>(null);
+
   const connectTab = async (tabId: string, creds: StoredCreds, skipPreflight = false) => {
+    if (creds.config.auth_type === "totp" && creds.password && usedTotpRef.current === creds.password) {
+      pendingTabId.current = tabId;
+      setTabStatus(tabId, "disconnected", null);
+      setShowModal(true);
+      return;
+    }
     // 1. Pre-flight ping (unless caller opts out, e.g. "Try anyway")
     if (!skipPreflight) {
       const { ok, detail } = await preflight(tabId);
@@ -341,18 +374,23 @@ export default function SSHSessionView({
           ? { type: "KbdInt", totp_code: creds.password }
           : { type: "Key", key_path: creds.config.key_path ?? "~/.ssh/id_rsa", passphrase: creds.password || null };
 
+      const target = ip;
       await invoke("ssh_connect", {
         sessionId: tabId,
-        host: ip,
+        host: target,
         port: creds.config.port,
         username: creds.config.username,
         auth: authArg,
       });
+      if (creds.config.auth_type === "totp") usedTotpRef.current = creds.password;
 
-      setTabStatus(tabId, "connected", null);
+      setTabs((prev) => prev.map((t) => t.id === tabId ? { ...t, status: "connected", error: null, target } : t));
       await registerLostListener(tabId);
     } catch (e) {
-      setTabStatus(tabId, "ssh_fail", String(e));
+      const msg = String(e);
+      // Host-key checks happen before authentication — the code wasn't consumed
+      if (creds.config.auth_type === "totp" && !msg.startsWith("HOST_KEY_")) usedTotpRef.current = creds.password;
+      setTabStatus(tabId, "ssh_fail", msg);
     }
   };
 
@@ -498,10 +536,44 @@ export default function SSHSessionView({
     setViewTab("terminal");
   }, [primarySessionId]);
 
+  // ── Address changed while connected (audit BUG-018) ──────────────────────
+  // Sessions stay bound to the address they connected to. If the host's
+  // address is edited, say so plainly and offer to reconnect — never show the
+  // new address over a session that still talks to the old machine.
+  const staleTabs = tabs.filter((t) => t.target && t.target !== ip && (t.status === "connected" || t.status === "lost"));
+  const staleTarget = staleTabs[0]?.target ?? null;
+  const primaryTarget = tabs.find((t) => t.id === primarySessionId)?.target ?? ip;
+
+  const reconnectStale = async () => {
+    for (const t of staleTabs) {
+      unlistenMap.current.get(t.id)?.();
+      unlistenMap.current.delete(t.id);
+      await invoke("ssh_disconnect", { sessionId: t.id }).catch(() => {});
+      setTabs((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "disconnected", target: undefined } : x));
+    }
+    if (!storedCreds) { pendingTabId.current = staleTabs[0]?.id ?? null; setShowModal(true); return; }
+    for (const t of staleTabs) await connectTab(t.id, storedCreds);
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {staleTarget && (
+        <div role="alert" className="flex items-center gap-3 px-5 py-2 text-[12px] flex-shrink-0 border-b"
+          style={{ background: "#f59e0b14", borderColor: "#f59e0b40", color: "#fcd34d" }}>
+          <span className="flex-1">
+            This host's address changed to <span className="font-mono">{ip}</span>, but{" "}
+            {staleTabs.length === 1 ? "a terminal is" : `${staleTabs.length} terminals are`} still connected to{" "}
+            <span className="font-mono font-semibold">{staleTarget}</span>. Commands, files and panels act on {staleTarget}.
+          </span>
+          <button onClick={reconnectStale}
+            className="px-3 py-1 rounded-lg text-[11px] font-semibold flex-shrink-0"
+            style={{ background: "#f59e0b", color: "#000" }}>
+            Reconnect to {ip}
+          </button>
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0"
@@ -528,7 +600,7 @@ export default function SSHSessionView({
             )}
           </div>
           <div className="text-[11px] text-[var(--text4)] font-mono mt-0.5">
-            {storedCreds ? `${storedCreds.config.username}@${ip}:${storedCreds.config.port}` : ip}
+            {storedCreds ? `${storedCreds.config.username}@${primaryTarget}:${storedCreds.config.port}` : primaryTarget}
           </div>
         </div>
 
@@ -876,7 +948,8 @@ export default function SSHSessionView({
             style={{ display: viewTab === "metrics" ? "flex" : "none" }}>
             <MetricsPanel
               sessionId={primarySessionId}
-              isActive={viewTab === "metrics"}
+              isActive={viewTab === "metrics" && visible}
+              targetHost={primaryTarget}
             />
           </div>
         ) : viewTab === "metrics" ? (
@@ -923,7 +996,7 @@ export default function SSHSessionView({
         >
           <DockerManager
             sessionId={primarySessionId}
-            isActive={viewTab === "docker"}
+            isActive={viewTab === "docker" && visible}
             onSendToTerminal={handleSendToTerminal}
           />
         </div>
@@ -956,15 +1029,32 @@ export default function SSHSessionView({
 
 // ── TabContent ────────────────────────────────────────────────────────────────
 
-// Parse the structured HOST_KEY_CHANGED error emitted by ssh.rs
-// Format: "HOST_KEY_CHANGED\x00host=...\x00stored=...\x00current=..."
-function parseHostKeyChanged(error: string | null): { host: string; stored: string; current: string } | null {
-  if (!error?.startsWith("HOST_KEY_CHANGED")) return null;
-  const parts = Object.fromEntries(
-    error.split("\x00").slice(1).map((p) => p.split("=") as [string, string])
-  );
-  if (!parts.host || !parts.stored || !parts.current) return null;
-  return { host: parts.host, stored: parts.stored, current: parts.current };
+// Parse the structured host-key errors emitted by ssh.rs:
+//   HOST_KEY_CHANGED\0host=…\0stored=…\0current=…\0stored_sha256=…\0current_sha256=…
+//   HOST_KEY_UNKNOWN\0host=…\0current=…\0current_sha256=…\0keytype=…
+//   HOST_KEY_STORE_ERROR\0detail=…
+type HostKeyIssue =
+  | { kind: "changed"; host: string; stored: string; current: string; storedSha: string; currentSha: string }
+  | { kind: "unknown"; host: string; current: string; currentSha: string; keyType: string }
+  | { kind: "store"; detail: string };
+
+function parseHostKeyError(error: string | null): HostKeyIssue | null {
+  if (!error) return null;
+  const [tag, ...rest] = error.split("\x00");
+  const f: Record<string, string> = {};
+  for (const p of rest) {
+    const i = p.indexOf("=");
+    if (i > 0) f[p.slice(0, i)] = p.slice(i + 1);
+  }
+  if (tag === "HOST_KEY_CHANGED" && f.host && f.stored && f.current) {
+    return { kind: "changed", host: f.host, stored: f.stored, current: f.current,
+      storedSha: f.stored_sha256 ?? "", currentSha: f.current_sha256 ?? "" };
+  }
+  if (tag === "HOST_KEY_UNKNOWN" && f.host && f.current) {
+    return { kind: "unknown", host: f.host, current: f.current, currentSha: f.current_sha256 ?? "", keyType: f.keytype ?? "" };
+  }
+  if (tag === "HOST_KEY_STORE_ERROR") return { kind: "store", detail: f.detail ?? "" };
+  return null;
 }
 
 interface TabContentProps {
@@ -984,26 +1074,31 @@ interface TabContentProps {
 function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, onRetrySkipPing, onReconnect, onTrustNewKey, broadcastTo }: TabContentProps) {
   const { status } = tab;
 
-  // Connected — just render the terminal
-  if (status === "connected") {
-    return <SSHTerminal sessionId={tab.id} isConnected themeId={themeId} suggestions={suggestions} onCommand={onCommand} broadcastTo={broadcastTo} />;
-  }
-
-  // Connection lost — show terminal output (preserved) + reconnect overlay
-  if (status === "lost") {
+  // Connected or lost — ONE terminal instance at the same tree position, so
+  // losing the connection never remounts xterm and its scrollback survives
+  // underneath the overlay (audit BUG-017).
+  const reconnecting = (status === "checking" || status === "connecting") && !!tab.target;
+  if (status === "connected" || status === "lost" || reconnecting) {
+    const lost = status !== "connected";
     return (
       <div className="relative h-full">
-        {/* Terminal output stays visible underneath */}
-        <div className="absolute inset-0 opacity-40 pointer-events-none">
-          <SSHTerminal sessionId={tab.id} isConnected={false} themeId={themeId} suggestions={suggestions} onCommand={onCommand} broadcastTo={[]} />
+        <div className="absolute inset-0" style={lost ? { opacity: 0.4 } : undefined}>
+          <SSHTerminal sessionId={tab.id} isConnected={!lost} themeId={themeId} suggestions={suggestions}
+            onCommand={onCommand} broadcastTo={lost ? [] : broadcastTo} />
         </div>
-        {/* Overlay */}
-        <div className="absolute inset-0 flex items-center justify-center"
-          style={{ background: "rgba(8,8,15,0.75)", backdropFilter: "blur(2px)" }}>
-          <div className="rounded-2xl border border-[#ef444430] p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4"
-            style={{ background: "var(--bg2)" }}>
-            {/* Pulse icon */}
-            <div className="relative">
+        {reconnecting && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(8,8,15,0.45)" }}>
+            <div className="flex items-center gap-3 rounded-xl px-5 py-3" style={{ background: "var(--bg2)", border: "1px solid var(--border)" }}>
+              <div className="w-4 h-4 rounded-full border-2 border-transparent border-t-[#6366f1] animate-spin" />
+              <span className="text-[13px] text-[var(--text2)]">{status === "checking" ? `Pinging ${ip}…` : "Reconnecting…"}</span>
+            </div>
+          </div>
+        )}
+        {status === "lost" && (
+          <div className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "rgba(8,8,15,0.55)", backdropFilter: "blur(1px)" }}>
+            <div className="rounded-2xl border border-[#ef444430] p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4"
+              style={{ background: "var(--bg2)" }}>
               <div className="w-12 h-12 rounded-full flex items-center justify-center"
                 style={{ background: "#ef444415", border: "1px solid #ef444430" }}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -1011,20 +1106,20 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
                     strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-            </div>
-            <div className="text-center">
-              <p className="text-[var(--text)] font-semibold mb-1">Connection lost</p>
-              <p className="text-[#6b3333] text-[13px]">{ip} stopped responding</p>
-            </div>
-            <div className="flex gap-2 w-full">
-              <button onClick={onReconnect}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                style={{ background: "#00c8a8", color: "#000", boxShadow: "0 0 12px #00c8a830" }}>
-                Reconnect
-              </button>
+              <div className="text-center">
+                <p className="text-[var(--text)] font-semibold mb-1">Connection lost</p>
+                <p className="text-[#6b3333] text-[13px]">{tab.target ?? ip} stopped responding — output is kept below</p>
+              </div>
+              <div className="flex gap-2 w-full">
+                <button onClick={onReconnect}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: "#00c8a8", color: "#000", boxShadow: "0 0 12px #00c8a830" }}>
+                  Reconnect
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -1100,8 +1195,74 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
 
   // SSH failed — check if it's a host key mismatch first
   if (status === "ssh_fail") {
-    const hkc = parseHostKeyChanged(tab.error);
+    const issue = parseHostKeyError(tab.error);
+    const trustAndRetry = async (host: string, fingerprint: string) => {
+      try {
+        await onTrustNewKey(host, port, fingerprint);
+      } catch { /* stale key — the retry below re-prompts with the current one */ }
+      // Host is reachable (it just presented a key) — skip the preflight ping
+      onRetrySkipPing();
+    };
 
+    if (issue?.kind === "unknown") {
+      // ── First connection: verify the fingerprint before trusting ─────────
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-5 px-8">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "#6366f110", border: "1px solid #6366f135" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <circle cx="9" cy="10" r="4" stroke="#818cf8" strokeWidth="1.5" />
+              <path d="M12.5 12.5L20 20M17 17l2-2" stroke="#818cf8" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="text-center max-w-md">
+            <p className="text-[var(--text)] font-semibold text-base mb-1">Verify this host</p>
+            <p className="text-[var(--text2)] text-[13px] mb-4">
+              This is the first connection to <span className="text-[var(--text)] font-mono">{issue.host}</span>.
+              Check the fingerprint matches the server's before trusting it — on the server, run
+              <span className="font-mono text-[var(--text)]"> ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>
+            </p>
+            <div className="rounded-xl text-left px-4 py-3 mb-2" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
+              <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-1">{issue.keyType || "Host key"} fingerprint</p>
+              <p className="font-mono text-[12px] text-[#818cf8] break-all select-all">{issue.currentSha || issue.current}</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            <button onClick={() => trustAndRetry(issue.host, issue.current)}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
+              style={{ background: "#6366f1", color: "#fff" }}>
+              Trust &amp; Connect
+            </button>
+            <button onClick={onRetry}
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-[var(--text3)] hover:text-[var(--text)]"
+              style={{ border: "1px solid var(--border)" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (issue?.kind === "store") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4 px-8">
+          <div className="text-center max-w-md">
+            <p className="text-[var(--text)] font-semibold mb-1">Host key store unavailable</p>
+            <p className="text-[var(--text2)] text-[13px] mb-2">
+              Pingnet couldn't read its trusted host keys, so it refused to connect rather than trust an unverified server.
+            </p>
+            <p className="text-[#f59e0b] text-[12px] font-mono break-all">{issue.detail}</p>
+          </div>
+          <button onClick={onRetry}
+            className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{ background: "#6366f1", color: "var(--text)" }}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    const hkc = issue?.kind === "changed" ? issue : null;
     if (hkc) {
       // ── Host key changed warning ──────────────────────────────────────────
       return (
@@ -1128,11 +1289,11 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
               <div className="px-4 py-3 space-y-2">
                 <div>
                   <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-0.5">Stored (trusted)</p>
-                  <p className="font-mono text-[12px] text-[#22c55e] break-all">{hkc.stored}</p>
+                  <p className="font-mono text-[12px] text-[#22c55e] break-all">{hkc.storedSha || hkc.stored}</p>
                 </div>
                 <div className="border-t border-[var(--border)] pt-2">
                   <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-0.5">Current (server)</p>
-                  <p className="font-mono text-[12px] text-[#f59e0b] break-all">{hkc.current}</p>
+                  <p className="font-mono text-[12px] text-[#f59e0b] break-all">{hkc.currentSha || hkc.current}</p>
                 </div>
               </div>
             </div>
@@ -1144,12 +1305,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
 
           <div className="flex flex-col gap-2 w-full max-w-xs">
             <button
-              onClick={async () => {
-                await onTrustNewKey(hkc.host, port, hkc.current);
-                // Host was already reachable (we just got a key-changed error from it)
-                // — skip the redundant preflight ping and go straight to SSH.
-                onRetrySkipPing();
-              }}
+              onClick={() => trustAndRetry(hkc.host, hkc.current)}
               className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
               style={{ background: "#f59e0b", color: "#000", boxShadow: "0 0 16px #f59e0b30" }}>
               Trust New Key &amp; Reconnect

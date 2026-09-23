@@ -6,6 +6,7 @@ import LatencyChart from "./LatencyChart";
 import NetworkRoute from "./NetworkRoute";
 import DiagnosticConsole from "./DiagnosticConsole";
 import VpnBanner from "./VpnBanner";
+import NetworkInfoPanel from "./NetworkInfoPanel";
 
 const IP_TYPE_LABELS: Record<string, string> = {
   local: "Local",
@@ -340,6 +341,14 @@ export default function HostDetailView({ host, session, onPing, onStop, onEdit, 
           />
           <DiagnosticConsole logs={logs} />
         </div>
+
+        {/* Hostnames (forward/reverse DNS) + port reachability from this machine */}
+        <NetworkInfoPanel
+          target={host.ip}
+          extraTargets={(host.extra_ips ?? []).map((e) => e.address)}
+          sessionId={null}
+          onOpenSSH={onOpenSSH}
+        />
       </div>
     </div>
   );

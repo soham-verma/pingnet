@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { usePolling, PollingActive } from "../../hooks/usePolling";
 import { invoke } from "@tauri-apps/api/core";
 import { DockerContainer, DockerComposeProject, DockerVolume, DockerNetwork, DockerImage, FileEntry } from "../../types";
 import {
@@ -562,7 +563,6 @@ function ContainersTab({
   const [actionRunning, setActionRunning] = useState<string | null>(null);
   const [lastOutput, setLastOutput] = useState<{ title: string; text: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchContainers = useCallback(async () => {
     try {
@@ -581,14 +581,7 @@ function ContainersTab({
   }, [fetchContainers]);
 
   // Auto-refresh
-  useEffect(() => {
-    if (!autoRefresh) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
-    intervalRef.current = setInterval(fetchContainers, 5000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [autoRefresh, fetchContainers]);
+  usePolling(fetchContainers, 5000, autoRefresh, false); // initial load happens above
 
   const runAction = async (containerId: string, action: string, name: string) => {
     const key = `${containerId}:${action}`;
@@ -1134,7 +1127,6 @@ function LogsTab({
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -1173,14 +1165,7 @@ function LogsTab({
   }, [containerId, lines, fetchLogs]);
 
   // Follow mode: poll every 2s
-  useEffect(() => {
-    if (!follow) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
-    intervalRef.current = setInterval(fetchLogs, 2000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [follow, fetchLogs]);
+  usePolling(fetchLogs, 2000, follow, false); // initial fetch happens above
 
   // Auto-scroll
   useEffect(() => {
@@ -2190,6 +2175,7 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
   }
 
   return (
+    <PollingActive.Provider value={isActive}>
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div
@@ -2353,6 +2339,7 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
         )}
       </div>
     </div>
+    </PollingActive.Provider>
   );
 }
 
@@ -2409,7 +2396,6 @@ function ContainersTabInner({
   const [lastOutput, setLastOutput] = useState<{ title: string; text: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [confirmRebuild, setConfirmRebuild] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchContainers = useCallback(async () => {
     try {
@@ -2432,14 +2418,7 @@ function ContainersTabInner({
     fetchContainers().finally(() => setLoading(false));
   }, [fetchContainers]);
 
-  useEffect(() => {
-    if (!autoRefresh) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
-    intervalRef.current = setInterval(fetchContainers, 5000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [autoRefresh, fetchContainers]);
+  usePolling(fetchContainers, 5000, autoRefresh, false); // initial load happens above
 
   const runAction = async (containerId: string, action: string, name: string) => {
     const key = `${containerId}:${action}`;

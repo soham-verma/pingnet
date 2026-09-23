@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { newId } from "../utils/id";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SSHTerminal from "./ssh/SSHTerminal";
@@ -21,7 +22,7 @@ interface LocalTab {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function uid() { return crypto.randomUUID(); }
+function uid() { return newId(); }
 
 function defaultName(existing: LocalTab[]) {
   return `Shell ${existing.length + 1}`;

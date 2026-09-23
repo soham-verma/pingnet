@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useDialog } from "../hooks/useDialog";
 import { invoke } from "@tauri-apps/api/core";
 import { KeyInfo } from "../types";
 
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function KeyManager({ onClose }: Props) {
+  const dialog = useDialog(onClose);
   const [keys, setKeys] = useState<KeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +144,8 @@ export default function KeyManager({ onClose }: Props) {
 
   return (
     <div
+      {...dialog}
+     
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center modal-backdrop"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >

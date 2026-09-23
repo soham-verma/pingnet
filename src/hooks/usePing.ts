@@ -74,6 +74,30 @@ export function computeNextAlertState(input: AlertStateInput): {
   return { nextState, fire };
 }
 
+export function needsAutoPing(h: Pick<HostConfig, "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">): boolean {
+  return h.alert_on_down || h.alert_on_recovery || h.alert_latency_ms != null;
+}
+
+/**
+ * Stop auto-ping intervals only for hosts that were deleted or no longer have
+ * alerts configured. Intervals for every other host are left running.
+ * Pure (apart from the injected `clear`) so it can be unit-tested.
+ */
+export function reconcileAutoPing<T>(
+  refs: Record<string, T>,
+  hosts: Pick<HostConfig, "id" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">[],
+  clear: (t: T) => void,
+): void {
+  const byId = new Map(hosts.map((h) => [h.id, h]));
+  for (const id of Object.keys(refs)) {
+    const h = byId.get(id);
+    if (!h || !needsAutoPing(h)) {
+      clear(refs[id]);
+      delete refs[id];
+    }
+  }
+}
+
 const DEFAULT_SESSION: PingSession = {
   logs: [],
   history: [],
@@ -191,9 +215,7 @@ export function usePing(hosts: HostConfig[] = []) {
       // Start the 30 s auto-ping interval for this host the first time it is
       // manually pinged — but only if it has alert settings configured.
       // This ensures nothing pings on startup without user action.
-      const needsAuto =
-        host.alert_on_down || host.alert_on_recovery || host.alert_latency_ms != null;
-      if (needsAuto && !autoPingRefs.current[host.id]) {
+      if (needsAutoPing(host) && !autoPingRefs.current[host.id]) {
         autoPingRefs.current[host.id] = setInterval(() => {
           const latest = hostsRef.current.find((h) => h.id === host.id);
           if (latest) doPing(latest);
@@ -302,25 +324,21 @@ export function usePing(hosts: HostConfig[] = []) {
 
   // ── Auto-ping interval lifecycle ─────────────────────────────────────────────
   // Intervals are started inside doPing (on the user's first manual ping) so
-  // nothing fires automatically on app startup. This effect only handles
-  // cleanup: stop intervals when a host is deleted or its alerts are removed.
+  // nothing fires automatically on app startup.
+  //
+  // Reconciliation and teardown are deliberately separate effects: the old
+  // single effect cleared EVERY interval in its cleanup whenever `hosts`
+  // changed (add/edit/reorder/SSH config save) and never recreated them, so
+  // alert monitoring silently stopped (audit BUG-004).
 
   useEffect(() => {
-    const refs = autoPingRefs.current;
-    const hostMap = new Map(hosts.map((h) => [h.id, h]));
-    Object.keys(refs).forEach((id) => {
-      const h = hostMap.get(id);
-      const stillNeeds = h && (h.alert_on_down || h.alert_on_recovery || h.alert_latency_ms != null);
-      if (!stillNeeds) {
-        clearInterval(refs[id]);
-        delete refs[id];
-      }
-    });
-    return () => {
-      Object.values(autoPingRefs.current).forEach(clearInterval);
-      autoPingRefs.current = {};
-    };
+    reconcileAutoPing(autoPingRefs.current, hosts, clearInterval);
   }, [hosts]);
+
+  useEffect(() => () => {
+    Object.values(autoPingRefs.current).forEach(clearInterval);
+    autoPingRefs.current = {};
+  }, []);
 
   // ── Clear a host session ─────────────────────────────────────────────────────
 

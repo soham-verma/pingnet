@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useDialog } from "../hooks/useDialog";
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,7 @@ interface Props {
 }
 
 export default function ShortcutsModal({ onClose }: Props) {
+  const dialog = useDialog(onClose);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("navigation");
 
@@ -143,6 +145,8 @@ export default function ShortcutsModal({ onClose }: Props) {
 
   return (
     <div
+      {...dialog}
+     
       className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4"
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}

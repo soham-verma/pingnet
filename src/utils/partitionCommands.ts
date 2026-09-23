@@ -41,9 +41,12 @@ function assertDev(name: string, label: string): string {
   return base;
 }
 
-function shQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}`;
+/** POSIX single-quote a value for safe embedding in a shell command. */
+export function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
+
+const MIB = 1024 * 1024;
 
 function linuxMkfs(fstype: string, dev: string): string {
   const fs = fstype.toLowerCase();
@@ -84,12 +87,125 @@ function macFormatType(fstype: string): string {
   }
 }
 
-function linuxResizeFs(fstype: string | null, dev: string): string {
-  const fs = (fstype ?? "ext4").toLowerCase();
-  if (fs === "xfs") return `xfs_growfs ${shQuote(dev.replace(/^\/dev\//, ""))} 2>/dev/null || xfs_growfs ${shQuote(dev)}`;
-  if (fs === "btrfs") return `btrfs filesystem resize max ${shQuote(dev)}`;
-  if (fs === "swap") return "true";
-  return `resize2fs ${shQuote(dev)} 2>/dev/null || true`;
+/**
+ * Filesystem-grow step run AFTER the partition has been enlarged.
+ * Failures are NOT suppressed — the script runs under `set -eu`.
+ * xfs/btrfs can only grow while mounted; ext2/3/4 grow online or offline.
+ */
+function linuxGrowFs(fstype: string | null): string[] {
+  const fs = (fstype ?? "").toLowerCase();
+  switch (fs) {
+    case "ext2":
+    case "ext3":
+    case "ext4":
+      return ['resize2fs "$DEV"'];
+    case "xfs":
+      return ['xfs_growfs "$MP"'];
+    case "btrfs":
+      return ['btrfs filesystem resize max "$MP"'];
+    case "":
+      return ['echo "No filesystem detected — partition resized only"'];
+    default:
+      throw new Error(`Growing a ${fstype} filesystem isn't supported — resize the partition manually`);
+  }
+}
+
+/**
+ * Linux resize — GROW ONLY. `parted resizepart` takes the partition's new END
+ * offset (not a size), so the end is computed on the device from the
+ * partition's current start. Shrinking needs fs-first ordering and is
+ * interactive in parted; it's refused here rather than done unsafely.
+ */
+function linuxResizeScript(diskDev: string, dev: string, idx: number, fstype: string | null, sizeMb: number): string {
+  const fs = (fstype ?? "").toLowerCase();
+  const needsMount = fs === "xfs" || fs === "btrfs";
+  return [
+    "set -eu",
+    `DISK=${shQuote(diskDev)}`,
+    `DEV=${shQuote(dev)}`,
+    `IDX=${idx}`,
+    // Current start/end of this partition, integer MiB (parted -m prints e.g. "1024MiB")
+    `LINE=$(parted -s -m "$DISK" unit MiB print | awk -F: -v n="$IDX" '$1==n {print $2" "$3}')`,
+    'if [ -z "$LINE" ]; then echo "Partition $IDX not found on $DISK"; exit 1; fi',
+    `START=$(echo "$LINE" | awk '{s=$1; sub(/MiB/,"",s); printf "%d", s}')`,
+    `CUR_END=$(echo "$LINE" | awk '{e=$2; sub(/MiB/,"",e); printf "%d", e}')`,
+    ...(needsMount
+      ? [
+          'MP=$(findmnt -nro TARGET --source "$DEV" 2>/dev/null | head -n1 || true)',
+          `if [ -z "$MP" ]; then echo "${fs} can only grow while mounted — mount $DEV first"; exit 1; fi`,
+        ]
+      : []),
+    ...(sizeMb > 0
+      ? [
+          `NEW_END=$((START + ${Math.floor(sizeMb)}))`,
+          'if [ "$NEW_END" -lt "$CUR_END" ]; then echo "Shrinking is not supported (current end ${CUR_END}MiB, requested ${NEW_END}MiB)"; exit 1; fi',
+          'if [ "$NEW_END" -eq "$CUR_END" ]; then echo "Partition is already that size"; exit 0; fi',
+          'parted -s "$DISK" unit MiB resizepart "$IDX" "${NEW_END}MiB"',
+        ]
+      : ['parted -s "$DISK" unit MiB resizepart "$IDX" 100%']),
+    'partprobe "$DISK" 2>/dev/null || true',
+    ...linuxGrowFs(fstype),
+    'echo "Resized partition $IDX on $DISK"',
+  ].join("\n");
+}
+
+/**
+ * Linux create. Fails closed at every step: aborts if parted fails, and only
+ * formats a partition that did not exist before mkpart AND is the single new
+ * entry — never "the last partition in the list".
+ */
+function linuxCreateScript(diskDev: string, fstype: string, sizeMb: number): string {
+  const fs = fstype.toLowerCase();
+  const mkfs = (() => {
+    switch (fs) {
+      case "ext4":
+      case "ext3":
+      case "ext2":
+        return `mkfs.${fs} -F "$NEWDEV"`;
+      case "xfs":
+        return 'mkfs.xfs -f "$NEWDEV"';
+      case "btrfs":
+        return 'mkfs.btrfs -f "$NEWDEV"';
+      case "vfat":
+      case "fat32":
+        return 'mkfs.vfat -F 32 "$NEWDEV"';
+      case "swap":
+        return 'mkswap "$NEWDEV"';
+      default:
+        throw new Error(`Unsupported filesystem on Linux: ${fstype}`);
+    }
+  })();
+  const partedFs = fs === "swap" ? "linux-swap" : fs === "vfat" ? "fat32" : fs;
+  return [
+    "set -eu",
+    `DISK=${shQuote(diskDev)}`,
+    'BEFORE=$(mktemp)',
+    'trap \'rm -f "$BEFORE"\' EXIT',
+    // Partitions that exist before we touch anything
+    `lsblk -lnpo NAME,TYPE "$DISK" | awk '$2=="part"{print $1}' | sort > "$BEFORE"`,
+    // Largest free region, integer MiB: "<start> <end>"
+    `FREE=$(parted -s -m "$DISK" unit MiB print free | awk -F: '$5 ~ /free/ {s=$2; e=$3; z=$4; sub(/MiB/,"",s); sub(/MiB/,"",e); sub(/MiB/,"",z); if (z+0 > best) {best=z+0; bs=s; be=e}} END {if (best >= 1) printf "%d %d", bs + 0.999, be}')`,
+    'if [ -z "$FREE" ]; then echo "No free space found on $DISK"; exit 1; fi',
+    `START=$(echo "$FREE" | awk '{print $1}')`,
+    `FREE_END=$(echo "$FREE" | awk '{print $2}')`,
+    ...(sizeMb > 0
+      ? [
+          `END=$((START + ${Math.floor(sizeMb)}))`,
+          'if [ "$END" -gt "$FREE_END" ]; then echo "Not enough free space: $((FREE_END - START)) MiB available"; exit 1; fi',
+          `parted -s "$DISK" unit MiB mkpart primary ${shQuote(partedFs)} "\${START}MiB" "\${END}MiB"`,
+        ]
+      : [`parted -s "$DISK" unit MiB mkpart primary ${shQuote(partedFs)} "\${START}MiB" "\${FREE_END}MiB"`]),
+    'partprobe "$DISK" 2>/dev/null || true',
+    'udevadm settle 2>/dev/null || sleep 1',
+    // Exactly one partition must have appeared
+    `NEW=$(lsblk -lnpo NAME,TYPE "$DISK" | awk '$2=="part"{print $1}' | sort | comm -13 "$BEFORE" -)`,
+    'COUNT=$(printf "%s\\n" "$NEW" | grep -c . || true)',
+    'if [ "$COUNT" -ne 1 ]; then echo "Could not identify the new partition (found $COUNT new entries) — nothing was formatted"; exit 1; fi',
+    'NEWDEV="$NEW"',
+    'if grep -q "^$NEWDEV " /proc/mounts; then echo "$NEWDEV is mounted — refusing to format"; exit 1; fi',
+    mkfs,
+    `echo "Created $NEWDEV formatted as ${fs}"`,
+  ].join("\n");
 }
 
 export function buildPartCommand(params: PartActionParams): PartCommandPlan {
@@ -212,15 +328,14 @@ export function buildPartCommand(params: PartActionParams): PartCommandPlan {
       const dev = devPath(assertDev(part.name, "partition"));
       const sizeMb = params.sizeMb ?? 0;
 
+      // diskutil shrinks APFS/HFS+ safely; parted/gpart paths here only grow
+      if (platform !== "macOS" && sizeMb > 0 && part.sizeBytes > 0 && sizeMb * MIB < part.sizeBytes - MIB) {
+        throw new Error("Shrinking partitions isn't supported — only growing. Shrink offline with a dedicated tool.");
+      }
+
       if (platform === "Linux") {
-        const endSpec = sizeMb > 0 ? `${sizeMb}MiB` : "100%";
         return {
-          command: [
-            `parted -s ${shQuote(diskDev)} unit MiB resizepart ${idx} ${endSpec}`,
-            "partprobe " + shQuote(diskDev) + " 2>/dev/null || true",
-            linuxResizeFs(part.fstype, dev),
-            `echo "Resized partition ${idx} on ${diskDev}"`,
-          ].join(" && "),
+          command: linuxResizeScript(diskDev, dev, idx, part.fstype, sizeMb),
           summary: sizeMb > 0 ? `Resize ${dev} to ${sizeMb} MiB` : `Grow ${dev} to fill free space`,
           destructive: true,
           needsSudo: true,
@@ -240,11 +355,11 @@ export function buildPartCommand(params: PartActionParams): PartCommandPlan {
         };
       }
       if (platform === "BSD") {
-        const sizeSpec = sizeMb > 0 ? `${sizeMb}M` : "-a";
+        const sizeSpec = `${sizeMb}M`;
         return {
           command: [
-            `gpart resize -i ${idx} -s ${sizeSpec} ${shQuote(assertDev(disk.name, "disk"))}`,
-            `growfs ${shQuote(dev)} 2>/dev/null || true`,
+            `gpart resize -i ${idx} ${sizeMb > 0 ? `-s ${sizeSpec} ` : ""}${shQuote(assertDev(disk.name, "disk"))}`,
+            `growfs -y ${shQuote(dev)}`,
             `echo "Resized ${dev}"`,
           ].join(" && "),
           summary: `Resize ${dev}`,
@@ -310,42 +425,7 @@ export function buildPartCommand(params: PartActionParams): PartCommandPlan {
       if (freeMb < 64 && sizeMb === 0) throw new Error("Not enough free space on disk");
 
       if (platform === "Linux") {
-        const mkfsSh = (() => {
-          const fs = fstype.toLowerCase();
-          switch (fs) {
-            case "ext4":
-            case "ext3":
-            case "ext2":
-              return `mkfs.${fs} -F "$NEWDEV"`;
-            case "xfs":
-              return 'mkfs.xfs -f "$NEWDEV"';
-            case "btrfs":
-              return 'mkfs.btrfs -f "$NEWDEV"';
-            case "vfat":
-            case "fat32":
-              return 'mkfs.vfat -F 32 "$NEWDEV"';
-            case "swap":
-              return 'mkswap "$NEWDEV"';
-            default:
-              return `mkfs.${fs} -F "$NEWDEV"`;
-          }
-        })();
-        const mkpartLine =
-          sizeMb > 0
-            ? `parted -s "$DISK" unit MiB mkpart primary ${shQuote(fstype)} \${START}MiB $((START+${sizeMb}))MiB`
-            : `parted -s "$DISK" unit MiB mkpart primary ${shQuote(fstype)} \${START}MiB 100%`;
-        const script = [
-          `DISK=${shQuote(diskDev)}`,
-          `START=$(parted -s -m "$DISK" unit MiB print free 2>/dev/null | awk -F: '$5 ~ /free/ {print $2}' | tail -1)`,
-          'if [ -z "$START" ] || [ "$START" = "0" ]; then echo "No free space found"; exit 1; fi',
-          mkpartLine,
-          'partprobe "$DISK" 2>/dev/null || true',
-          'NEWPART=$(lsblk -ln -o NAME "$DISK" 2>/dev/null | grep -E "[0-9]$" | tail -1)',
-          'if [ -z "$NEWPART" ]; then echo "Could not detect new partition"; exit 1; fi',
-          'NEWDEV="/dev/$NEWPART"',
-          mkfsSh,
-          `echo "Created $NEWDEV formatted as ${fstype}"`,
-        ].join("\n");
+        const script = linuxCreateScript(diskDev, fstype, sizeMb);
         return {
           command: script,
           summary: sizeMb > 0 ? `Create ${sizeMb} MiB ${fstype} partition` : `Create partition using all free space (${freeMb} MiB)`,
@@ -358,12 +438,14 @@ export function buildPartCommand(params: PartActionParams): PartCommandPlan {
         throw new Error("Creating partitions on macOS requires repartitioning the whole disk — use Disk Utility on the host");
       }
       if (platform === "BSD") {
-        const sizeSpec = sizeMb > 0 ? `${sizeMb}M` : "-a";
+        const sizeSpec = `${sizeMb}M`;
         return {
           command: [
-            `gpart add -t freebsd-ufs -s ${sizeSpec} ${shQuote(assertDev(disk.name, "disk"))}`,
-            'NEWPART=$(gpart show -p ' + shQuote(assertDev(disk.name, "disk")) + " | tail -1 | awk '{print $4}')",
-            'newfs -U /dev/$NEWPART',
+            "set -eu",
+            // gpart prints "<name> added" — use exactly that, never "the last row"
+            `NEWPART=$(gpart add -t freebsd-ufs ${sizeMb > 0 ? `-s ${sizeSpec} ` : ""}${shQuote(assertDev(disk.name, "disk"))} | awk '/ added/{print $1}')`,
+            'if [ -z "$NEWPART" ]; then echo "Could not identify the new partition — nothing was formatted"; exit 1; fi',
+            'newfs -U "/dev/$NEWPART"',
             'echo "Created /dev/$NEWPART"',
           ].join("\n"),
           summary: `Create UFS partition (${sizeMb > 0 ? `${sizeMb}M` : "all free"})`,

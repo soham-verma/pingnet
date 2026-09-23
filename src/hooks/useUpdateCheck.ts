@@ -11,6 +11,7 @@ export { bumpType, parseReleaseNotes };
 const REPO = "soham-verma/pingnet";
 // Fallback link shown only if the in-app download/install path fails
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
+const CHANGELOG_URL = `https://github.com/${REPO}/blob/main/CHANGELOG.md`;
 
 function skipKey(version: string) {
   return `pingnet_skip_version_${version}`;
@@ -25,6 +26,12 @@ export interface UpdateInfo {
   available: boolean;
   skipped: boolean;
   checking: boolean;
+  /** At least one check has completed (successfully or not) */
+  checked: boolean;
+  /** Last completed check succeeded and found nothing newer than the running version */
+  upToDate: boolean;
+  /** Last check failed (offline, manifest unreachable, …) */
+  checkError: string | null;
   downloading: boolean;
   installed: boolean;
   progress: DownloadProgress | null;
@@ -34,6 +41,7 @@ export interface UpdateInfo {
   bump: "major" | "minor" | "patch" | null;
   releaseNotes: ReleaseNote[];
   releaseUrl: string;
+  changelogUrl: string;
   skipVersion: () => void;
   checkNow: () => void;
   installUpdate: () => Promise<void>;
@@ -54,6 +62,8 @@ export function useUpdateCheck(): UpdateInfo {
   const [installed, setInstalled]            = useState(false);
   const [progress, setProgress]              = useState<DownloadProgress | null>(null);
   const [error, setError]                    = useState<string | null>(null);
+  const [checked, setChecked]                = useState(false);
+  const [checkError, setCheckError]          = useState<string | null>(null);
 
   // Holds the live Update handle returned by the updater plugin so installUpdate()
   // can act on it without re-fetching. Not state — it doesn't need to trigger renders.
@@ -79,14 +89,17 @@ export function useUpdateCheck(): UpdateInfo {
       // plugin itself compares versions, so a null result means "up to date".
       const update = await check();
       pendingUpdate.current = update ?? null;
-      if (update) {
-        setLatestVersion(normalizeVersion(update.version));
-        setReleaseBody(update.body ?? null);
-      }
-    } catch {
-      // Network unavailable or endpoint unreachable — silently ignore, try again next time
+      // Always overwrite — a stale latestVersion from an earlier check must not
+      // survive a later "up to date" result.
+      setLatestVersion(update ? normalizeVersion(update.version) : null);
+      setReleaseBody(update?.body ?? null);
+      setCheckError(null);
+    } catch (e) {
+      // Not surfaced on launch — only shown if the user opens the update modal
+      setCheckError(e instanceof Error ? e.message : String(e));
     } finally {
       setChecking(false);
+      setChecked(true);
     }
   }, []);
 
@@ -98,14 +111,18 @@ export function useUpdateCheck(): UpdateInfo {
 
   // Check if this version has been skipped
   useEffect(() => {
-    if (!latestVersion) return;
-    setSkipped(localStorage.getItem(skipKey(latestVersion)) === "1");
+    if (!latestVersion) { setSkipped(false); return; }
+    let isSkipped = false;
+    try { isSkipped = localStorage.getItem(skipKey(latestVersion)) === "1"; } catch { /* storage unavailable */ }
+    setSkipped(isSkipped);
   }, [latestVersion]);
 
   const available =
     currentVersion !== null &&
     latestVersion !== null &&
     isNewer(latestVersion, currentVersion);
+
+  const upToDate = checked && !checking && checkError === null && !available;
 
   // Downloads the signed update bundle, installs it, and relaunches the app —
   // no browser, no manual download, no pointing the user at GitHub.
@@ -160,6 +177,9 @@ export function useUpdateCheck(): UpdateInfo {
     available,
     skipped,
     checking,
+    checked,
+    upToDate,
+    checkError,
     downloading,
     installed,
     progress,
@@ -170,9 +190,10 @@ export function useUpdateCheck(): UpdateInfo {
       ? bumpType(latestVersion, currentVersion) : null,
     releaseNotes: parseReleaseNotes(releaseBody),
     releaseUrl: RELEASES_URL,
+    changelogUrl: CHANGELOG_URL,
     skipVersion: () => {
       if (latestVersion) {
-        localStorage.setItem(skipKey(latestVersion), "1");
+        try { localStorage.setItem(skipKey(latestVersion), "1"); } catch { /* storage unavailable */ }
         setSkipped(true);
       }
     },

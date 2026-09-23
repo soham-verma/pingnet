@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { newId } from "./utils/id";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, currentMonitor, PhysicalPosition } from "@tauri-apps/api/window";
-import { HostConfig, HostState, SshConfig } from "./types";
+import { HostConfig, HostFolder, HostState, SshConfig } from "./types";
+import { moveHost, moveFolder, deleteFolder, normalizeOrder, effectiveFolderId } from "./utils/hostOrder";
 import { usePing, PingSession } from "./hooks/usePing";
 import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import { useTheme } from "./hooks/useTheme";
@@ -17,10 +19,10 @@ import UpdateModal from "./components/UpdateModal";
 import ShortcutsModal from "./components/ShortcutsModal";
 
 function genId(): string {
-  // crypto.randomUUID() is available in all Tauri WebView targets (Chromium/WebKit)
+  // newId(): crypto.randomUUID with a getRandomValues fallback for older WebKit
   // and produces a proper RFC 4122 UUID, unlike Math.random which has ~51 bits of
   // entropy and can collide on bulk imports.
-  return crypto.randomUUID();
+  return newId();
 }
 
 function toHostState(config: HostConfig): HostState {
@@ -40,6 +42,15 @@ type AddHostPrefill = { ip: string } | null;
 
 export default function App() {
   const [hosts, setHosts] = useState<HostState[]>([]);
+  const [folders, setFolders] = useState<HostFolder[]>([]);
+  // Storage problems shown to the user (damaged files recovered, failed saves)
+  const [notices, setNotices] = useState<{ id: string; kind: "warning" | "error"; text: string }[]>([]);
+  const pushNotice = useCallback((kind: "warning" | "error", text: string) => {
+    setNotices((prev) => prev.some((n) => n.text === text) ? prev : [...prev, { id: newId(), kind, text }]);
+  }, []);
+  // Set when hosts.json / folders.json could not be READ. Saving would then
+  // overwrite data we never loaded, so persistence is blocked until restart.
+  const saveBlockedRef = useRef<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modal, setModal] = useState<{ mode: "add" | "edit"; host?: HostState; prefill?: AddHostPrefill } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
@@ -53,6 +64,9 @@ export default function App() {
   // Track every host that has ever had SSH opened this session so we can keep
   // their SSHSessionView mounted (and connections alive) while browsing other hosts.
   const [sshOpenedIds, setSshOpenedIds] = useState<Set<string>>(new Set());
+  // Last screen (ping / ssh) the user was on for each host, so re-selecting a
+  // host from the sidebar or dashboard returns there instead of always Ping.
+  const [lastViewByHost, setLastViewByHost] = useState<Record<string, "ping" | "ssh">>({});
   useTheme();
   const update = useUpdateCheck();
 
@@ -187,33 +201,48 @@ export default function App() {
         return;
       }
 
+      // Hosts visible in the sidebar (skip those inside collapsed folders)
+      const navHosts = hosts.filter((h) => {
+        const fid = effectiveFolderId(h, folders);
+        return !fid || !folders.find((f) => f.id === fid)?.collapsed || h.id === selectedId;
+      });
+
       // ↑ / ↓ — navigate host list
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
-        const idx = hosts.findIndex((h) => h.id === selectedId);
+        const idx = navHosts.findIndex((h) => h.id === selectedId);
         const next = e.key === "ArrowUp"
           ? Math.max(0, idx - 1)
-          : Math.min(hosts.length - 1, idx + 1);
-        if (hosts[next]) { setSelectedId(hosts[next].id); setViewMode("ping"); }
+          : Math.min(navHosts.length - 1, idx + 1);
+        if (navHosts[next]) handleSelectHost(navHosts[next].id);
         return;
       }
 
       // 1–9 — jump to host by position
       if (e.key >= "1" && e.key <= "9" && !e.metaKey && !e.ctrlKey) {
         const idx = parseInt(e.key, 10) - 1;
-        if (hosts[idx]) { e.preventDefault(); setSelectedId(hosts[idx].id); setViewMode("ping"); }
+        if (navHosts[idx]) { e.preventDefault(); handleSelectHost(navHosts[idx].id); }
         return;
       }
     }
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [hosts, selectedId, selectedHost, viewMode, modal, showShortcuts, showKeyManager, showUpdateModal, stopPing]);
+  }, [hosts, folders, selectedId, selectedHost, viewMode, modal, showShortcuts, showKeyManager, showUpdateModal, stopPing, lastViewByHost, sshOpenedIds]);
 
   // Load hosts on mount — also seed sshConfigs from any persisted SSH fields
   useEffect(() => {
-    invoke<HostConfig[]>("load_hosts")
-      .then((configs) => {
-        const states = configs.map(toHostState);
+    type Loaded<T> = { items: T[]; warning: string | null };
+    Promise.all([
+      invoke<Loaded<HostConfig>>("load_hosts"),
+      invoke<Loaded<HostFolder>>("load_folders"),
+    ])
+      .then(([hostsRes, foldersRes]) => {
+        const configs = hostsRes.items;
+        const loadedFolders = foldersRes.items;
+        if (hostsRes.warning) pushNotice("warning", hostsRes.warning);
+        if (foldersRes.warning) pushNotice("warning", foldersRes.warning);
+        setFolders(loadedFolders);
+        const states = normalizeOrder(configs.map(toHostState), loadedFolders);
         setHosts(states);
         if (states.length > 0) setSelectedId(states[0].id);
         // Restore saved SSH config for each host (no passwords — never stored)
@@ -231,8 +260,11 @@ export default function App() {
         });
         if (Object.keys(restored).length > 0) setSshConfigs(restored);
       })
-      .catch(() => {
-        // First launch or error — start empty
+      .catch((e) => {
+        // A missing file loads as empty (first launch), so reaching here means
+        // an existing file could not be read. Don't let a later save clobber it.
+        saveBlockedRef.current = String(e);
+        pushNotice("error", `Couldn't read your saved devices (${String(e)}). Changes won't be saved until this is fixed and Pingnet is restarted.`);
       });
   }, []);
 
@@ -240,19 +272,82 @@ export default function App() {
     const configs: HostConfig[] = updated.map(
       ({ hostname, ip, ip_type, extra_ips, notes, id, created_at,
          alert_on_down, alert_on_recovery, alert_latency_ms,
-         ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name }) => ({
+         ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name, folder_id }) => ({
         id, hostname, ip, ip_type, extra_ips, notes, created_at,
         alert_on_down, alert_on_recovery, alert_latency_ms,
         ssh_port, ssh_username, ssh_auth_type, ssh_key_path, ssh_key_name,
+        folder_id: folder_id ?? null,
       })
     );
+    if (saveBlockedRef.current) return;
     try {
       await invoke("save_hosts", { hosts: configs });
     } catch (e) {
-      // Surface write failures — silent data loss is worse than a console error
-      console.error("[Pingnet] Failed to persist hosts:", e);
+      pushNotice("error", `Couldn't save your devices: ${String(e)}. Recent changes will be lost on restart.`);
     }
-  }, []);
+  }, [pushNotice]);
+
+  const persistFolders = useCallback(async (updated: HostFolder[]) => {
+    if (saveBlockedRef.current) return;
+    try {
+      await invoke("save_folders", { folders: updated });
+    } catch (e) {
+      pushNotice("error", `Couldn't save your folders: ${String(e)}. Recent changes will be lost on restart.`);
+    }
+  }, [pushNotice]);
+
+  // ── Sidebar ordering / folders ────────────────────────────────────────────
+  function handleMoveHost(hostId: string, folderId: string | null, beforeId: string | null) {
+    const updated = moveHost(hosts, folders, hostId, folderId, beforeId);
+    if (updated === hosts) return;
+    // Dropping into a collapsed folder expands it so the device stays visible
+    const target = folderId ? folders.find((f) => f.id === folderId) : null;
+    if (target?.collapsed) {
+      const nextFolders = folders.map((f) => (f.id === folderId ? { ...f, collapsed: false } : f));
+      setFolders(nextFolders);
+      persistFolders(nextFolders);
+    }
+    setHosts(updated);
+    persistHosts(updated);
+  }
+
+  function handleMoveFolder(folderId: string, beforeId: string | null) {
+    const nextFolders = moveFolder(folders, folderId, beforeId);
+    if (nextFolders === folders) return;
+    const nextHosts = normalizeOrder(hosts, nextFolders);
+    setFolders(nextFolders);
+    setHosts(nextHosts);
+    persistFolders(nextFolders);
+    persistHosts(nextHosts);
+  }
+
+  function handleCreateFolder(): string {
+    const folder: HostFolder = { id: genId(), name: "New folder", collapsed: false };
+    const next = [...folders, folder];
+    setFolders(next);
+    persistFolders(next);
+    return folder.id;
+  }
+
+  function handleRenameFolder(folderId: string, name: string) {
+    const next = folders.map((f) => (f.id === folderId ? { ...f, name } : f));
+    setFolders(next);
+    persistFolders(next);
+  }
+
+  function handleToggleFolder(folderId: string) {
+    const next = folders.map((f) => (f.id === folderId ? { ...f, collapsed: !f.collapsed } : f));
+    setFolders(next);
+    persistFolders(next);
+  }
+
+  function handleDeleteFolder(folderId: string) {
+    const r = deleteFolder(hosts, folders, folderId);
+    setFolders(r.folders);
+    setHosts(r.hosts);
+    persistFolders(r.folders);
+    persistHosts(r.hosts);
+  }
 
   function handleAddHost(
     data: Pick<HostConfig, "hostname" | "ip" | "ip_type" | "extra_ips" | "notes" | "alert_on_down" | "alert_on_recovery" | "alert_latency_ms">
@@ -319,19 +414,35 @@ export default function App() {
     persistHosts(updated);
   }
 
-  function handleOpenSSH(id: string) {
-    setSshOpenedIds((prev) => new Set([...prev, id]));
+  /** Show a host in a specific view and remember it as that host's last view. */
+  function showHost(id: string, view: "ping" | "ssh") {
     setSelectedId(id);
-    setViewMode("ssh");
+    setViewMode(view);
+    setLastViewByHost((prev) => (prev[id] === view ? prev : { ...prev, [id]: view }));
     setShowLocalTerminal(false);
     setShowLocalSpeedtest(false);
   }
 
+  function handleOpenSSH(id: string) {
+    setSshOpenedIds((prev) => new Set([...prev, id]));
+    showHost(id, "ssh");
+  }
+
+  function handleOpenPing(id: string) {
+    showHost(id, "ping");
+  }
+
+  /** Selecting a host restores the screen the user was last on for it — the
+   *  SSH view if its session was opened and left on SSH, otherwise Ping. */
   function handleSelectHost(id: string) {
-    setSelectedId(id);
-    setViewMode("ping");
-    setShowLocalTerminal(false);
-    setShowLocalSpeedtest(false);
+    const view = lastViewByHost[id] === "ssh" && sshOpenedIds.has(id) ? "ssh" : "ping";
+    showHost(id, view);
+  }
+
+  function handleOpenUpdate() {
+    setShowUpdateModal(true);
+    // Re-check on demand so the modal reflects the server's current state
+    if (!update.available && !update.checking) update.checkNow();
   }
 
   function handleGoHome() {
@@ -344,15 +455,42 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
+      {/* Storage notices — damaged-file recovery and failed saves */}
+      {notices.length > 0 && (
+        <div className="flex-shrink-0 flex flex-col" role="alert">
+          {notices.map((n) => (
+            <div key={n.id}
+              className="flex items-start gap-3 px-4 py-2 text-[12px] border-b"
+              style={n.kind === "error"
+                ? { background: "#ef444414", borderColor: "#ef444440", color: "#fca5a5" }
+                : { background: "#f59e0b14", borderColor: "#f59e0b40", color: "#fcd34d" }}>
+              <span className="flex-1 leading-snug break-words">{n.text}</span>
+              <button
+                onClick={() => setNotices((prev) => prev.filter((x) => x.id !== n.id))}
+                className="flex-shrink-0 opacity-70 hover:opacity-100"
+                aria-label="Dismiss"
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <Sidebar
           hosts={hosts}
+          folders={folders}
           selectedId={selectedId}
           sessions={allSessions}
           viewMode={viewMode}
           onSelect={handleSelectHost}
+          onOpenPing={handleOpenPing}
           onOpenSSH={handleOpenSSH}
+          onMoveHost={handleMoveHost}
+          onMoveFolder={handleMoveFolder}
+          onCreateFolder={handleCreateFolder}
+          onRenameFolder={handleRenameFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onToggleFolder={handleToggleFolder}
           onOpenKeyManager={() => setShowKeyManager(true)}
           onOpenLocalTerminal={() => { setShowLocalTerminal(true); setShowLocalSpeedtest(false); }}
           onOpenSpeedtest={() => { setShowLocalSpeedtest(true); setShowLocalTerminal(false); }}
@@ -361,7 +499,7 @@ export default function App() {
           localSpeedtestActive={showLocalSpeedtest}
           currentVersion={update.currentVersion}
           updateAvailable={update.available && !update.skipped}
-          onOpenUpdate={() => setShowUpdateModal(true)}
+          onOpenUpdate={handleOpenUpdate}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(v => !v)}
           onGoHome={handleGoHome}
@@ -414,6 +552,7 @@ export default function App() {
               }}
             >
               <SSHSessionView
+                visible={selectedId === host.id && viewMode === "ssh" && !showLocalTerminal && !showLocalSpeedtest}
                 hostname={host.hostname}
                 ip={host.ip}
                 hostId={host.id}

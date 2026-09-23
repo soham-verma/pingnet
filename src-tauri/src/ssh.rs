@@ -47,7 +47,12 @@ pub enum SshAuth {
     Agent,
     /// Keyboard-interactive auth — responds with a TOTP code to every server prompt.
     /// Used for Google Authenticator / any TOTP-based two-factor SSH auth.
-    KbdInt { totp_code: String },
+    KbdInt {
+        totp_code: String,
+        /// Answer for "Password:" prompts when the server asks for password + code
+        #[serde(default)]
+        password: Option<String>,
+    },
 }
 
 enum ShellMsg {
@@ -58,15 +63,20 @@ enum ShellMsg {
 
 pub struct SshConnection {
     shell_tx: mpsc::SyncSender<ShellMsg>,
-    /// Separate session kept for SFTP — accessed only inside spawn_blocking.
+    /// Session for SFTP / exec / tunnels — accessed only inside spawn_blocking.
+    /// Normally a second authenticated connection; for one-time-code auth that
+    /// forbids code reuse it is the SAME session as the shell (shared mode).
     /// pub(crate) so docker.rs and other modules can lock it for SSH exec calls.
-    pub(crate) sftp_session: Mutex<Session>,
+    pub(crate) sftp_session: Arc<Mutex<Session>>,
     stop_flag: Arc<AtomicBool>,
 }
 
 pub struct SshState {
     pub sessions: tokio::sync::Mutex<HashMap<String, Arc<SshConnection>>>,
     pub metrics:  std::sync::Arc<crate::metrics::MetricsState>,
+    /// Connections still being set up — ssh_disconnect flips the flag so the
+    /// setup aborts and tears down instead of registering (audit BUG-006).
+    pending: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 impl SshState {
@@ -74,40 +84,52 @@ impl SshState {
         Self {
             sessions: tokio::sync::Mutex::new(HashMap::new()),
             metrics:  crate::metrics::MetricsState::new(),
+            pending:  Mutex::new(HashMap::new()),
         }
     }
 }
 
-// ── Known-hosts TOFU store ────────────────────────────────────────────────────
+// ── Known-hosts store ─────────────────────────────────────────────────────────
+//
+// Fails CLOSED (audit SEC-004): a known_hosts.json that exists but can't be
+// read or parsed refuses connections instead of silently becoming an empty
+// store that would accept any key. Writes are atomic (tmp + rename) and every
+// load-modify-save runs under one process-wide lock so concurrent tabs can't
+// lose updates. New hosts are NOT auto-trusted: the user confirms the SHA256
+// fingerprint first, and "trust" can only pin the key the server actually
+// presented (kept in PENDING_KEYS), never an arbitrary string from the webview.
 
-fn known_hosts_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_data_dir().ok().map(|d: PathBuf| d.join("known_hosts.json"))
+static KNOWN_HOSTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static PENDING_KEYS: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn known_hosts_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path().app_data_dir()
+        .map(|d: PathBuf| d.join("known_hosts.json"))
+        .map_err(|e| format!("Cannot resolve app data dir: {}", e))
 }
 
-fn load_known_hosts(app: &tauri::AppHandle) -> HashMap<String, String> {
-    let path = match known_hosts_path(app) {
-        Some(p) => p,
-        None => return HashMap::new(),
-    };
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-
-fn save_known_hosts(app: &tauri::AppHandle, map: &HashMap<String, String>) {
-    if let Some(path) = known_hosts_path(app) {
-        if let Ok(json) = serde_json::to_string_pretty(map) {
-            let _ = std::fs::write(path, json);
-        }
+fn load_known_hosts_at(path: &Path) -> Result<HashMap<String, String>, String> {
+    if !path.exists() {
+        return Ok(HashMap::new());
     }
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
+    serde_json::from_str(&raw)
+        .map_err(|e| format!("{} is corrupt ({}). Fix or remove it to re-verify your hosts.", path.display(), e))
+}
+
+fn save_known_hosts_at(path: &Path, map: &HashMap<String, String>) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json).map_err(|e| format!("Cannot write host keys: {}", e))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("Cannot save host keys: {}", e))
 }
 
 /// Compute a collision-resistant fingerprint from the raw host key bytes.
-/// We use the raw key directly (not an MD5/SHA1 hash) because:
-///   - ssh2 0.9 exposes only MD5/SHA1 via host_key_hash — both are weak for MITM detection
-///   - The raw key bytes are the authoritative identity; any hash is strictly weaker
-///   - Ed25519 and ECDSA keys are already 32–65 bytes, so hex-encoding is compact
 /// Format: "<key-type>:<hex-bytes>" — e.g. "ssh-ed25519:aabbcc..."
 fn raw_key_fingerprint(session: &Session) -> Option<String> {
     let (key_bytes, key_type) = session.host_key()?;
@@ -123,56 +145,84 @@ fn raw_key_fingerprint(session: &Session) -> Option<String> {
     Some(format!("{}:{}", type_str, hex))
 }
 
-/// Trust-on-first-use host key verification.
-/// First connection: fingerprint is stored and the connection proceeds.
-/// Subsequent connections: fingerprint must match what was stored.
-///
-/// Uses raw key bytes (not MD5) to avoid collision-weak MITM detection.
-/// Existing entries stored as bare MD5 hex (no "ssh-*:" prefix) will be
-/// treated as unknown and re-pinned on the next connection.
+/// OpenSSH-style "SHA256:<base64>" for a stored "<type>:<hex>" fingerprint —
+/// the same string `ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub` prints on the
+/// server, so the user can verify it out-of-band.
+pub(crate) fn sha256_display(raw: &str) -> Option<String> {
+    use base64::Engine;
+    use sha2::Digest;
+    let hex = raw.split_once(':').map(|(_, h)| h).unwrap_or(raw);
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    let bytes: Option<Vec<u8>> = (0..hex.len()).step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect();
+    let digest = sha2::Sha256::digest(bytes?);
+    Some(format!("SHA256:{}", base64::engine::general_purpose::STANDARD_NO_PAD.encode(digest)))
+}
+
+/// Decide what to do with a presented key. Pure so it can be unit-tested.
+#[derive(Debug, PartialEq)]
+enum HostKeyVerdict { Trusted, Unknown, Changed(String) }
+
+fn judge_host_key(known: &HashMap<String, String>, host_key: &str, fingerprint: &str) -> HostKeyVerdict {
+    match known.get(host_key) {
+        Some(stored) if stored == fingerprint => HostKeyVerdict::Trusted,
+        Some(stored) => HostKeyVerdict::Changed(stored.clone()),
+        None => HostKeyVerdict::Unknown,
+    }
+}
+
 fn verify_host_key(session: &Session, host: &str, port: u16, app: &tauri::AppHandle) -> Result<(), String> {
     let fingerprint = raw_key_fingerprint(session)
         .ok_or_else(|| "Server provided no host key — refusing connection".to_string())?;
-
     let host_key = format!("[{}]:{}", host, port);
-    let mut known = load_known_hosts(app);
+    let path = known_hosts_path(app)?;
 
-    match known.get(&host_key) {
-        Some(stored) if stored != &fingerprint => {
-            // Embed structured fields so the frontend can parse them without regex
-            return Err(format!(
-                "HOST_KEY_CHANGED\x00host={}\x00stored={}\x00current={}",
-                host, stored, fingerprint
-            ));
+    let known = {
+        let _g = KNOWN_HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        load_known_hosts_at(&path).map_err(|e| format!("HOST_KEY_STORE_ERROR\x00detail={}", e))?
+    };
+    let key_type = fingerprint.split(':').next().unwrap_or("").to_string();
+    let sha = sha256_display(&fingerprint).unwrap_or_default();
+
+    match judge_host_key(&known, &host_key, &fingerprint) {
+        HostKeyVerdict::Trusted => Ok(()),
+        HostKeyVerdict::Unknown => {
+            PENDING_KEYS.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key, fingerprint.clone());
+            Err(format!(
+                "HOST_KEY_UNKNOWN\x00host={}\x00current={}\x00current_sha256={}\x00keytype={}",
+                host, fingerprint, sha, key_type
+            ))
         }
-        None => {
-            // First time connecting to this host — store it (TOFU)
-            known.insert(host_key, fingerprint);
-            save_known_hosts(app, &known);
+        HostKeyVerdict::Changed(stored) => {
+            PENDING_KEYS.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key, fingerprint.clone());
+            Err(format!(
+                "HOST_KEY_CHANGED\x00host={}\x00stored={}\x00current={}\x00stored_sha256={}\x00current_sha256={}",
+                host, stored, fingerprint, sha256_display(&stored).unwrap_or_default(), sha
+            ))
         }
-        _ => {} // Key matches — all good
     }
-    Ok(())
 }
 
-/// Remove a host's stored key so the next connection re-pins it (TOFU reset).
-/// Call this when the user trusts the new key after a server reinstall.
+/// Remove a host's stored key so the next connection asks again.
 #[tauri::command]
 pub async fn clear_host_key(
     app: tauri::AppHandle,
     host: String,
     port: u16,
 ) -> Result<(), String> {
-    let host_key = format!("[{}]:{}", host, port);
-    let mut known = load_known_hosts(&app);
-    known.remove(&host_key);
-    save_known_hosts(&app, &known);
-    Ok(())
+    let path = known_hosts_path(&app)?;
+    let _g = KNOWN_HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut known = load_known_hosts_at(&path)?;
+    known.remove(&format!("[{}]:{}", host, port));
+    save_known_hosts_at(&path, &known)
 }
 
-/// Overwrite a host's stored key with the supplied fingerprint.
-/// Used by the "Trust New Key" UI action — sets the current key as trusted
-/// so the next connect() call succeeds without another mismatch error.
+/// Pin the key this host presented on its last (rejected) connection attempt.
+/// `fingerprint` must match what the server actually sent — the backend never
+/// trusts a value the webview made up.
 #[tauri::command]
 pub async fn trust_host_key(
     app: tauri::AppHandle,
@@ -181,17 +231,110 @@ pub async fn trust_host_key(
     fingerprint: String,
 ) -> Result<(), String> {
     let host_key = format!("[{}]:{}", host, port);
-    let mut known = load_known_hosts(&app);
-    known.insert(host_key, fingerprint);
-    save_known_hosts(&app, &known);
+    let pending = PENDING_KEYS.lock().unwrap_or_else(|e| e.into_inner()).get(&host_key).cloned();
+    match pending {
+        Some(p) if p == fingerprint => {}
+        _ => return Err("That key wasn't presented by this host — reconnect and verify again".to_string()),
+    }
+    let path = known_hosts_path(&app)?;
+    let _g = KNOWN_HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut known = load_known_hosts_at(&path)?;
+    known.insert(host_key.clone(), fingerprint);
+    save_known_hosts_at(&path, &known)?;
+    PENDING_KEYS.lock().unwrap_or_else(|e| e.into_inner()).remove(&host_key);
     Ok(())
+}
+
+#[cfg(test)]
+mod kbd_tests {
+    #[test]
+    fn prompts_get_the_right_answer() {
+        assert_eq!(super::kbd_answer("Password: ", "123456", Some("pw")), "pw");
+        assert_eq!(super::kbd_answer("Verification code: ", "123456", Some("pw")), "123456");
+        assert_eq!(super::kbd_answer("One-time password (OTP): ", "123456", Some("pw")), "123456");
+        // no password supplied → code for everything (previous behaviour)
+        assert_eq!(super::kbd_answer("Password: ", "123456", None), "123456");
+    }
+}
+
+#[cfg(test)]
+mod known_hosts_tests {
+    use super::*;
+
+    fn tmpfile(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pn-kh-{}-{:?}", name, std::time::Instant::now()));
+        std::fs::create_dir_all(&d).unwrap();
+        d.join("known_hosts.json")
+    }
+
+    #[test]
+    fn missing_store_is_empty() {
+        assert!(load_known_hosts_at(&tmpfile("missing")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn corrupt_store_fails_closed() {
+        let p = tmpfile("corrupt");
+        std::fs::write(&p, "{not json").unwrap();
+        assert!(load_known_hosts_at(&p).is_err());
+    }
+
+    #[test]
+    fn roundtrip_is_atomic_and_readable() {
+        let p = tmpfile("rt");
+        let mut m = HashMap::new();
+        m.insert("[h]:22".to_string(), "ssh-ed25519:ab".to_string());
+        save_known_hosts_at(&p, &m).unwrap();
+        assert_eq!(load_known_hosts_at(&p).unwrap(), m);
+        assert!(!p.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn verdicts() {
+        let mut m = HashMap::new();
+        m.insert("[h]:22".to_string(), "ssh-ed25519:aa".to_string());
+        assert_eq!(judge_host_key(&m, "[h]:22", "ssh-ed25519:aa"), HostKeyVerdict::Trusted);
+        assert_eq!(judge_host_key(&m, "[h]:22", "ssh-ed25519:bb"), HostKeyVerdict::Changed("ssh-ed25519:aa".into()));
+        assert_eq!(judge_host_key(&m, "[x]:22", "ssh-ed25519:aa"), HostKeyVerdict::Unknown);
+    }
+
+    #[test]
+    fn sha256_matches_openssh_format() {
+        // key blob bytes "abc" → SHA256 base64 (no padding)
+        assert_eq!(sha256_display("ssh-ed25519:616263").unwrap(), "SHA256:ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0");
+        assert!(sha256_display("ssh-ed25519:abc").is_none());
+    }
 }
 
 // ── Connection helpers ────────────────────────────────────────────────────────
 
+// Deadlines (audit BUG-015). libssh2's session timeout bounds every blocking
+// call; keepalives detect peers that silently vanish.
+const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const SETUP_TIMEOUT_MS: u32 = 20_000;   // handshake, auth, channel setup, shell writes
+const AUX_TIMEOUT_MS: u32 = 120_000;    // any single blocking call on the aux session
+const KEEPALIVE_SECS: u32 = 15;
+
 fn tcp_connect(host: &str, port: u16) -> Result<TcpStream, String> {
-    TcpStream::connect(format!("{}:{}", host, port))
-        .map_err(|e| format!("TCP connect failed: {}", e))
+    use std::net::ToSocketAddrs;
+    let addrs: Vec<std::net::SocketAddr> = (host, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("DNS lookup failed: {}", e))?
+        .collect();
+    let mut last_err = None;
+    for addr in addrs {
+        match TcpStream::connect_timeout(&addr, TCP_CONNECT_TIMEOUT) {
+            Ok(s) => {
+                let _ = s.set_nodelay(true);
+                return Ok(s);
+            }
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(format!(
+        "TCP connect failed: {}",
+        last_err.map(|e| e.to_string()).unwrap_or_else(|| "no addresses".to_string())
+    ))
 }
 
 /// libssh2 defaults can fail against modern OpenSSH (incl. Windows OpenSSH) which
@@ -236,6 +379,8 @@ fn configure_session_algorithms(session: &Session) {
 fn make_session(stream: TcpStream, host: &str, port: u16, app: &tauri::AppHandle) -> Result<Session, String> {
     let mut session = Session::new().map_err(|e| format!("Session init failed: {}", e))?;
     configure_session_algorithms(&session);
+    session.set_timeout(SETUP_TIMEOUT_MS);
+    session.set_keepalive(true, KEEPALIVE_SECS);
     session.set_tcp_stream(stream);
     session.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
     verify_host_key(&session, host, port, app)?;
@@ -283,23 +428,26 @@ fn auth_session(session: &Session, username: &str, auth: &SshAuth) -> Result<(),
                 .userauth_agent(username)
                 .map_err(|e| format!("SSH agent auth failed: {}", e))?;
         }
-        SshAuth::KbdInt { totp_code } => {
-            // Keyboard-interactive: respond with the TOTP code to every server prompt.
-            // Most TOTP-protected servers send a single "Verification code:" prompt.
-            struct TotpResponder(String);
-            impl ssh2::KeyboardInteractivePrompt for TotpResponder {
+        SshAuth::KbdInt { totp_code, password } => {
+            // Keyboard-interactive: answer each prompt by what it asks for —
+            // password prompts get the password (when given), code prompts get
+            // the one-time code (audit BUG-012: previously every prompt got the code).
+            struct KbdResponder { code: String, password: Option<String> }
+            impl ssh2::KeyboardInteractivePrompt for KbdResponder {
                 fn prompt(
                     &mut self,
                     _username: &str,
                     _instructions: &str,
                     prompts: &[ssh2::Prompt<'_>],
                 ) -> Vec<String> {
-                    // Return the TOTP code for every prompt (typically just one).
-                    prompts.iter().map(|_| self.0.clone()).collect()
+                    prompts.iter().map(|p| kbd_answer(&p.text, &self.code, self.password.as_deref())).collect()
                 }
             }
             session
-                .userauth_keyboard_interactive(username, &mut TotpResponder(totp_code.clone()))
+                .userauth_keyboard_interactive(username, &mut KbdResponder {
+                    code: totp_code.clone(),
+                    password: password.clone(),
+                })
                 .map_err(|e| format!("TOTP/keyboard-interactive auth failed: {}", e))?;
         }
     }
@@ -307,6 +455,17 @@ fn auth_session(session: &Session, username: &str, auth: &SshAuth) -> Result<(),
         return Err("Authentication rejected by server".to_string());
     }
     Ok(())
+}
+
+/// Pick the answer for one keyboard-interactive prompt.
+fn kbd_answer(prompt: &str, code: &str, password: Option<&str>) -> String {
+    let p = prompt.to_lowercase();
+    let wants_code = ["verification", "code", "otp", "token", "authenticator", "one-time", "2fa", "passcode"]
+        .iter().any(|k| p.contains(k));
+    match password {
+        Some(pw) if !wants_code && p.contains("password") => pw.to_string(),
+        _ => code.to_string(),
+    }
 }
 
 fn open_shell(session: &Session) -> Result<Channel, String> {
@@ -320,53 +479,99 @@ fn open_shell(session: &Session) -> Result<Channel, String> {
 
 // ── Shell reader thread ───────────────────────────────────────────────────────
 
+/// The shell's session: its own connection (normal), or shared with the aux
+/// operations under their mutex (one-time-code auth fallback).
+enum ShellSession {
+    Owned(Session),
+    Shared(Arc<Mutex<Session>>),
+}
+
+impl ShellSession {
+    fn with<R>(&self, f: impl FnOnce(&Session) -> R) -> R {
+        match self {
+            ShellSession::Owned(s) => f(s),
+            ShellSession::Shared(m) => {
+                let s = m.lock().unwrap_or_else(|e| e.into_inner());
+                f(&s)
+            }
+        }
+    }
+}
+
 fn run_shell_thread(
-    session: Session,
+    session: ShellSession,
     mut channel: Channel,
     rx: mpsc::Receiver<ShellMsg>,
     app: tauri::AppHandle,
     session_id: String,
     stop_flag: Arc<AtomicBool>,
 ) {
-    session.set_blocking(false);
     let mut buf = [0u8; 8192];
+    let mut pending_utf8: Vec<u8> = Vec::new();
+    let mut last_keepalive = std::time::Instant::now();
 
-    loop {
+    'outer: loop {
         if stop_flag.load(Ordering::Relaxed) {
             break;
         }
 
-        // Non-blocking read from shell
-        match channel.read(&mut buf) {
-            Ok(0) => {
-                if channel.eof() {
-                    break;
-                }
-            }
-            Ok(n) => {
-                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+        // One locked step: non-blocking read + drain queued input. In shared
+        // mode the session is restored to blocking before the lock is released
+        // because aux operations expect blocking I/O.
+        let step: Result<(Option<Vec<u8>>, bool), ()> = session.with(|s| {
+            s.set_blocking(false);
+            let mut out = None;
+            let mut eof = false;
+            let r = match channel.read(&mut buf) {
+                Ok(0) => { eof = channel.eof(); Ok(()) }
+                Ok(n) => { out = Some(buf[..n].to_vec()); Ok(()) }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(()),
+                Err(_) => Err(()),
+            };
+            s.set_blocking(true);
+            r.map(|_| (out, eof))
+        });
+        let (data, eof) = match step {
+            Ok(v) => v,
+            Err(()) => break,
+        };
+        if let Some(bytes) = data {
+            pending_utf8.extend_from_slice(&bytes);
+            let text = crate::utf8_stream::take_utf8(&mut pending_utf8);
+            if !text.is_empty() {
                 app.emit(&format!("ssh-output-{}", session_id), text).ok();
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-            Err(_) => break,
+        }
+        if eof {
+            break;
         }
 
         // Drain pending commands
         while let Ok(msg) = rx.try_recv() {
             match msg {
                 ShellMsg::Input(data) => {
-                    session.set_blocking(true);
-                    channel.write_all(data.as_bytes()).ok();
-                    channel.flush().ok();
-                    session.set_blocking(false);
+                    let ok = session.with(|_s| {
+                        channel.write_all(data.as_bytes()).and_then(|_| channel.flush()).is_ok()
+                    });
+                    if !ok {
+                        break 'outer;
+                    }
                 }
                 ShellMsg::Resize(cols, rows) => {
-                    channel.request_pty_size(cols, rows, None, None).ok();
+                    session.with(|_s| { let _ = channel.request_pty_size(cols, rows, None, None); });
                 }
                 ShellMsg::Stop => {
                     stop_flag.store(true, Ordering::Relaxed);
                     break;
                 }
+            }
+        }
+
+        // Keepalive: detects a silently-dead peer instead of hanging forever
+        if last_keepalive.elapsed() >= Duration::from_secs(KEEPALIVE_SECS as u64) {
+            last_keepalive = std::time::Instant::now();
+            if session.with(|s| s.keepalive_send()).is_err() {
+                break;
             }
         }
 
@@ -377,8 +582,22 @@ fn run_shell_thread(
         std::thread::sleep(Duration::from_millis(8));
     }
 
-    let _ = channel.close();
+    session.with(|_s| { let _ = channel.close(); });
+    if let ShellSession::Owned(s) = &session {
+        let _ = s.disconnect(None, "closed", None);
+    }
     app.emit(&format!("ssh-closed-{}", session_id), ()).ok();
+}
+
+/// Connect + handshake + host-key check + authenticate one session.
+/// Err carries (message, was_auth_rejection).
+fn open_authed_session(
+    host: &str, port: u16, username: &str, auth: &SshAuth, app: &tauri::AppHandle,
+) -> Result<Session, (String, bool)> {
+    let stream = tcp_connect(host, port).map_err(|e| (e, false))?;
+    let session = make_session(stream, host, port, app).map_err(|e| (e, false))?;
+    auth_session(&session, username, auth).map_err(|e| (e, true))?;
+    Ok(session)
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
@@ -393,69 +612,74 @@ pub async fn ssh_connect(
     username: String,
     auth: SshAuth,
 ) -> Result<(), String> {
-    // Disconnect any existing session first
-    {
-        let mut sessions = state.sessions.lock().await;
-        if let Some(old) = sessions.remove(&session_id) {
-            old.stop_flag.store(true, Ordering::Relaxed);
-            let _ = old.shell_tx.try_send(ShellMsg::Stop);
-        }
+    // Disconnect any existing session with this id first
+    if let Some(old) = state.sessions.lock().await.remove(&session_id) {
+        old.stop_flag.store(true, Ordering::Relaxed);
+        let _ = old.shell_tx.try_send(ShellMsg::Stop);
     }
 
-    // Clone values for thread use
-    let host_c = host.clone();
-    let username_c = username.clone();
-    let auth_c = auth.clone();
-    let session_id_c = session_id.clone();
-    let app_c = app.clone();
+    // Register as pending so a disconnect during setup cancels it
+    let cancel = Arc::new(AtomicBool::new(false));
+    state.pending.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.clone(), cancel.clone());
 
-    // Connect shell session (runs in background thread)
+    // Build EVERYTHING before starting threads or registering: any failure or
+    // cancellation just drops the sessions, closing both connections — no
+    // orphaned shell threads or half-registered sessions (audit BUG-006).
+    let setup = tauri::async_runtime::spawn_blocking({
+        let (host, username, auth, app, cancel) = (host.clone(), username.clone(), auth.clone(), app.clone(), cancel.clone());
+        move || -> Result<(Session, Channel, Option<Session>), String> {
+            let check = || if cancel.load(Ordering::Relaxed) { Err("Connection cancelled".to_string()) } else { Ok(()) };
+
+            let shell_sess = open_authed_session(&host, port, &username, &auth, &app).map_err(|(e, _)| e)?;
+            check()?;
+            let channel = open_shell(&shell_sess)?;
+            check()?;
+
+            let aux = match open_authed_session(&host, port, &username, &auth, &app) {
+                Ok(s) => Some(s),
+                // One-time codes are often single-use: the second login with the
+                // same code is rejected. Fall back to sharing the shell's session.
+                Err((_, true)) if matches!(auth, SshAuth::KbdInt { .. }) => None,
+                Err((e, _)) => return Err(e),
+            };
+            check()?;
+            if let Some(a) = &aux {
+                a.set_timeout(AUX_TIMEOUT_MS);
+            }
+            Ok((shell_sess, channel, aux))
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+
+    state.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id);
+    let (shell_sess, channel, aux) = setup?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err("Connection cancelled".to_string());
+    }
+
     let (shell_tx, shell_rx) = mpsc::sync_channel::<ShellMsg>(256);
     let stop_flag = Arc::new(AtomicBool::new(false));
-    let stop_flag_t = stop_flag.clone();
 
-    tauri::async_runtime::spawn_blocking({
-        let host = host_c.clone();
-        let username = username_c.clone();
-        let auth = auth_c.clone();
-        let app_verify = app.clone();
-        move || {
-            let stream = tcp_connect(&host, port)?;
-            let session = make_session(stream, &host, port, &app_verify)?;
-            auth_session(&session, &username, &auth)?;
-            let channel = open_shell(&session)?;
-            std::thread::spawn(move || {
-                run_shell_thread(session, channel, shell_rx, app_c, session_id_c, stop_flag_t);
-            });
-            Ok::<_, String>(())
+    let (shell_session, aux_arc) = match aux {
+        Some(aux) => (ShellSession::Owned(shell_sess), Arc::new(Mutex::new(aux))),
+        None => {
+            shell_sess.set_timeout(AUX_TIMEOUT_MS);
+            let shared = Arc::new(Mutex::new(shell_sess));
+            (ShellSession::Shared(shared.clone()), shared)
         }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    // Connect SFTP session (separate TCP connection)
-    let sftp_session = tauri::async_runtime::spawn_blocking({
-        let host = host.clone();
-        let username = username.clone();
-        let auth = auth.clone();
-        let app_verify = app.clone();
-        move || {
-            let stream = tcp_connect(&host, port)?;
-            let session = make_session(stream, &host, port, &app_verify)?;
-            auth_session(&session, &username, &auth)?;
-            Ok::<_, String>(session)
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    };
 
     let conn = Arc::new(SshConnection {
         shell_tx,
-        sftp_session: Mutex::new(sftp_session),
-        stop_flag,
+        sftp_session: aux_arc,
+        stop_flag: stop_flag.clone(),
     });
+    state.sessions.lock().await.insert(session_id.clone(), conn);
 
-    state.sessions.lock().await.insert(session_id, conn);
+    let (app_t, sid_t) = (app.clone(), session_id.clone());
+    std::thread::spawn(move || run_shell_thread(shell_session, channel, shell_rx, app_t, sid_t, stop_flag));
     Ok(())
 }
 
@@ -464,6 +688,10 @@ pub async fn ssh_disconnect(
     state: tauri::State<'_, SshState>,
     session_id: String,
 ) -> Result<(), String> {
+    // Cancel a connection that is still being set up
+    if let Some(flag) = state.pending.lock().unwrap_or_else(|e| e.into_inner()).get(&session_id) {
+        flag.store(true, Ordering::Relaxed);
+    }
     let mut sessions = state.sessions.lock().await;
     if let Some(conn) = sessions.remove(&session_id) {
         conn.stop_flag.store(true, Ordering::Relaxed);
@@ -501,19 +729,6 @@ pub async fn ssh_resize(
     Ok(())
 }
 
-/// Wrap a string in single quotes for safe shell embedding.
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-/// Wrap a command with `printf '%s\n' '<pw>' | sudo -S` when a sudo password is provided.
-fn with_sudo(cmd: &str, sudo_password: &Option<String>) -> String {
-    match sudo_password {
-        Some(pw) if !pw.is_empty() => format!("printf '%s\\n' {} | sudo -S sh -c {}", shell_quote(pw), shell_quote(cmd)),
-        _ => cmd.to_string(),
-    }
-}
-
 fn strip_sudo_prompt(s: &str) -> String {
     s.lines()
         .filter(|line| !line.trim_start().starts_with("[sudo] password for"))
@@ -538,42 +753,21 @@ pub async fn ssh_exec(
         .clone();
     drop(sessions); // release the lock before spawn_blocking
 
-    let wrapped = with_sudo(&command, &sudo_password);
+    // Password goes to sudo's stdin, never into the command line (SEC-002)
+    let rc = crate::remote::sudo_cmd(&command, &sudo_password);
 
     tauri::async_runtime::spawn_blocking(move || {
-        use std::io::Read;
-        let session = conn.sftp_session.lock().unwrap();
-        let mut channel = session
-            .channel_session()
-            .map_err(|e| format!("channel_session: {e}"))?;
-        channel
-            .exec(&wrapped)
-            .map_err(|e| format!("exec: {e}"))?;
-
-        let mut stdout = String::new();
-        channel
-            .read_to_string(&mut stdout)
-            .map_err(|e| format!("read stdout: {e}"))?;
-
-        let mut stderr_buf = String::new();
-        channel
-            .stderr()
-            .read_to_string(&mut stderr_buf)
-            .map_err(|e| format!("read stderr: {e}"))?;
-
-        channel.wait_close().map_err(|e| format!("wait_close: {e}"))?;
-
-        let exit = channel.exit_status().unwrap_or(0);
-        let combined = if stderr_buf.is_empty() {
-            stdout
-        } else if stdout.is_empty() {
-            stderr_buf
-        } else {
-            format!("{stdout}{stderr_buf}")
-        };
+        let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
+        // Merged stdout+stderr: callers show combined output, and it can't
+        // deadlock on a full stderr window.
+        let (combined, _, exit) = crate::remote::run(&session, &rc, true)?;
         let cleaned = strip_sudo_prompt(&combined);
-        if exit != 0 && !cleaned.trim().is_empty() {
-            return Err(cleaned.trim().to_string());
+        if exit != 0 {
+            return Err(if cleaned.trim().is_empty() {
+                format!("Command failed (exit status {})", exit)
+            } else {
+                cleaned.trim().to_string()
+            });
         }
         Ok(cleaned)
     })
@@ -647,9 +841,38 @@ pub async fn sftp_download(
     remote_path: String,
     transfer_id: String,
 ) -> Result<String, String> {
+    let display_name = Path::new(&remote_path)
+        .file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let result = sftp_download_inner(app.clone(), &state, session_id, remote_path, transfer_id.clone()).await;
+    if let Err(e) = &result {
+        // Every transfer must end in done/error — never leave it "running"
+        emit_transfer_error(&app, &transfer_id, &display_name, "download", e);
+    }
+    result
+}
+
+fn emit_transfer_error(app: &tauri::AppHandle, id: &str, name: &str, kind: &str, err: &str) {
+    app.emit("transfer-progress", TransferProgress {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        bytes_done: 0,
+        total_bytes: 0,
+        status: "error".to_string(),
+        error: Some(err.to_string()),
+    }).ok();
+}
+
+async fn sftp_download_inner(
+    app: tauri::AppHandle,
+    state: &tauri::State<'_, SshState>,
+    session_id: String,
+    remote_path: String,
+    transfer_id: String,
+) -> Result<String, String> {
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let session = conn.sftp_session.lock().unwrap();
+        let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
         let sftp = session.sftp().map_err(|e| e.to_string())?;
 
         let remote_stat = sftp.stat(Path::new(&remote_path)).map_err(|e| e.to_string())?;
@@ -811,34 +1034,217 @@ pub async fn sftp_delete(
 }
 
 /// Upload raw bytes from the browser file input (no OS path available in webview)
+// ── Chunked, crash-safe upload ──────────────────────────────────────────────
+//
+// Data is streamed in binary chunks (raw IPC body, no JSON number arrays) into
+// a hidden temp file next to the destination. Only once every byte is written
+// and the size verified is the temp file moved over the destination; an
+// existing destination is first moved aside and restored if the swap fails.
+// An interrupted upload therefore never damages the original file.
+
+fn validate_transfer_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("Invalid transfer id".to_string());
+    }
+    Ok(())
+}
+
+/// `<dir>/.<name>.pingnet-<id>.<ext>` beside the destination.
+fn upload_side_path(remote_path: &str, transfer_id: &str, ext: &str) -> Result<PathBuf, String> {
+    validate_transfer_id(transfer_id)?;
+    let p = Path::new(remote_path);
+    let name = p.file_name().ok_or("Invalid remote path")?.to_string_lossy().to_string();
+    let parent = p.parent().unwrap_or_else(|| Path::new("/"));
+    Ok(parent.join(format!(".{}.pingnet-{}.{}", name, transfer_id, ext)))
+}
+
+fn percent_decode(s: &str) -> Result<String, String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = s.get(i + 1..i + 3).ok_or("Bad percent-encoding")?;
+            out.push(u8::from_str_radix(hex, 16).map_err(|_| "Bad percent-encoding")?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|_| "Header is not UTF-8".to_string())
+}
+
+fn req_header(req: &tauri::ipc::Request<'_>, name: &str) -> Result<String, String> {
+    let raw = req.headers().get(name)
+        .ok_or_else(|| format!("Missing header {}", name))?
+        .to_str().map_err(|_| format!("Bad header {}", name))?;
+    percent_decode(raw)
+}
+
+/// Does a remote path exist? Used to confirm overwrites before uploading.
 #[tauri::command]
-pub async fn sftp_upload_bytes(
+pub async fn sftp_path_exists(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+    path: String,
+) -> Result<bool, String> {
+    let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
+        let sftp = session.sftp().map_err(|e| e.to_string())?;
+        Ok(sftp.stat(Path::new(&path)).is_ok())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Write one chunk (raw request body) at `x-offset` into the upload's temp file.
+/// Headers (percent-encoded): x-session-id, x-transfer-id, x-remote-path,
+/// x-name, x-offset, x-total.
+#[tauri::command]
+pub async fn sftp_upload_chunk(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SshState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<(), String> {
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => b.clone(),
+        _ => return Err("sftp_upload_chunk expects a binary body".to_string()),
+    };
+    let session_id = req_header(&request, "x-session-id")?;
+    let transfer_id = req_header(&request, "x-transfer-id")?;
+    let remote_path = req_header(&request, "x-remote-path")?;
+    let name = req_header(&request, "x-name")?;
+    let offset: u64 = req_header(&request, "x-offset")?.parse().map_err(|_| "Bad x-offset")?;
+    let total: u64 = req_header(&request, "x-total")?.parse().map_err(|_| "Bad x-total")?;
+    let tmp = upload_side_path(&remote_path, &transfer_id, "part")?;
+
+    let result: Result<(), String> = async {
+        let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+        let app_c = app.clone();
+        let (tid, nm) = (transfer_id.clone(), name.clone());
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::io::{Seek, SeekFrom};
+            let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
+            let sftp = session.sftp().map_err(|e| e.to_string())?;
+            let mut f = if offset == 0 {
+                sftp.create(&tmp).map_err(|e| format!("Cannot create temp file: {}", e))?
+            } else {
+                sftp.open_mode(&tmp, ssh2::OpenFlags::WRITE, 0o600, ssh2::OpenType::File)
+                    .map_err(|e| format!("Cannot reopen temp file: {}", e))?
+            };
+            f.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+            f.write_all(&bytes).map_err(|e| e.to_string())?;
+            app_c.emit("transfer-progress", TransferProgress {
+                id: tid, name: nm, kind: "upload".to_string(),
+                bytes_done: offset + bytes.len() as u64, total_bytes: total,
+                status: "running".to_string(), error: None,
+            }).ok();
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }.await;
+
+    if let Err(e) = &result {
+        emit_transfer_error(&app, &transfer_id, &name, "upload", e);
+        let _ = sftp_upload_abort(state, session_id, remote_path, transfer_id).await;
+    }
+    result
+}
+
+/// Verify the temp file and atomically-as-possible move it over the destination.
+#[tauri::command]
+pub async fn sftp_upload_commit(
     app: tauri::AppHandle,
     state: tauri::State<'_, SshState>,
     session_id: String,
-    bytes: Vec<u8>,
     remote_path: String,
     transfer_id: String,
-    local_name: String,
+    name: String,
+    total_bytes: u64,
 ) -> Result<(), String> {
+    let tmp = upload_side_path(&remote_path, &transfer_id, "part")?;
+    let bak = upload_side_path(&remote_path, &transfer_id, "bak")?;
+    let result: Result<(), String> = async {
+        let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
+        let dst = PathBuf::from(&remote_path);
+        tauri::async_runtime::spawn_blocking(move || {
+            let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
+            let sftp = session.sftp().map_err(|e| e.to_string())?;
+
+            let written = sftp.stat(&tmp).map_err(|e| format!("Temp file missing: {}", e))?.size.unwrap_or(0);
+            if written != total_bytes {
+                let _ = sftp.unlink(&tmp);
+                return Err(format!("Upload incomplete ({} of {} bytes) — destination left untouched", written, total_bytes));
+            }
+
+            match sftp.stat(&dst) {
+                Ok(existing) => {
+                    if existing.is_dir() {
+                        let _ = sftp.unlink(&tmp);
+                        return Err("Destination is a directory".to_string());
+                    }
+                    // Keep the original's permissions on the replacement
+                    if existing.perm.is_some() {
+                        let _ = sftp.setstat(&tmp, ssh2::FileStat {
+                            size: None, uid: None, gid: None, perm: existing.perm, atime: None, mtime: None,
+                        });
+                    }
+                    sftp.rename(&dst, &bak, None).map_err(|e| format!("Cannot move original aside: {}", e))?;
+                    if let Err(e) = sftp.rename(&tmp, &dst, None) {
+                        // Put the original back — never leave the destination missing
+                        let restored = sftp.rename(&bak, &dst, None).is_ok();
+                        let _ = sftp.unlink(&tmp);
+                        return Err(format!(
+                            "Cannot replace file: {}{}",
+                            e,
+                            if restored { " — original restored" } else { " — original kept at the .bak path" }
+                        ));
+                    }
+                    let _ = sftp.unlink(&bak);
+                }
+                Err(_) => {
+                    sftp.rename(&tmp, &dst, None).map_err(|e| {
+                        let _ = sftp.unlink(&tmp);
+                        format!("Cannot move upload into place: {}", e)
+                    })?;
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }.await;
+
+    match &result {
+        Ok(()) => {
+            app.emit("transfer-progress", TransferProgress {
+                id: transfer_id, name, kind: "upload".to_string(),
+                bytes_done: total_bytes, total_bytes, status: "done".to_string(), error: None,
+            }).ok();
+        }
+        Err(e) => emit_transfer_error(&app, &transfer_id, &name, "upload", e),
+    }
+    result
+}
+
+/// Remove an upload's temp file (cancel / failure cleanup). Best-effort.
+#[tauri::command]
+pub async fn sftp_upload_abort(
+    state: tauri::State<'_, SshState>,
+    session_id: String,
+    remote_path: String,
+    transfer_id: String,
+) -> Result<(), String> {
+    let tmp = upload_side_path(&remote_path, &transfer_id, "part")?;
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
-    let total_bytes = bytes.len() as u64;
     tauri::async_runtime::spawn_blocking(move || {
-        let session = conn.sftp_session.lock().unwrap();
-        let sftp = session.sftp().map_err(|e| e.to_string())?;
-        let mut remote_file = sftp
-            .create(Path::new(&remote_path))
-            .map_err(|e| format!("Cannot create remote file: {}", e))?;
-        remote_file.write_all(&bytes).map_err(|e| e.to_string())?;
-        app.emit("transfer-progress", TransferProgress {
-            id: transfer_id,
-            name: local_name,
-            kind: "upload".to_string(),
-            bytes_done: total_bytes,
-            total_bytes,
-            status: "done".to_string(),
-            error: None,
-        }).ok();
+        let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
+        if let Ok(sftp) = session.sftp() {
+            let _ = sftp.unlink(&tmp);
+        }
         Ok(())
     })
     .await
@@ -873,14 +1279,9 @@ pub async fn probe_capabilities(
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
     let metrics_arc = std::sync::Arc::clone(&state.metrics);
     tauri::async_runtime::spawn_blocking(move || {
-        // Force a fresh probe (or return cached)
-        let mut caps_map = metrics_arc.caps.lock().unwrap();
-        if !caps_map.contains_key(&session_id) {
-            let session = conn.sftp_session.lock().unwrap();
-            let c = crate::metrics::probe(&session);
-            caps_map.insert(session_id.clone(), c);
-        }
-        Ok(caps_map.get(&session_id).unwrap().clone())
+        // Same lock order as get_metrics: session first, caps only briefly.
+        let session = conn.sftp_session.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(crate::metrics::cached_or_probe(&session, &session_id, &metrics_arc))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1158,7 +1559,11 @@ pub async fn tunnel_http_request(
     path: String,
     headers: Vec<crate::http_client::HttpHeader>,
     body: Option<String>,
+    tls: Option<bool>,
 ) -> Result<crate::http_client::HttpResponse, String> {
+    // https:// URLs are wrapped in real TLS (verified against the web PKI) —
+    // previously the scheme was dropped and HTTPS went out as plaintext (SEC-003).
+    let use_tls = tls.unwrap_or(false);
     let conn = get_conn(&*state.sessions.lock().await, &session_id)?;
 
     tauri::async_runtime::spawn_blocking(move || {
@@ -1176,7 +1581,8 @@ pub async fn tunnel_http_request(
         let t0 = Instant::now();
 
         // Build request headers
-        let host_header = if remote_port == 80 {
+        let default_port = if use_tls { 443 } else { 80 };
+        let host_header = if remote_port == default_port {
             remote_host.clone()
         } else {
             format!("{}:{}", remote_host, remote_port)
@@ -1228,18 +1634,119 @@ pub async fn tunnel_http_request(
         }
         raw.push_str("\r\n");
 
-        channel.write_all(raw.as_bytes()).map_err(|e| format!("Tunnel write: {}", e))?;
-        if !body_bytes.is_empty() {
-            channel.write_all(&body_bytes).map_err(|e| format!("Tunnel body write: {}", e))?;
-        }
-        channel.send_eof().map_err(|e| format!("Tunnel EOF: {}", e))?;
+        let mut request_bytes = raw.into_bytes();
+        request_bytes.extend_from_slice(&body_bytes);
 
-        let mut buf = Vec::new();
-        channel.read_to_end(&mut buf).map_err(|e| format!("Tunnel read: {}", e))?;
+        let buf = if use_tls {
+            let mut tls = crate::tunnel_tls::connect(&remote_host, channel)?;
+            tls.write_all(&request_bytes).map_err(|e| format!("TLS write: {}", e))?;
+            tls.flush().map_err(|e| format!("TLS write: {}", e))?;
+            crate::tunnel_tls::read_response(&mut tls)?
+        } else {
+            channel.write_all(&request_bytes).map_err(|e| format!("Tunnel write: {}", e))?;
+            channel.send_eof().map_err(|e| format!("Tunnel EOF: {}", e))?;
+            let mut buf = Vec::new();
+            (&mut channel).take(crate::http_client::MAX_BODY_BYTES + 64 * 1024)
+                .read_to_end(&mut buf).map_err(|e| format!("Tunnel read: {}", e))?;
+            buf
+        };
 
         let latency_ms = t0.elapsed().as_millis() as u64;
         crate::http_client::parse_raw_http_response(&buf, latency_ms)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod live_ssh_tests {
+    //! Opt-in tests against a real, DISPOSABLE sshd:
+    //!   PINGNET_TEST_SSH="127.0.0.1:2222:user:password" cargo test -- --ignored live_ssh --test-threads=1
+    //! The user needs sudo rights (password-protected) on that host.
+    use super::*;
+    fn cfg() -> (String, u16, String, String) {
+        let v = std::env::var("PINGNET_TEST_SSH").expect("set PINGNET_TEST_SSH=host:port:user:password");
+        let mut it = v.splitn(4, ':');
+        let (h, p, u, pw) = (it.next().unwrap(), it.next().unwrap(), it.next().unwrap(), it.next().unwrap());
+        (h.to_string(), p.parse().unwrap(), u.to_string(), pw.to_string())
+    }
+
+    fn sess() -> Session {
+        let (host, port, user, pw) = cfg();
+        let s = Session::new().unwrap();
+        configure_session_algorithms(&s);
+        s.set_timeout(SETUP_TIMEOUT_MS);
+        let mut s = s;
+        s.set_tcp_stream(tcp_connect(&host, port).unwrap());
+        s.handshake().unwrap();
+        s.userauth_password(&user, &pw).unwrap();
+        s
+    }
+
+    #[test]
+    #[ignore = "needs a disposable sshd (PINGNET_TEST_SSH)"]
+    fn live_ssh_sudo_password_via_stdin_not_argv() {
+        let pw_owned = cfg().3;
+        let pw = pw_owned.as_str();
+        let s = sess();
+        let rc = crate::remote::sudo_cmd("id -u; ps -eo args", &Some(pw.into()));
+        // NB: run this from a shell whose own argv doesn't contain the password,
+        // or the process-list check will (correctly) flag your test runner.
+        assert!(!rc.cmd.contains(pw));
+        let (out, _, code) = crate::remote::run(&s, &rc, true).unwrap();
+        println!("exit={} first={:?} len={}", code, out.lines().next(), out.len());
+        assert_eq!(code, 0);
+        assert_eq!(out.lines().next(), Some("0"));
+        assert!(!out.contains(pw), "password visible in process list!");
+    }
+
+    #[test]
+    #[ignore = "needs a disposable sshd (PINGNET_TEST_SSH)"]
+    fn live_ssh_wrong_sudo_password_fails_fast() {
+        let s = sess();
+        let t = std::time::Instant::now();
+        let (out, _, code) = crate::remote::run(&s, &crate::remote::sudo_cmd("id -u", &Some("nope".into())), true).unwrap();
+        println!("wrong pw: exit={} out={:?} in {:?}", code, out.trim(), t.elapsed());
+        assert_ne!(code, 0);
+        assert!(t.elapsed() < Duration::from_secs(15));
+    }
+
+    #[test]
+    #[ignore = "needs a disposable sshd (PINGNET_TEST_SSH)"]
+    fn live_ssh_huge_stderr_does_not_deadlock_when_merged() {
+        let s = sess();
+        s.set_timeout(30_000);
+        let t = std::time::Instant::now();
+        let (out, _, code) = crate::remote::run(&s, &crate::remote::RemoteCmd::plain("head -c 4000000 /dev/zero | tr '\\0' e >&2; echo done"), true).unwrap();
+        println!("merged 4MB stderr: exit={} len={} in {:?}", code, out.len(), t.elapsed());
+        // merged mode doesn't preserve stdout/stderr ordering — only completeness
+        assert!(out.contains("done") && out.len() == 4_000_005);
+    }
+
+    #[test]
+    #[ignore = "needs a disposable sshd (PINGNET_TEST_SSH)"]
+    fn live_ssh_silent_server_handshake_times_out() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || { let _c = l.accept(); std::thread::sleep(Duration::from_secs(30)); });
+        let mut s = Session::new().unwrap();
+        s.set_timeout(2000);
+        s.set_tcp_stream(tcp_connect("127.0.0.1", port).unwrap());
+        let t = std::time::Instant::now();
+        let r = s.handshake();
+        println!("silent server: {:?} after {:?}", r.as_ref().err().map(|e| e.to_string()), t.elapsed());
+        assert!(r.is_err());
+        assert!(t.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    #[ignore = "needs a disposable sshd (PINGNET_TEST_SSH)"]
+    fn live_ssh_tcp_connect_to_blackhole_times_out() {
+        // 10.255.255.1 is unroutable here — connect_timeout must bound it
+        let t = std::time::Instant::now();
+        let r = tcp_connect("10.255.255.1", 22);
+        println!("blackhole: {:?} after {:?}", r.as_ref().err(), t.elapsed());
+        assert!(r.is_err());
+        assert!(t.elapsed() < Duration::from_secs(12));
+    }
 }

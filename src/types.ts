@@ -26,6 +26,15 @@ export interface HostConfig {
   ssh_auth_type?: string;
   ssh_key_path?: string;
   ssh_key_name?: string;
+  /** Sidebar folder this host belongs to — null/undefined = ungrouped */
+  folder_id?: string | null;
+}
+
+/** A user-defined sidebar folder. Array order in folders.json = display order. */
+export interface HostFolder {
+  id: string;
+  name: string;
+  collapsed: boolean;
 }
 
 export type PingErrorKind =
