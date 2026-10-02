@@ -7,6 +7,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.6.1] — 2026-10-02
+
+### Fixed
+
+- **SSH handshake failing against OpenSSH 9.6+ servers** with `[Session(-8)] Unable to exchange encryption keys`, while plain `ssh` connected fine. Keepalives were configured before the handshake, so libssh2 could send a keepalive request before key exchange on servers slow to send their banner; OpenSSH's strict KEX then dropped the connection. Keepalives now start after the handshake.
+
+### Changed
+
+- SSH handshake errors include the resolved address and elapsed time
+- Debug builds: `PINGNET_SSH_TRACE=1` prints libssh2's transport and key-exchange trace
+- Bundled libssh2 updated (`ssh2` 0.9.6, `libssh2-sys` 0.3.3)
+- Tauri CLI updated to 2.11.5: fixes the Linux AppImage missing `.DirIcon` (the bundler wrote it and the `.desktop` entry as absolute symlinks), and binds the app version into updater signatures
+
 ## [0.6.0] — 2026-09-23
 
 ### Added

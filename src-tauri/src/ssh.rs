@@ -378,11 +378,27 @@ fn configure_session_algorithms(session: &Session) {
 
 fn make_session(stream: TcpStream, host: &str, port: u16, app: &tauri::AppHandle) -> Result<Session, String> {
     let mut session = Session::new().map_err(|e| format!("Session init failed: {}", e))?;
+    // Debug builds only (libssh2-sys defines LIBSSH2DEBUG for debug profiles):
+    // PINGNET_SSH_TRACE=1 dumps libssh2's transport/KEX trace to stderr.
+    if std::env::var_os("PINGNET_SSH_TRACE").is_some() {
+        use ssh2::TraceFlags;
+        session.trace(TraceFlags::KEX | TraceFlags::TRANS | TraceFlags::ERROR | TraceFlags::SOCKET);
+    }
     configure_session_algorithms(&session);
     session.set_timeout(SETUP_TIMEOUT_MS);
-    session.set_keepalive(true, KEEPALIVE_SECS);
+    let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_else(|_| "?".into());
     session.set_tcp_stream(stream);
-    session.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    let started = std::time::Instant::now();
+    // libssh2 reports any failure inside the key exchange (crypto, timeout,
+    // dropped socket) as Session(-8); elapsed time + peer tell those apart.
+    session.handshake().map_err(|e| {
+        format!("SSH handshake failed: {} ({} → {}, after {} ms)", e, host, peer, started.elapsed().as_millis())
+    })?;
+    // Keepalives only after the handshake. libssh2 sends any due keepalive
+    // whenever it waits on the socket — including while waiting for the
+    // server's banner — and OpenSSH strict KEX (9.6+) drops the connection
+    // if anything but KEXINIT arrives first, surfacing as Session(-8).
+    session.set_keepalive(true, KEEPALIVE_SECS);
     verify_host_key(&session, host, port, app)?;
     Ok(session)
 }
