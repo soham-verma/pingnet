@@ -27,7 +27,7 @@ A cross-platform network diagnostics desktop app for developers and sysadmins. B
 ### SSH Client (embedded)
 - Full terminal emulator (xterm.js) directly in the app — no external terminal needed
 - Multi-terminal tabs with rename support (like VS Code)
-- Password and SSH key authentication
+- Password, key file, SSH agent, app-generated keys (stored in the OS keychain), and TOTP / keyboard-interactive authentication
 - Pre-flight connectivity check before every connection attempt
 - Graceful connection-loss detection with one-click reconnect
 
@@ -81,6 +81,33 @@ sudo dpkg -i Pingnet_0.1.0_amd64.deb
 ### Windows
 
 Run the `.msi` installer or the `.exe` setup file. If Windows Defender blocks it, click **More info → Run anyway**.
+
+### SSH authentication
+
+Pick the auth type per host when you connect:
+
+| Type | Uses |
+|---|---|
+| **Password** | The account password |
+| **Key File** | A private key on disk, e.g. `~/.ssh/id_ed25519` |
+| **Agent** | Keys loaded into your SSH agent |
+| **Keychain** | A key generated in Pingnet's SSH Key Manager and stored in the OS keychain (add its public key to the server's `authorized_keys`) |
+| **TOTP** | Keyboard-interactive login with a one-time code |
+
+**Agent mode needs keys loaded in the agent.** If you see `SSH agent auth failed: [Session(-34)] no identities found in the ssh agent`, the agent is empty. Plain `ssh` in a terminal can still work in that case, because it reads `~/.ssh/id_*` directly — Pingnet's Agent mode only asks the agent. Either switch the host to **Key File**, or load your key:
+
+```bash
+ssh-add -l                                          # "The agent has no identities." = empty
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519      # macOS (plain `ssh-add <key>` on Linux/Windows)
+```
+
+On macOS the agent starts empty after every reboot. With this in `~/.ssh/config`, your key is added to the agent the first time you use `ssh` after a reboot (or run `ssh-add --apple-use-keychain` once per boot):
+
+```
+Host *
+  AddKeysToAgent yes
+  UseKeychain yes
+```
 
 ---
 
