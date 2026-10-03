@@ -275,16 +275,39 @@ mod tests {
         }
     }
 
-    /// Tiny one-shot HTTP server on localhost returning `resp` to each request.
+    /// Read one full HTTP request (headers + Content-Length body) and return
+    /// its request line. Replying before the whole request has been read, then
+    /// closing, makes the kernel send RST and the client sees "connection reset".
+    fn read_request(c: &mut std::net::TcpStream) -> String {
+        use std::io::Read;
+        let mut data = Vec::new();
+        let mut buf = [0u8; 2048];
+        loop {
+            let n = c.read(&mut buf).unwrap_or(0);
+            if n == 0 { break; }
+            data.extend_from_slice(&buf[..n]);
+            if let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&data[..end]).to_string();
+                let len = head.lines()
+                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                    .unwrap_or(0);
+                if data.len() >= end + 4 + len { break; }
+            }
+        }
+        String::from_utf8_lossy(&data).lines().next().unwrap_or("").to_string()
+    }
+
+    /// Tiny HTTP server on localhost returning `resps` in order, one per
+    /// connection. Responses must carry `Connection: close` so the client never
+    /// reuses a connection this server is about to close.
     fn serve(resps: Vec<&'static str>) -> u16 {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         std::thread::spawn(move || {
-            use std::io::{Read, Write};
+            use std::io::Write;
             for r in resps {
                 if let Ok((mut c, _)) = l.accept() {
-                    let mut buf = [0u8; 2048];
-                    let _ = c.read(&mut buf);
+                    read_request(&mut c);
                     let _ = c.write_all(r.as_bytes());
                 }
             }
@@ -294,7 +317,7 @@ mod tests {
 
     #[test]
     fn redirect_to_metadata_is_blocked_mid_chain() {
-        let port = serve(vec!["HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/latest/meta-data/\r\nContent-Length: 0\r\n\r\n"]);
+        let port = serve(vec!["HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/latest/meta-data/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"]);
         let err = do_request("GET".into(), format!("http://127.0.0.1:{}/", port), vec![], None).unwrap_err();
         assert!(err.contains("metadata"), "{}", err);
     }
@@ -304,17 +327,15 @@ mod tests {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         std::thread::spawn(move || {
-            use std::io::{Read, Write};
+            use std::io::Write;
             let mut seen = Vec::new();
             for i in 0..2 {
                 let (mut c, _) = l.accept().unwrap();
-                let mut buf = [0u8; 2048];
-                let n = c.read(&mut buf).unwrap();
-                seen.push(String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_string());
+                seen.push(read_request(&mut c));
                 let r = if i == 0 {
-                    "HTTP/1.1 303 See Other\r\nLocation: /done\r\nContent-Length: 0\r\n\r\n".to_string()
+                    "HTTP/1.1 303 See Other\r\nLocation: /done\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
                 } else {
-                    format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", seen[1].len(), seen[1])
+                    format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", seen[1].len(), seen[1])
                 };
                 c.write_all(r.as_bytes()).unwrap();
             }
