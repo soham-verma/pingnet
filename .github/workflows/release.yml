@@ -35,10 +35,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -72,7 +72,7 @@ jobs:
           echo "${{ secrets.APPLE_API_KEY_CONTENT }}" | base64 --decode > "$RUNNER_TEMP/private_keys/apple_api_key.p8"
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the updater bundles so the in-app updater can verify them.
