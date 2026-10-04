@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode, type JSX } from "react";
 import { usePolling, PollingActive } from "../../hooks/usePolling";
 import { invoke } from "@tauri-apps/api/core";
 import { DockerContainer, DockerComposeProject, DockerVolume, DockerNetwork, DockerImage, FileEntry } from "../../types";
