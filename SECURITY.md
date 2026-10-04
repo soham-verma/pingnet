@@ -13,14 +13,18 @@ Only the latest release receives security fixes.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Email [contact@sohamverma.com](mailto:contact@sohamverma.com) with:
+Report it privately through GitHub: go to the [Security tab](https://github.com/soham-verma/pingnet/security) and click **[Report a vulnerability](https://github.com/soham-verma/pingnet/security/advisories/new)**. Only the maintainer can see the report, and the fix can be prepared in a private advisory before anything is public.
+
+If you can't use GitHub, email [contact@sohamverma.com](mailto:contact@sohamverma.com) instead.
+
+Either way, include:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a proof-of-concept
 - The version of Pingnet you tested against
 - Your preferred credit (name / handle) if you'd like to be acknowledged
 
-You should receive a response within **72 hours**. If you haven't heard back, follow up in the same thread.
+You should receive a response within **72 hours**. If you haven't heard back, follow up on the advisory or in the same email thread.
 
 ## Scope
 
