@@ -260,7 +260,7 @@ function parseDiskutil(text: string, dfText: string): PartScan {
     const identifier = tokens[tokens.length - 1];
     const unit = tokens[tokens.length - 2];
     if (!["B", "KB", "MB", "GB", "TB"].includes(unit)) continue;
-    const sizeRaw = tokens[tokens.length - 3].replace("*", "");
+    const sizeRaw = tokens[tokens.length - 3].replace(/\*/g, "");
     const sizeNum = parseFloat(sizeRaw);
     if (isNaN(sizeNum)) continue;
 
