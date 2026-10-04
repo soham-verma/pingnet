@@ -1368,7 +1368,7 @@ interface TabBarProps {
   broadcastMode: boolean;
   editingId: string | null;
   editingName: string;
-  renameInputRef: React.RefObject<HTMLInputElement>;
+  renameInputRef: React.RefObject<HTMLInputElement | null>;
   onActivate: (id: string) => void;
   onSplitActivate: (id: string) => void;
   onClose: (id: string, e: React.MouseEvent) => void;
