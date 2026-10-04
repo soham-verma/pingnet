@@ -95,6 +95,9 @@ jobs:
           releaseName: 'Pingnet ${{ github.ref_name }}'
           releaseBody: |
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
-          releaseDraft: false
+          # Draft until published by hand: the in-app updater reads
+          # releases/latest, which ignores drafts, so nothing ships to users
+          # until the build has been tried.
+          releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
