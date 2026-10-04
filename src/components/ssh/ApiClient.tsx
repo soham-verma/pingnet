@@ -224,16 +224,16 @@ function HeaderRow({ h, onChange, onRemove }: {
         type="checkbox"
         checked={h.enabled}
         onChange={e => onChange("enabled", e.target.checked)}
-        className="accent-[#6366f1] shrink-0 mt-px"
+        className="accent-accent shrink-0 mt-px"
       />
       <input
-        className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
+        className="flex-1 min-w-0 bg-(--bg2) border border-(--border) rounded-md px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors font-mono"
         placeholder="Header name"
         value={h.name}
         onChange={e => onChange("name", e.target.value)}
       />
       <input
-        className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
+        className="flex-1 min-w-0 bg-(--bg2) border border-(--border) rounded-md px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors font-mono"
         placeholder="Value"
         type={isSecret(h, h.name) ? "password" : "text"}
         autoComplete="off"
@@ -243,7 +243,7 @@ function HeaderRow({ h, onChange, onRemove }: {
       <SecretToggle field={h} name={h.name} onToggle={(v) => onChange("secret", v)} />
       <button
         onClick={onRemove}
-        className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded text-[var(--text4)] hover:text-[#ef4444] transition-all shrink-0"
+        className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-sm text-(--text4) hover:text-status-fail transition-all shrink-0"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -434,27 +434,27 @@ export default function ApiClient({ hostId, sessionId }: Props) {
       {/* ── Collections sidebar ── */}
       {showCollections && (
         <div
-          className="flex flex-col shrink-0 border-r border-[var(--border)] overflow-hidden"
+          className="flex flex-col shrink-0 border-r border-(--border) overflow-hidden"
           style={{ width: 220, background: "var(--bg1)" }}
         >
-          <div className="px-3 py-2.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
-            <span className="text-[10px] text-[var(--text3)] tracking-widest uppercase font-semibold">Collections</span>
+          <div className="px-3 py-2.5 border-b border-(--border) flex items-center justify-between shrink-0">
+            <span className="text-[10px] text-(--text3) tracking-widest uppercase font-semibold">Collections</span>
             <button
               onClick={() => setShowSaveModal(true)}
               title="Save current request"
-              className="w-5 h-5 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#6366f1] hover:bg-[var(--bg4)] transition-all text-base leading-none"
+              className="w-5 h-5 flex items-center justify-center rounded-sm text-(--text3) hover:text-accent hover:bg-(--bg4) transition-all text-base leading-none"
             >+</button>
           </div>
 
           <div className="flex-1 overflow-y-auto py-1">
             {collections.length === 0 ? (
-              <p className="text-[11px] text-[var(--text5)] px-4 py-5 text-center leading-relaxed">
+              <p className="text-[11px] text-(--text5) px-4 py-5 text-center leading-relaxed">
                 No saved requests yet.<br />Hit + to save the current one.
               </p>
             ) : collections.map(req => (
               <div
                 key={req.id}
-                className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[var(--bg3)] transition-colors"
+                className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-(--bg3) transition-colors"
                 onClick={() => loadRequest(req)}
               >
                 <span
@@ -463,9 +463,9 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                 >
                   {req.method.slice(0, 3)}
                 </span>
-                <span className="text-[11.5px] text-[var(--text3)] truncate flex-1">{req.name}</span>
+                <span className="text-[11.5px] text-(--text3) truncate flex-1">{req.name}</span>
                 <button
-                  className="opacity-0 group-hover:opacity-100 text-[var(--text4)] hover:text-[#ef4444] transition-all shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-(--text4) hover:text-status-fail transition-all shrink-0"
                   onClick={e => { e.stopPropagation(); deleteCollection(req.id); }}
                 >
                   <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
@@ -483,14 +483,14 @@ export default function ApiClient({ hostId, sessionId }: Props) {
 
         {/* ── URL bar ── */}
         <div
-          className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border)] shrink-0"
+          className="flex items-center gap-2 px-3 py-2.5 border-b border-(--border) shrink-0"
           style={{ background: "var(--bg1)" }}
         >
           {/* Sidebar toggle */}
           <button
             onClick={() => setShowCollections(v => !v)}
             title="Toggle collections"
-            className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-[var(--text4)] hover:text-[var(--text3)] hover:bg-[var(--bg3)] transition-all"
+            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-sm text-(--text4) hover:text-(--text3) hover:bg-(--bg3) transition-all"
           >
             <svg width="13" height="11" viewBox="0 0 13 11" fill="none">
               <rect y="0" width="13" height="1.5" rx="0.75" fill="currentColor"/>
@@ -517,14 +517,14 @@ export default function ApiClient({ hostId, sessionId }: Props) {
             </button>
             {methodOpen && (
               <div
-                className="absolute top-full left-0 mt-1 z-50 rounded-lg border border-[var(--border)] py-1 min-w-[110px] shadow-2xl"
+                className="absolute top-full left-0 mt-1 z-50 rounded-lg border border-(--border) py-1 min-w-[110px] shadow-2xl"
                 style={{ background: "var(--bg2)" }}
               >
                 {(["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"] as Method[]).map(m => (
                   <button
                     key={m}
                     onClick={() => { setMethod(m); setMethodOpen(false); }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-mono font-bold hover:bg-[var(--bg4)] transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-mono font-bold hover:bg-(--bg4) transition-colors text-left"
                     style={{ color: METHOD_COLORS[m] }}
                   >
                     {m}
@@ -536,7 +536,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
 
           {/* URL input */}
           <input
-            className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[13px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
+            className="flex-1 min-w-0 bg-(--bg2) border border-(--border) rounded-lg px-3 py-1.5 text-[13px] text-(--text) placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors font-mono"
             placeholder="https://api.example.com/endpoint  or  http://localhost:8000/…"
             value={url}
             onChange={e => setUrl(e.target.value)}
@@ -588,7 +588,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
 
             {/* Request tabs */}
             <div
-              className="flex items-center px-3 border-b border-[var(--border)] shrink-0"
+              className="flex items-center px-3 border-b border-(--border) shrink-0"
               style={{ background: "var(--bg1)" }}
             >
               {(["headers","body","params","env"] as ReqTab[]).map(t => (
@@ -625,7 +625,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                   ))}
                   <button
                     onClick={addHeader}
-                    className="text-[11px] text-[var(--text4)] hover:text-[#6366f1] transition-colors mt-1"
+                    className="text-[11px] text-(--text4) hover:text-accent transition-colors mt-1"
                   >
                     + Add header
                   </button>
@@ -650,7 +650,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                   </div>
                   {bodyType !== "none" && (
                     <textarea
-                      className="w-full bg-[var(--bg2)] border border-[var(--border)] rounded-lg px-3 py-2 text-[12px] text-[var(--text)] font-mono placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors resize-none"
+                      className="w-full bg-(--bg2) border border-(--border) rounded-lg px-3 py-2 text-[12px] text-(--text) font-mono placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors resize-none"
                       rows={5}
                       placeholder={bodyType === "json" ? '{\n  "key": "value"\n}' : bodyType === "form" ? "key=value&key2=value2" : "Request body…"}
                       value={body}
@@ -661,16 +661,16 @@ export default function ApiClient({ hostId, sessionId }: Props) {
               )}
 
               {reqTab === "params" && (
-                <p className="text-[12px] text-[var(--text4)] leading-relaxed">
+                <p className="text-[12px] text-(--text4) leading-relaxed">
                   Append query params to the URL directly, e.g.{" "}
-                  <span className="font-mono text-[#6366f1]">?page=1&limit=20</span>
+                  <span className="font-mono text-accent">?page=1&limit=20</span>
                 </p>
               )}
 
               {reqTab === "env" && (
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-[var(--text4)] mb-2">
-                    Use <span className="font-mono text-[#818cf8]">{"{{VARIABLE}}"}</span> in URL, headers, and body.
+                  <p className="text-[11px] text-(--text4) mb-2">
+                    Use <span className="font-mono text-accent-hover">{"{{VARIABLE}}"}</span> in URL, headers, and body.
                   </p>
                   {envVars.map(v => (
                     <div key={v.id} className="flex items-center gap-2 group">
@@ -678,16 +678,16 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                         type="checkbox"
                         checked={v.enabled}
                         onChange={e => updateEnvVar(v.id, "enabled", e.target.checked)}
-                        className="accent-[#6366f1] shrink-0"
+                        className="accent-accent shrink-0"
                       />
                       <input
-                        className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
+                        className="flex-1 min-w-0 bg-(--bg2) border border-(--border) rounded-md px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors font-mono"
                         placeholder="VARIABLE_NAME"
                         value={v.key}
                         onChange={e => updateEnvVar(v.id, "key", e.target.value)}
                       />
                       <input
-                        className="flex-1 min-w-0 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono"
+                        className="flex-1 min-w-0 bg-(--bg2) border border-(--border) rounded-md px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors font-mono"
                         placeholder="value"
                         type={isSecret(v, v.key) ? "password" : "text"}
                         autoComplete="off"
@@ -697,7 +697,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                       <SecretToggle field={v} name={v.key} onToggle={(on) => updateEnvVar(v.id, "secret", on)} />
                       <button
                         onClick={() => removeEnvVar(v.id)}
-                        className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-[var(--text4)] hover:text-[#ef4444] transition-all shrink-0"
+                        className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-(--text4) hover:text-status-fail transition-all shrink-0"
                       >
                         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                           <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -707,7 +707,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                   ))}
                   <button
                     onClick={addEnvVar}
-                    className="text-[11px] text-[var(--text4)] hover:text-[#6366f1] transition-colors mt-1"
+                    className="text-[11px] text-(--text4) hover:text-accent transition-colors mt-1"
                   >
                     + Add variable
                   </button>
@@ -717,11 +717,11 @@ export default function ApiClient({ hostId, sessionId }: Props) {
           </div>
 
           {/* ── Response ── */}
-          <div className="flex flex-col flex-1 min-h-0 border-t border-[var(--border)]">
+          <div className="flex flex-col flex-1 min-h-0 border-t border-(--border)">
 
             {/* Response meta bar */}
             <div
-              className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] shrink-0"
+              className="flex items-center gap-3 px-4 py-2 border-b border-(--border) shrink-0"
               style={{ background: "var(--bg1)" }}
             >
               <div className="flex-1 flex items-center gap-3 min-w-0">
@@ -733,8 +733,8 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                     >
                       {response.status} {response.status_text}
                     </span>
-                    <span className="text-[11px] text-[var(--text4)] shrink-0">{response.latency_ms}ms</span>
-                    <span className="text-[11px] text-[var(--text4)] shrink-0">{response.body.length}B</span>
+                    <span className="text-[11px] text-(--text4) shrink-0">{response.latency_ms}ms</span>
+                    <span className="text-[11px] text-(--text4) shrink-0">{response.body.length}B</span>
                     {response.tunneled && (
                       <span
                         className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
@@ -745,7 +745,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                     )}
                   </>
                 ) : (
-                  <span className="text-[11.5px] text-[var(--text5)]">
+                  <span className="text-[11.5px] text-(--text5)">
                     {sending ? "Sending…" : error ? "" : "Hit Send to see a response"}
                   </span>
                 )}
@@ -768,7 +768,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                   <button
                     onClick={() => navigator.clipboard.writeText(response.body)}
                     title="Copy response body"
-                    className="ml-1 px-2 py-1 rounded-md text-[var(--text4)] hover:text-[var(--text2)] transition-colors"
+                    className="ml-1 px-2 py-1 rounded-md text-(--text4) hover:text-(--text2) transition-colors"
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.1"/>
@@ -796,7 +796,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                     <circle cx="16" cy="16" r="13" stroke="white" strokeWidth="1.5"/>
                     <path d="M11 16h10M18 12l4 4-4 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span className="text-[12px] text-[var(--border)]">Waiting for request</span>
+                  <span className="text-[12px] text-(--border)">Waiting for request</span>
                 </div>
               )}
 
@@ -816,9 +816,9 @@ export default function ApiClient({ hostId, sessionId }: Props) {
                 <table className="w-full text-[12px] font-mono border-collapse">
                   <tbody>
                     {response.headers.map((h, i) => (
-                      <tr key={i} className="border-b border-[var(--bg3)]">
+                      <tr key={i} className="border-b border-(--bg3)">
                         <td className="py-1.5 pr-6 text-[#93c5fd] font-semibold whitespace-nowrap align-top w-0">{h.name}</td>
-                        <td className="py-1.5 text-[var(--text2)] break-all">{h.value}</td>
+                        <td className="py-1.5 text-(--text2) break-all">{h.value}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -837,12 +837,12 @@ export default function ApiClient({ hostId, sessionId }: Props) {
           onClick={e => e.target === e.currentTarget && setShowSaveModal(false)}
         >
           <div
-            className="rounded-xl border border-[var(--border)] p-5 w-72"
+            className="rounded-xl border border-(--border) p-5 w-72"
             style={{ background: "var(--bg2)" }}
           >
-            <h3 className="text-[14px] text-[var(--text)] font-semibold mb-3">Save request</h3>
+            <h3 className="text-[14px] text-(--text) font-semibold mb-3">Save request</h3>
             <input
-              className="w-full bg-[var(--bg1)] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[var(--text)] placeholder-[var(--text5)] focus:outline-none focus:border-[#6366f150] transition-colors font-mono mb-4"
+              className="w-full bg-(--bg1) border border-(--border) rounded-lg px-3 py-2 text-[13px] text-(--text) placeholder-(--text5) focus:outline-hidden focus:border-[#6366f150] transition-colors font-mono mb-4"
               placeholder="Request name…"
               value={saveName}
               onChange={e => setSaveName(e.target.value)}
@@ -852,7 +852,7 @@ export default function ApiClient({ hostId, sessionId }: Props) {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowSaveModal(false)}
-                className="px-3 py-1.5 text-[12px] text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+                className="px-3 py-1.5 text-[12px] text-(--text3) hover:text-(--text) transition-colors"
               >Cancel</button>
               <button
                 onClick={saveRequest}

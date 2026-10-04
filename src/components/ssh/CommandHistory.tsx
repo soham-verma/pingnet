@@ -151,17 +151,17 @@ export default function CommandHistory({ commands, activeSessionId, onClear: _on
     <div className="flex flex-col h-full" style={{ background: "var(--bg)" }}>
 
       {/* Header + search */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-[var(--border)]">
+      <div className="shrink-0 px-4 pt-4 pb-3 border-b border-(--border)">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-[var(--text)] font-semibold text-sm">Command History</p>
-            <p className="text-[var(--text4)] text-[11px] mt-0.5">
+            <p className="text-(--text) font-semibold text-sm">Command History</p>
+            <p className="text-(--text4) text-[11px] mt-0.5">
               {commands.length} command{commands.length !== 1 ? "s" : ""} saved across{" "}
               {new Set(commands.map(c => c.base_cmd)).size} tools
             </p>
           </div>
           {commands.length > 0 && activeSessionId && (
-            <span className="text-[11px] text-[var(--text4)]">click → run in terminal</span>
+            <span className="text-[11px] text-(--text4)">click → run in terminal</span>
           )}
         </div>
 
@@ -176,12 +176,12 @@ export default function CommandHistory({ commands, activeSessionId, onClear: _on
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search commands…"
-            className="w-full pl-8 pr-3 py-2 rounded-lg text-[12px] text-[var(--text)] placeholder-[var(--text5)] outline-none border border-[var(--border)] focus:border-[#6366f150] transition-colors"
+            className="w-full pl-8 pr-3 py-2 rounded-lg text-[12px] text-(--text) placeholder-(--text5) outline-hidden border border-(--border) focus:border-[#6366f150] transition-colors"
             style={{ background: "var(--bg2)" }}
           />
           {search && (
             <button onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text4)] hover:text-[var(--text)] transition-colors">
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--text4) hover:text-(--text) transition-colors">
               ✕
             </button>
           )}
@@ -201,14 +201,14 @@ export default function CommandHistory({ commands, activeSessionId, onClear: _on
               </svg>
             </div>
             <div>
-              <p className="text-[var(--text)] text-sm font-medium mb-1">No history yet</p>
-              <p className="text-[var(--text4)] text-[12px]">
+              <p className="text-(--text) text-sm font-medium mb-1">No history yet</p>
+              <p className="text-(--text4) text-[12px]">
                 Commands you run will be saved here so you never lose them between sessions.
               </p>
             </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-[var(--text4)] text-sm">
+          <div className="flex items-center justify-center h-32 text-(--text4) text-sm">
             No commands match "{search}"
           </div>
         ) : (
@@ -253,16 +253,16 @@ function ToolGroup({ base, entries, copiedCmd, sentCmd, onInsert, onCopy }: Grou
       {/* Group header */}
       <button
         onClick={() => setCollapsed(p => !p)}
-        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[var(--bg2)] transition-colors text-left"
+        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-(--bg2) transition-colors text-left"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
           style={{ transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }}>
           <path d="M2 3.5l3 3 3-3" stroke="var(--text3)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
 
-        <span className="font-mono text-[13px] font-semibold text-[#818cf8]">{base}</span>
-        {desc && <span className="text-[11px] text-[var(--text4)] truncate flex-1">{desc}</span>}
-        <span className="flex-shrink-0 text-[10px] text-[var(--text5)]">
+        <span className="font-mono text-[13px] font-semibold text-accent-hover">{base}</span>
+        {desc && <span className="text-[11px] text-(--text4) truncate flex-1">{desc}</span>}
+        <span className="shrink-0 text-[10px] text-(--text5)">
           {totalRuns}× · {fmtRelative(lastUsed)}
         </span>
       </button>
@@ -304,27 +304,27 @@ function CommandRow({ entry, copiedCmd, sentCmd, onInsert, onCopy }: RowProps) {
       title={onInsert ? "Click to run in terminal" : "Connect a terminal first"}
     >
       {/* Indent mark */}
-      <div className="w-px h-4 bg-[var(--border)] ml-3 flex-shrink-0" />
+      <div className="w-px h-4 bg-(--border) ml-3 shrink-0" />
 
       {/* Command text */}
-      <span className="flex-1 font-mono text-[12px] text-[var(--text)] truncate">
+      <span className="flex-1 font-mono text-[12px] text-(--text) truncate">
         {entry.command}
       </span>
 
       {/* Run count badge */}
       {entry.count > 1 && (
-        <span className="flex-shrink-0 text-[10px] text-[var(--text4)] px-1.5 py-0.5 rounded-md"
+        <span className="shrink-0 text-[10px] text-(--text4) px-1.5 py-0.5 rounded-md"
           style={{ background: "var(--border)" }}>
           {entry.count}×
         </span>
       )}
 
       {/* Actions — visible on hover */}
-      <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {/* Copy */}
         <button
           onClick={e => { e.stopPropagation(); onCopy(entry.command); }}
-          className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-[var(--border)] transition-colors"
+          className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-(--border) transition-colors"
           title="Copy to clipboard"
         >
           {isCopied ? (
@@ -343,7 +343,7 @@ function CommandRow({ entry, copiedCmd, sentCmd, onInsert, onCopy }: RowProps) {
         {onInsert && (
           <button
             onClick={e => { e.stopPropagation(); onInsert(entry.command); }}
-            className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-[var(--border)] transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-(--border) transition-colors"
             title="Run in terminal"
           >
             <svg width="11" height="11" viewBox="0 0 11 11" fill="none">

@@ -32,7 +32,7 @@ export default function TransferQueue({ transfers, onClear }: Props) {
 
   if (transfers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-[var(--text5)]">
+      <div className="flex flex-col items-center justify-center h-full text-(--text5)">
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="mb-3 opacity-40">
           <path d="M16 4v16M16 20L10 14M16 20L22 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M4 26H28" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -45,12 +45,12 @@ export default function TransferQueue({ transfers, onClear }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] flex-shrink-0" style={{ background: "var(--bg1)" }}>
-        <span className="text-[11px] tracking-widest text-[var(--text3)] uppercase">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-(--border) shrink-0" style={{ background: "var(--bg1)" }}>
+        <span className="text-[11px] tracking-widest text-(--text3) uppercase">
           Transfers · {transfers.length}
         </span>
         {done.length > 0 && (
-          <button onClick={onClear} className="text-[11px] text-[var(--text4)] hover:text-[var(--text3)] transition-colors">
+          <button onClick={onClear} className="text-[11px] text-(--text4) hover:text-(--text3) transition-colors">
             Clear done
           </button>
         )}
@@ -60,14 +60,14 @@ export default function TransferQueue({ transfers, onClear }: Props) {
         {transfers.map((t) => (
           <div
             key={t.id}
-            className="rounded-xl border border-[var(--border)] p-3"
+            className="rounded-xl border border-(--border) p-3"
             style={{ background: "var(--bg2)" }}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 {/* Direction icon */}
                 <div
-                  className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0"
+                  className="w-6 h-6 flex items-center justify-center rounded-md shrink-0"
                   style={{
                     background: t.kind === "download" ? "#00c8a818" : "#6366f118",
                   }}
@@ -85,8 +85,8 @@ export default function TransferQueue({ transfers, onClear }: Props) {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[13px] text-[var(--text)] font-mono truncate">{t.name}</p>
-                  <p className="text-[11px] text-[var(--text4)] mt-0.5">
+                  <p className="text-[13px] text-(--text) font-mono truncate">{t.name}</p>
+                  <p className="text-[11px] text-(--text4) mt-0.5">
                     {t.kind === "download" ? "↓ Download" : "↑ Upload"}
                     {t.total_bytes > 0 &&
                       ` · ${formatBytes(t.bytes_done)} / ${formatBytes(t.total_bytes)}`}
@@ -94,9 +94,9 @@ export default function TransferQueue({ transfers, onClear }: Props) {
                 </div>
               </div>
 
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 {t.status === "running" && (
-                  <span className="w-4 h-4 border-2 border-[#6366f1] border-t-transparent rounded-full animate-spin block" />
+                  <span className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin block" />
                 )}
                 {t.status === "done" && (
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -117,10 +117,10 @@ export default function TransferQueue({ transfers, onClear }: Props) {
               <ProgressBar done={t.bytes_done} total={t.total_bytes} />
             )}
             {t.status === "error" && t.error && (
-              <p className="mt-1.5 text-[11px] text-[#ef4444]">{t.error}</p>
+              <p className="mt-1.5 text-[11px] text-status-fail">{t.error}</p>
             )}
             {t.status === "done" && (
-              <p className="mt-1 text-[11px] text-[#22c55e]">
+              <p className="mt-1 text-[11px] text-status-ok">
                 {t.kind === "download" ? "Saved to ~/Downloads" : "Upload complete"}
               </p>
             )}

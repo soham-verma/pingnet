@@ -40,10 +40,10 @@ export default function VpnBanner({ vpnStatus, ip, errorKind, onDismiss }: Props
 
   return (
     <div
-      className="rounded-xl border-l-4 border-[#f59e0b] p-4 flex items-start gap-4"
+      className="rounded-xl border-l-4 border-status-warn p-4 flex items-start gap-4"
       style={{ background: "#1a1400", borderTopWidth: "1px", borderRightWidth: "1px", borderBottomWidth: "1px", borderTopColor: "#2a2000", borderRightColor: "#2a2000", borderBottomColor: "#2a2000" }}
     >
-      <div className="flex-shrink-0 mt-0.5">
+      <div className="shrink-0 mt-0.5">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
           <path d="M10 2L18 17H2L10 2Z" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" />
           <path d="M10 8v4M10 14v1" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
@@ -51,7 +51,7 @@ export default function VpnBanner({ vpnStatus, ip, errorKind, onDismiss }: Props
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-[#f59e0b] text-sm mb-1">
+        <div className="font-semibold text-status-warn text-sm mb-1">
           Smart Failure Diagnostics
         </div>
         <p className="text-[#a0836e] text-[13px] leading-relaxed mb-3">{message}</p>
@@ -59,7 +59,7 @@ export default function VpnBanner({ vpnStatus, ip, errorKind, onDismiss }: Props
           {tags.map((tag) => (
             <span
               key={tag}
-              className="px-2 py-0.5 rounded text-[10px] font-mono font-medium tracking-wide"
+              className="px-2 py-0.5 rounded-sm text-[10px] font-mono font-medium tracking-wide"
               style={{ background: "#2a1a00", color: "#f59e0b", border: "1px solid #3a2500" }}
             >
               {tag}
@@ -70,7 +70,7 @@ export default function VpnBanner({ vpnStatus, ip, errorKind, onDismiss }: Props
 
       <button
         onClick={onDismiss}
-        className="flex-shrink-0 text-[#4b3a1e] hover:text-[#f59e0b] transition-colors text-lg leading-none"
+        className="shrink-0 text-[#4b3a1e] hover:text-status-warn transition-colors text-lg leading-none"
         aria-label="Dismiss"
       >
         ×

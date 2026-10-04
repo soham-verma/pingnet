@@ -457,17 +457,17 @@ export default function App() {
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
       {/* Storage notices — damaged-file recovery and failed saves */}
       {notices.length > 0 && (
-        <div className="flex-shrink-0 flex flex-col" role="alert">
+        <div className="shrink-0 flex flex-col" role="alert">
           {notices.map((n) => (
             <div key={n.id}
               className="flex items-start gap-3 px-4 py-2 text-[12px] border-b"
               style={n.kind === "error"
                 ? { background: "#ef444414", borderColor: "#ef444440", color: "#fca5a5" }
                 : { background: "#f59e0b14", borderColor: "#f59e0b40", color: "#fcd34d" }}>
-              <span className="flex-1 leading-snug break-words">{n.text}</span>
+              <span className="flex-1 leading-snug wrap-break-word">{n.text}</span>
               <button
                 onClick={() => setNotices((prev) => prev.filter((x) => x.id !== n.id))}
-                className="flex-shrink-0 opacity-70 hover:opacity-100"
+                className="shrink-0 opacity-70 hover:opacity-100"
                 aria-label="Dismiss"
               >✕</button>
             </div>

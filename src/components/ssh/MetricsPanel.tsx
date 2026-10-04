@@ -54,7 +54,7 @@ function Track({ value, max = 100, color }: { value: number; max?: number; color
 
 function Chip({ label, color = "var(--text3)" }: { label: string; color?: string }) {
   return (
-    <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded"
+    <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-sm"
       style={{ color, background: `${color}18`, border: `1px solid ${color}30` }}>
       {label}
     </span>
@@ -65,9 +65,9 @@ function NA({ msg }: { msg: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 gap-2">
       <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#ffffff05", border: "1px solid var(--border)" }}>
-        <span className="text-[var(--text5)] text-sm">—</span>
+        <span className="text-(--text5) text-sm">—</span>
       </div>
-      <p className="text-[11px] text-[var(--text5)] italic text-center max-w-[220px]">{msg}</p>
+      <p className="text-[11px] text-(--text5) italic text-center max-w-[220px]">{msg}</p>
     </div>
   );
 }
@@ -86,27 +86,27 @@ function CoresSection({ cores }: { cores: CoreStat[] }) {
           { label: "Peak Core", value: `${f1(Math.max(...cores.map(c => c.percent)))}%` },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">{s.label}</p>
-            <p className="text-base font-semibold font-mono text-[var(--text)]">{s.value}</p>
+            <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">{s.label}</p>
+            <p className="text-base font-semibold font-mono text-(--text)">{s.value}</p>
           </div>
         ))}
       </div>
 
       {/* Per-core table */}
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-        <div className="grid text-[9px] tracking-widest text-[var(--text5)] uppercase px-4 py-2 border-b border-[var(--border)]"
+        <div className="grid text-[9px] tracking-widest text-(--text5) uppercase px-4 py-2 border-b border-(--border)"
           style={{ gridTemplateColumns: "64px 1fr 48px" }}>
           <span>Core ID</span>
           <span>Load</span>
           <span className="text-right">Usage</span>
         </div>
-        <div className="divide-y divide-[var(--bg2)]">
+        <div className="divide-y divide-(--bg2)">
           {cores.map((c) => {
             const color = pctColor(c.percent);
             return (
-              <div key={c.index} className="grid items-center px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
+              <div key={c.index} className="grid items-center px-4 py-2.5 hover:bg-white/2 transition-colors"
                 style={{ gridTemplateColumns: "64px 1fr 48px" }}>
-                <span className="text-[11px] font-mono text-[var(--text3)]">CORE_{String(c.index).padStart(2, "0")}</span>
+                <span className="text-[11px] font-mono text-(--text3)">CORE_{String(c.index).padStart(2, "0")}</span>
                 <div className="pr-4">
                   <Track value={c.percent} color={color} />
                 </div>
@@ -150,21 +150,21 @@ function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: strin
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-4 py-4 text-[var(--text5)]">
+      <div className="flex items-center gap-2 px-4 py-4 text-(--text5)">
         <div className="w-3.5 h-3.5 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" />
         <span className="text-[11px]">Loading interface details…</span>
       </div>
     );
   }
-  if (err) return <div className="px-4 py-3 text-[11px] text-[#ef4444] font-mono">{err}</div>;
+  if (err) return <div className="px-4 py-3 text-[11px] text-status-fail font-mono">{err}</div>;
   if (!data) return null;
 
   return (
     <div className="px-4 pb-4 pt-1">
       {data.operstate && (
         <div className="flex items-center gap-2 mb-2.5">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Link state</span>
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+          <span className="text-[9px] tracking-widest text-(--text5) uppercase">Link state</span>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-wider"
             style={{ color: stateColor, background: `${stateColor}18`, border: `1px solid ${stateColor}30` }}>
             {data.operstate}
           </span>
@@ -175,10 +175,10 @@ function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: strin
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
         {/* Identity */}
         <div className="rounded-lg overflow-hidden" style={card}>
-          <div className="px-3 py-1.5 border-b border-[var(--border)]">
-            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Identity</span>
+          <div className="px-3 py-1.5 border-b border-(--border)">
+            <span className="text-[9px] tracking-widest text-(--text5) uppercase">Identity</span>
           </div>
-          <div className="divide-y divide-[var(--bg2)]">
+          <div className="divide-y divide-(--bg2)">
             {[
               { label: "MAC Address", value: data.mac ?? "—" },
               { label: "MTU", value: data.mtu != null ? `${data.mtu} bytes` : "—" },
@@ -187,8 +187,8 @@ function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: strin
               { label: "Bus", value: data.bus_info ?? "—" },
             ].map(r => (
               <div key={r.label} className="flex justify-between gap-3 px-3 py-2">
-                <span className="text-[10px] text-[var(--text4)] flex-shrink-0">{r.label}</span>
-                <span className="text-[10px] font-mono text-[var(--text)] text-right break-all">{r.value}</span>
+                <span className="text-[10px] text-(--text4) shrink-0">{r.label}</span>
+                <span className="text-[10px] font-mono text-(--text) text-right break-all">{r.value}</span>
               </div>
             ))}
           </div>
@@ -196,23 +196,23 @@ function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: strin
 
         {/* Addresses */}
         <div className="rounded-lg overflow-hidden" style={card}>
-          <div className="px-3 py-1.5 border-b border-[var(--border)]">
-            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Addresses</span>
+          <div className="px-3 py-1.5 border-b border-(--border)">
+            <span className="text-[9px] tracking-widest text-(--text5) uppercase">Addresses</span>
           </div>
-          <div className="divide-y divide-[var(--bg2)]">
+          <div className="divide-y divide-(--bg2)">
             {data.ipv4.length === 0 && data.ipv6.length === 0 && (
-              <div className="px-3 py-2 text-[10px] text-[var(--text5)] italic">No addresses assigned</div>
+              <div className="px-3 py-2 text-[10px] text-(--text5) italic">No addresses assigned</div>
             )}
             {data.ipv4.map((ip) => (
               <div key={ip} className="flex justify-between gap-3 px-3 py-2">
-                <span className="text-[10px] text-[var(--text4)] flex-shrink-0">IPv4</span>
+                <span className="text-[10px] text-(--text4) shrink-0">IPv4</span>
                 <span className="text-[10px] font-mono text-right break-all" style={{ color: "#00c8a8" }}>{ip}</span>
               </div>
             ))}
             {data.ipv6.map((ip) => (
               <div key={ip} className="flex justify-between gap-3 px-3 py-2">
-                <span className="text-[10px] text-[var(--text4)] flex-shrink-0">IPv6</span>
-                <span className="text-[10px] font-mono text-[#818cf8] text-right break-all">{ip}</span>
+                <span className="text-[10px] text-(--text4) shrink-0">IPv6</span>
+                <span className="text-[10px] font-mono text-accent-hover text-right break-all">{ip}</span>
               </div>
             ))}
           </div>
@@ -220,8 +220,8 @@ function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: strin
 
         {/* Cumulative traffic */}
         <div className="rounded-lg overflow-hidden" style={card}>
-          <div className="px-3 py-1.5 border-b border-[var(--border)]">
-            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Cumulative Traffic</span>
+          <div className="px-3 py-1.5 border-b border-(--border)">
+            <span className="text-[9px] tracking-widest text-(--text5) uppercase">Cumulative Traffic</span>
           </div>
           <div className="grid grid-cols-2">
             {[
@@ -235,8 +235,8 @@ function IfaceDetailBody({ sessionId, iface }: { sessionId: string; iface: strin
               { label: "TX Dropped", value: data.tx_dropped.toString(),   color: data.tx_dropped > 0 ? "#f59e0b" : "var(--text4)" },
             ].map((st, idx) => (
               <div key={st.label}
-                className={`px-2 py-2 text-center ${idx < 6 ? "border-b" : ""} ${idx % 2 === 0 ? "border-r" : ""} border-[var(--border)]`}>
-                <p className="text-[9px] text-[var(--text5)] uppercase tracking-wider mb-0.5">{st.label}</p>
+                className={`px-2 py-2 text-center ${idx < 6 ? "border-b" : ""} ${idx % 2 === 0 ? "border-r" : ""} border-(--border)`}>
+                <p className="text-[9px] text-(--text5) uppercase tracking-wider mb-0.5">{st.label}</p>
                 <p className="text-[11px] font-mono font-semibold" style={{ color: st.color }}>{st.value}</p>
               </div>
             ))}
@@ -271,8 +271,8 @@ function RoutingGraph({ sessionId, ifaces }: { sessionId: string; ifaces: NetIfa
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
-        <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Routing Table</span>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border)">
+        <span className="text-[9px] tracking-widest text-(--text5) uppercase">Routing Table</span>
         <button onClick={load} disabled={loading}
           className="text-[10px] font-medium px-3 py-1 rounded-lg transition-all disabled:opacity-50"
           style={{ background: "#ffffff08", color: "var(--text3)", border: "1px solid var(--border)" }}>
@@ -282,7 +282,7 @@ function RoutingGraph({ sessionId, ifaces }: { sessionId: string; ifaces: NetIfa
 
       {/* Visual network graph (always shown if we have route data) */}
       {routes && routes.length > 0 && (
-        <div className="px-4 py-3 border-b border-[var(--border)]">
+        <div className="px-4 py-3 border-b border-(--border)">
           <svg viewBox="0 0 280 80" className="w-full" style={{ height: 80 }}>
             {/* Internet node */}
             <g transform="translate(18,40)">
@@ -338,34 +338,34 @@ function RoutingGraph({ sessionId, ifaces }: { sessionId: string; ifaces: NetIfa
       {/* Route table */}
       {!routes && !loading && !error && (
         <div className="px-4 py-5 text-center">
-          <p className="text-[11px] text-[var(--text5)] italic">Click Load to fetch the routing table from the device</p>
+          <p className="text-[11px] text-(--text5) italic">Click Load to fetch the routing table from the device</p>
         </div>
       )}
-      {error && <p className="px-4 py-3 text-[11px] text-[#ef4444] italic">{error}</p>}
+      {error && <p className="px-4 py-3 text-[11px] text-status-fail italic">{error}</p>}
       {routes && (
         <>
-          <div className="grid text-[9px] tracking-widest text-[var(--text5)] uppercase px-4 py-2 border-b border-[var(--border)]"
+          <div className="grid text-[9px] tracking-widest text-(--text5) uppercase px-4 py-2 border-b border-(--border)"
             style={{ gridTemplateColumns: "1fr 1fr 64px 32px" }}>
             <span>Destination</span>
             <span>Gateway</span>
             <span>Interface</span>
             <span className="text-right">Metric</span>
           </div>
-          <div className="divide-y divide-[var(--bg2)] max-h-48 overflow-y-auto">
+          <div className="divide-y divide-(--bg2) max-h-48 overflow-y-auto">
             {routes.map((r, idx) => {
               const isDefault = r.destination === "default" || r.destination === "0.0.0.0/0";
               return (
-                <div key={idx} className="grid items-center px-4 py-2 hover:bg-white/[0.02] transition-colors"
+                <div key={idx} className="grid items-center px-4 py-2 hover:bg-white/2 transition-colors"
                   style={{ gridTemplateColumns: "1fr 1fr 64px 32px" }}>
                   <span className={`text-[10px] font-mono truncate ${isDefault ? "font-semibold" : ""}`}
                     style={{ color: isDefault ? "#00c8a8" : "var(--text2)" }}>
                     {r.destination || "—"}
                   </span>
-                  <span className="text-[10px] font-mono text-[var(--text3)] truncate pr-2">
+                  <span className="text-[10px] font-mono text-(--text3) truncate pr-2">
                     {r.gateway || "—"}
                   </span>
-                  <span className="text-[10px] font-mono text-[#818cf8]">{r.iface}</span>
-                  <span className="text-right text-[10px] font-mono text-[var(--text5)]">
+                  <span className="text-[10px] font-mono text-accent-hover">{r.iface}</span>
+                  <span className="text-right text-[10px] font-mono text-(--text5)">
                     {r.metric ?? "—"}
                   </span>
                 </div>
@@ -417,12 +417,12 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
         {/* Totals */}
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl p-4" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">Total Download</p>
+            <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">Total Download</p>
             <p className="text-xl font-semibold font-mono" style={{ color: "#00c8a8" }}>{fmtBytes(totalRx)}</p>
             <div className="mt-2"><Track value={totalRx} max={Math.max(totalRx * 1.2, 1)} color="#00c8a8" /></div>
           </div>
           <div className="rounded-xl p-4" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">Total Upload</p>
+            <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">Total Upload</p>
             <p className="text-xl font-semibold font-mono" style={{ color: "#818cf8" }}>{fmtBytes(totalTx)}</p>
             <div className="mt-2"><Track value={totalTx} max={Math.max(totalTx * 1.2, 1)} color="#818cf8" /></div>
           </div>
@@ -431,12 +431,12 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
         {/* Interface table */}
         <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
           {/* Table header with sort controls */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
-            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Interfaces</span>
+          <div className="flex items-center justify-between px-4 py-2 border-b border-(--border)">
+            <span className="text-[9px] tracking-widest text-(--text5) uppercase">Interfaces</span>
             <div className="flex items-center gap-1">
               {(["name","rx","tx","total"] as NetSort[]).map((s) => (
                 <button key={s} onClick={() => changeSortBy(s)}
-                  className="text-[9px] font-medium px-2 py-0.5 rounded transition-all uppercase tracking-wider"
+                  className="text-[9px] font-medium px-2 py-0.5 rounded-sm transition-all uppercase tracking-wider"
                   style={sortBy === s
                     ? { color: "#00c8a8", background: "#00c8a818", border: "1px solid #00c8a830" }
                     : { color: "var(--text4)", background: "transparent", border: "1px solid transparent" }
@@ -447,7 +447,7 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
             </div>
           </div>
 
-          <div className="divide-y divide-[var(--bg2)]">
+          <div className="divide-y divide-(--bg2)">
             {sorted.map((i) => {
               const active = i.rx_kbps > 0 || i.tx_kbps > 0;
               const isOpen = expanded.has(i.name);
@@ -456,11 +456,11 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
                   <button
                     onClick={() => toggleIface(i.name)}
                     aria-expanded={isOpen}
-                    className="w-full text-left hover:bg-white/[0.025] transition-colors group"
+                    className="w-full text-left hover:bg-white/2.5 transition-colors group"
                   >
                     <div className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "80px 1fr 1fr 32px" }}>
                       <div>
-                        <p className="text-[11px] font-mono text-[var(--text)] font-medium">{i.name}</p>
+                        <p className="text-[11px] font-mono text-(--text) font-medium">{i.name}</p>
                         <Chip label={active ? "Active" : "Idle"} color={active ? "#00c8a8" : "var(--text4)"} />
                       </div>
                       <div className="pr-3 space-y-1">
@@ -473,7 +473,7 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
                       </div>
                       {/* Chevron — rotates when expanded */}
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
-                        className={`justify-self-end transition-all flex-shrink-0 ${isOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                        className={`justify-self-end transition-all shrink-0 ${isOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                         style={{ transform: isOpen ? "rotate(90deg)" : "none" }}>
                         <path d="M2 1l3 3-3 3" stroke={isOpen ? "#00c8a8" : "var(--text3)"} strokeWidth="1.2" strokeLinecap="round"/>
                       </svg>
@@ -490,7 +490,7 @@ function NetworkSection({ ifaces, available, sessionId }: { ifaces: NetIface[]; 
         <RoutingGraph sessionId={sessionId} ifaces={ifaces} />
 
         {/* Speedtest now lives in its own top-level "Speedtest" tab */}
-        <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-medium text-[var(--text5)]"
+        <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-medium text-(--text5)"
           style={{ border: "1px dashed var(--border)" }}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1"/>
@@ -518,11 +518,11 @@ function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail, 
       {/* Storage card */}
       <div className="rounded-xl p-4" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Storage (/)</span>
+          <span className="text-[9px] tracking-widest text-(--text5) uppercase">Storage (/)</span>
           {usedPct !== null && <span className="text-2xl font-semibold font-mono" style={{ color }}>{usedPct}%</span>}
         </div>
         {diskUnavail
-          ? <p className="text-[11px] text-[var(--text4)] italic">{diskUnavail}</p>
+          ? <p className="text-[11px] text-(--text4) italic">{diskUnavail}</p>
           : <>
               <Track value={usedPct ?? 0} color={color} />
               <div className="grid grid-cols-3 gap-2 mt-3">
@@ -532,7 +532,7 @@ function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail, 
                   { label: "Free",  value: freeGb  !== null ? `${freeGb.toFixed(1)} GB`  : "—", color: "#22c55e" },
                 ].map((s) => (
                   <div key={s.label} className="text-center p-2 rounded-lg" style={{ background: "#ffffff04", border: "1px solid var(--border)" }}>
-                    <p className="text-[9px] text-[var(--text5)] uppercase tracking-wider mb-1">{s.label}</p>
+                    <p className="text-[9px] text-(--text5) uppercase tracking-wider mb-1">{s.label}</p>
                     <p className="text-[13px] font-mono font-semibold" style={{ color: s.color ?? "#ffffff" }}>{s.value}</p>
                   </div>
                 ))}
@@ -543,19 +543,19 @@ function DiskSection({ disks, available, usedPct, usedGb, totalGb, diskUnavail, 
 
       {/* I/O */}
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Disk I/O</span>
-          {!available && <span className="text-[10px] text-[var(--text4)] italic">/proc/diskstats unavailable</span>}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-(--border)">
+          <span className="text-[9px] tracking-widest text-(--text5) uppercase">Disk I/O</span>
+          {!available && <span className="text-[10px] text-(--text4) italic">/proc/diskstats unavailable</span>}
         </div>
         {!available || !disks.length
-          ? <div className="px-4 py-4 text-center text-[11px] text-[var(--text5)] italic">
+          ? <div className="px-4 py-4 text-center text-[11px] text-(--text5) italic">
               {!available ? "Kernel does not expose /proc/diskstats" : "No disk activity"}
             </div>
-          : <div className="divide-y divide-[var(--bg2)]">
+          : <div className="divide-y divide-(--bg2)">
               {disks.map((d) => (
-                <div key={d.name} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                <div key={d.name} className="px-4 py-3 hover:bg-white/2 transition-colors">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-mono text-[var(--text)]">{d.name}</span>
+                    <span className="text-[11px] font-mono text-(--text)">{d.name}</span>
                     <div className="flex gap-3">
                       <span className="text-[10px] font-mono" style={{ color: "#06b6d4" }}>R {fmtBytes(d.read_kbps)}</span>
                       <span className="text-[10px] font-mono" style={{ color: "#8b5cf6" }}>W {fmtBytes(d.write_kbps)}</span>
@@ -585,8 +585,8 @@ function GpuSection({ gpus, checkedTools }: { gpus: GpuStat[]; checkedTools: str
   if (!gpus.length) return (
     <div className="p-4">
       <div className="rounded-xl p-6 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-        <p className="text-[var(--text4)] text-xs italic mb-1">No GPU detected</p>
-        {checkedTools && <p className="text-[9px] text-[var(--text5)] font-mono">Checked: {checkedTools}</p>}
+        <p className="text-(--text4) text-xs italic mb-1">No GPU detected</p>
+        {checkedTools && <p className="text-[9px] text-(--text5) font-mono">Checked: {checkedTools}</p>}
       </div>
     </div>
   );
@@ -599,21 +599,21 @@ function GpuSection({ gpus, checkedTools }: { gpus: GpuStat[]; checkedTools: str
         return (
           <div key={i} className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
             {/* GPU header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-(--border)">
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-sm"
                   style={{ color, background: `${color}18`, border: `1px solid ${color}30` }}>
                   {g.vendor}
                 </span>
-                <span className="text-[12px] text-[var(--text)] font-medium">{g.name}</span>
+                <span className="text-[12px] text-(--text) font-medium">{g.name}</span>
               </div>
-              {g.note && <span className="text-[10px] text-[var(--text4)] italic">{g.note}</span>}
+              {g.note && <span className="text-[10px] text-(--text4) italic">{g.note}</span>}
             </div>
 
             {/* Main metrics row */}
-            <div className="grid grid-cols-3 divide-x divide-[var(--border)]">
+            <div className="grid grid-cols-3 divide-x divide-(--border)">
               <div className="p-4 text-center">
-                <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">GPU Load</p>
+                <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">GPU Load</p>
                 {g.util_pct !== null
                   ? <>
                       <p className="text-2xl font-semibold font-mono" style={{ color: pctColor(g.util_pct) }}>
@@ -621,25 +621,25 @@ function GpuSection({ gpus, checkedTools }: { gpus: GpuStat[]; checkedTools: str
                       </p>
                       <div className="mt-2"><Track value={g.util_pct} color={pctColor(g.util_pct)} /></div>
                     </>
-                  : <p className="text-[11px] text-[var(--text4)] italic mt-2">N/A</p>
+                  : <p className="text-[11px] text-(--text4) italic mt-2">N/A</p>
                 }
               </div>
               <div className="p-4 text-center">
-                <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">Temperature</p>
+                <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">Temperature</p>
                 {g.temp_c !== null
                   ? <p className="text-2xl font-semibold font-mono" style={{ color: tempColor(g.temp_c) }}>
                       {f0(g.temp_c)}<span className="text-sm">°C</span>
                     </p>
-                  : <p className="text-[11px] text-[var(--text4)] italic mt-2">N/A</p>
+                  : <p className="text-[11px] text-(--text4) italic mt-2">N/A</p>
                 }
               </div>
               <div className="p-4 text-center">
-                <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">Power Draw</p>
+                <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">Power Draw</p>
                 {g.power_w !== null
-                  ? <p className="text-2xl font-semibold font-mono text-[var(--text)]">
+                  ? <p className="text-2xl font-semibold font-mono text-(--text)">
                       {f0(g.power_w)}<span className="text-sm">W</span>
                     </p>
-                  : <p className="text-[11px] text-[var(--text4)] italic mt-2">N/A</p>
+                  : <p className="text-[11px] text-(--text4) italic mt-2">N/A</p>
                 }
               </div>
             </div>
@@ -649,11 +649,11 @@ function GpuSection({ gpus, checkedTools }: { gpus: GpuStat[]; checkedTools: str
               <div className="px-4 pb-4">
                 <div className="rounded-lg p-3" style={{ background: "#ffffff04", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">VRAM Allocation</span>
+                    <span className="text-[9px] tracking-widest text-(--text5) uppercase">VRAM Allocation</span>
                     <div className="flex gap-3 text-[10px] font-mono">
                       <span style={{ color }}>{g.mem_used_mb} MB used</span>
-                      <span className="text-[var(--text5)]">/</span>
-                      <span className="text-[var(--text3)]">{g.mem_total_mb} MB total</span>
+                      <span className="text-(--text5)">/</span>
+                      <span className="text-(--text3)">{g.mem_total_mb} MB total</span>
                     </div>
                   </div>
                   <Track value={g.mem_used_mb} max={g.mem_total_mb} color={color} />
@@ -664,7 +664,7 @@ function GpuSection({ gpus, checkedTools }: { gpus: GpuStat[]; checkedTools: str
                       { label: "Load",       value: vramPct !== null ? `${vramPct}%` : "—",       col: pctColor(vramPct ?? 0) },
                     ].map((s) => (
                       <div key={s.label}>
-                        <p className="text-[9px] text-[var(--text5)] uppercase tracking-wider">{s.label}</p>
+                        <p className="text-[9px] text-(--text5) uppercase tracking-wider">{s.label}</p>
                         <p className="text-[11px] font-mono font-semibold" style={{ color: s.col }}>{s.value}</p>
                       </div>
                     ))}
@@ -697,7 +697,7 @@ function TempSection({ zones }: { zones: ThermalZone[] }) {
           { label: "Sensors", value: zones.length.toString(), color: "var(--text3)" },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">{s.label}</p>
+            <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">{s.label}</p>
             <p className="text-xl font-semibold font-mono" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
@@ -705,21 +705,21 @@ function TempSection({ zones }: { zones: ThermalZone[] }) {
 
       {/* Thermal zones table */}
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-        <div className="grid text-[9px] tracking-widest text-[var(--text5)] uppercase px-4 py-2 border-b border-[var(--border)]"
+        <div className="grid text-[9px] tracking-widest text-(--text5) uppercase px-4 py-2 border-b border-(--border)"
           style={{ gridTemplateColumns: "1fr 80px 48px" }}>
           <span>Sensor</span>
           <span>Waveform</span>
           <span className="text-right">Temp</span>
         </div>
-        <div className="divide-y divide-[var(--bg2)]">
+        <div className="divide-y divide-(--bg2)">
           {zones.map((z) => {
             const color = tempColor(z.temp_c);
             // 20°C = 0%, 100°C = 100%
             const pct = Math.min(100, Math.max(0, (z.temp_c - 20) / 80 * 100));
             return (
-              <div key={z.name} className="grid items-center px-4 py-3 hover:bg-white/[0.02] transition-colors"
+              <div key={z.name} className="grid items-center px-4 py-3 hover:bg-white/2 transition-colors"
                 style={{ gridTemplateColumns: "1fr 80px 48px" }}>
-                <span className="text-[11px] font-mono text-[var(--text3)] truncate pr-2">{z.name}</span>
+                <span className="text-[11px] font-mono text-(--text3) truncate pr-2">{z.name}</span>
                 <div className="pr-4">
                   <Track value={pct} color={color} />
                 </div>
@@ -809,7 +809,7 @@ function ProcessesSection({ procs, osType }: { procs: ProcessEntry[]; osType: st
           { label: "Active Tasks", value: procs.length.toString(), color: "var(--text3)" },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1">{s.label}</p>
+            <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1">{s.label}</p>
             <p className="text-xl font-semibold font-mono" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
@@ -818,7 +818,7 @@ function ProcessesSection({ procs, osType }: { procs: ProcessEntry[]; osType: st
       {/* Process table */}
       <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
         {/* Clickable column headers */}
-        <div className="grid items-center px-4 py-2 border-b border-[var(--border)]"
+        <div className="grid items-center px-4 py-2 border-b border-(--border)"
           style={{ gridTemplateColumns: "1fr 56px 72px 56px" }}>
           <ColHeader col="name" label="Process" className="justify-start" />
           <ColHeader col="pid"  label="PID"     className="justify-end" />
@@ -826,7 +826,7 @@ function ProcessesSection({ procs, osType }: { procs: ProcessEntry[]; osType: st
           <ColHeader col="mem"  label="MEM"     className="justify-end" />
         </div>
 
-        <div className="divide-y divide-[var(--bg2)]">
+        <div className="divide-y divide-(--bg2)">
           {sorted.map((p) => {
             const cpuColor = p.cpu_pct > (isWindows ? 60 : 50) ? "#ef4444"
               : p.cpu_pct > (isWindows ? 20 : 20) ? "#f59e0b"
@@ -834,23 +834,23 @@ function ProcessesSection({ procs, osType }: { procs: ProcessEntry[]; osType: st
             const isHot = p.cpu_pct > (isWindows ? 60 : 50);
             return (
               <div key={p.pid}
-                className="grid items-center px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
+                className="grid items-center px-4 py-2.5 hover:bg-white/2 transition-colors"
                 style={{ gridTemplateColumns: "1fr 56px 72px 56px" }}>
                 <div className="min-w-0 pr-2">
-                  <p className="text-[11px] font-mono text-[var(--text)] truncate">{p.command}</p>
-                  <p className="text-[10px] text-[var(--text5)]">{p.user}</p>
+                  <p className="text-[11px] font-mono text-(--text) truncate">{p.command}</p>
+                  <p className="text-[10px] text-(--text5)">{p.user}</p>
                 </div>
-                <span className="text-right text-[10px] font-mono text-[var(--text4)]">{p.pid}</span>
+                <span className="text-right text-[10px] font-mono text-(--text4)">{p.pid}</span>
                 <span className="text-right">
                   {isHot
-                    ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                    ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm"
                         style={{ color: "#ef4444", background: "#ef444418", border: "1px solid #ef444430" }}>
                         {f1(p.cpu_pct)}{cpuUnit}
                       </span>
                     : <span className="text-[10px] font-mono" style={{ color: cpuColor }}>{f1(p.cpu_pct)}{cpuUnit}</span>
                   }
                 </span>
-                <span className="text-right text-[10px] font-mono text-[var(--text4)]">{f1(p.mem_pct)}%</span>
+                <span className="text-right text-[10px] font-mono text-(--text4)">{f1(p.mem_pct)}%</span>
               </div>
             );
           })}
@@ -916,7 +916,7 @@ export default function MetricsPanel({ sessionId, isActive, targetHost }: Props)
   usePolling(fetchMetrics, 3000, isActive);
 
   if (loading) return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[var(--text5)]">
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-(--text5)">
       <div className="w-5 h-5 border border-[#00c8a8] border-t-transparent rounded-full animate-spin" style={{ boxShadow: "0 0 12px #00c8a840" }} />
       <p className="text-[11px] tracking-widest uppercase">Probing system</p>
     </div>
@@ -924,8 +924,8 @@ export default function MetricsPanel({ sessionId, isActive, targetHost }: Props)
 
   if (error) return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
-      <p className="text-[#ef4444] text-xs font-mono text-center">{error}</p>
-      <button onClick={() => fetchMetrics()} className="text-[11px] text-[#00c8a8] hover:text-[var(--text)] underline">Retry</button>
+      <p className="text-status-fail text-xs font-mono text-center">{error}</p>
+      <button onClick={() => fetchMetrics()} className="text-[11px] text-[#00c8a8] hover:text-(--text) underline">Retry</button>
     </div>
   );
 
@@ -995,37 +995,37 @@ export default function MetricsPanel({ sessionId, isActive, targetHost }: Props)
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "var(--bg)" }}>
 
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-b border-[var(--border)]"
+      <div className="shrink-0 px-4 py-3 flex items-center justify-between border-b border-(--border)"
         style={{ background: "var(--bg1)" }}>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono" style={{ color: platformColor }}>
             {metrics.model || metrics.arch}
           </span>
-          <span className="text-[var(--border)]">·</span>
-          <span className="text-[10px] font-mono text-[var(--text5)]">{metrics.kernel}</span>
+          <span className="text-(--border)">·</span>
+          <span className="text-[10px] font-mono text-(--text5)">{metrics.kernel}</span>
         </div>
         <div className="flex items-center gap-2">
           {metrics.is_first_poll && (
-            <span className="text-[10px] text-[#f59e0b]">⚡ next poll</span>
+            <span className="text-[10px] text-status-warn">⚡ next poll</span>
           )}
           {metrics.uptime_seconds !== null && (
-            <span className="text-[10px] font-mono text-[var(--text5)]">up {fmtUptime(metrics.uptime_seconds)}</span>
+            <span className="text-[10px] font-mono text-(--text5)">up {fmtUptime(metrics.uptime_seconds)}</span>
           )}
 
           {/* Logging controls */}
           {!logging && logCount === 0 && (
             <button onClick={() => { logBufRef.current = []; setLogCount(0); setLogging(true); }}
-              className="flex items-center gap-1 text-[9px] font-medium px-2 py-1 rounded transition-all text-[var(--text4)] hover:text-[#ef4444]"
+              className="flex items-center gap-1 text-[9px] font-medium px-2 py-1 rounded-sm transition-all text-(--text4) hover:text-status-fail"
               style={{ border: "1px solid var(--border)" }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text4)]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-(--text4)" />
               Record
             </button>
           )}
           {logging && (
             <button onClick={() => setLogging(false)}
-              className="flex items-center gap-1 text-[9px] font-medium px-2 py-1 rounded transition-all"
+              className="flex items-center gap-1 text-[9px] font-medium px-2 py-1 rounded-sm transition-all"
               style={{ color: "#ef4444", background: "#ef444412", border: "1px solid #ef444430" }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444] animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-status-fail animate-pulse" />
               {logCount} samples
             </button>
           )}
@@ -1048,13 +1048,13 @@ export default function MetricsPanel({ sessionId, isActive, targetHost }: Props)
                   setError(`Export failed: ${String(e)}`);
                 }
               }}
-                className="text-[9px] font-medium px-2 py-1 rounded transition-all"
+                className="text-[9px] font-medium px-2 py-1 rounded-sm transition-all"
                 style={{ color: "#00c8a8", background: "#00c8a812", border: "1px solid #00c8a830" }}>
                 ↓ Export {logCount}
               </button>
               <button
                 onClick={() => { logBufRef.current = []; setLogCount(0); setLogging(true); }}
-                className="text-[9px] font-medium px-2 py-1 rounded transition-all text-[var(--text4)] hover:text-[#ef4444]"
+                className="text-[9px] font-medium px-2 py-1 rounded-sm transition-all text-(--text4) hover:text-status-fail"
                 style={{ border: "1px solid var(--border)" }}
                 title="Discard and re-record">
                 ↺ Re-record
@@ -1066,24 +1066,24 @@ export default function MetricsPanel({ sessionId, isActive, targetHost }: Props)
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full transition-all duration-300"
               style={{ background: pulse ? "#00c8a8" : "#1e2e2a", boxShadow: pulse ? "0 0 6px #00c8a8" : "none" }} />
-            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Live</span>
+            <span className="text-[9px] tracking-widest text-(--text5) uppercase">Live</span>
           </div>
         </div>
       </div>
 
       {/* ── Summary cards ──────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 grid grid-cols-4 gap-px border-b border-[var(--border)]" style={{ background: "var(--border)" }}>
+      <div className="shrink-0 grid grid-cols-4 gap-px border-b border-(--border)" style={{ background: "var(--border)" }}>
         {summaryItems.map((s) => (
           <div key={s.label} className="p-4 flex flex-col gap-2" style={{ background: "var(--bg1)" }}>
-            <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">{s.label}</span>
+            <span className="text-[9px] tracking-widest text-(--text5) uppercase">{s.label}</span>
             {s.unavail
-              ? <span className="text-[10px] text-[var(--text5)] italic leading-tight">{s.unavail}</span>
+              ? <span className="text-[10px] text-(--text5) italic leading-tight">{s.unavail}</span>
               : <>
                   <div className="flex items-baseline gap-0.5">
                     <span className="text-2xl font-semibold font-mono leading-none" style={{ color: s.color }}>{s.value}</span>
-                    {s.unit && <span className="text-sm text-[var(--text4)]">{s.unit}</span>}
+                    {s.unit && <span className="text-sm text-(--text4)">{s.unit}</span>}
                   </div>
-                  {s.sub && <span className="text-[10px] font-mono text-[var(--text5)]">{s.sub}</span>}
+                  {s.sub && <span className="text-[10px] font-mono text-(--text5)">{s.sub}</span>}
                   {!s.noBar && <Track value={s.pct} color={s.color} />}
                 </>
             }
@@ -1092,12 +1092,12 @@ export default function MetricsPanel({ sessionId, isActive, targetHost }: Props)
       </div>
 
       {/* ── Section tabs ───────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-0 border-b border-[var(--border)] overflow-x-auto"
+      <div className="shrink-0 flex items-center gap-0 border-b border-(--border) overflow-x-auto"
         style={{ background: "var(--bg1)" }}>
         {tabs.map((t) => (
           <button key={t.id}
             onClick={() => setSection(t.id)}
-            className="relative flex items-center gap-1.5 px-4 py-3 text-[11px] font-medium transition-all flex-shrink-0"
+            className="relative flex items-center gap-1.5 px-4 py-3 text-[11px] font-medium transition-all shrink-0"
             style={section === t.id
               ? { color: "#00c8a8", borderBottom: "2px solid #00c8a8" }
               : { color: "var(--text4)", borderBottom: "2px solid transparent" }

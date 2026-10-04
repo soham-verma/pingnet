@@ -121,8 +121,8 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
             onChange(!checked);
           }
         }}
-        className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1] focus-visible:ring-offset-2 ${
-          checked ? "bg-[#6366f1]" : "bg-[var(--border)]"
+        className={`relative w-9 h-5 rounded-full transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
+          checked ? "bg-accent" : "bg-(--border)"
         }`}
         style={{ focusRingOffset: "var(--bg2)" } as React.CSSProperties}
       >
@@ -132,7 +132,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
           }`}
         />
       </button>
-      <span className="text-sm text-[var(--text2)]">{label}</span>
+      <span className="text-sm text-(--text2)">{label}</span>
     </label>
   );
 
@@ -147,17 +147,17 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
       {/* BUG-03 fix: modal is now max-height capped and scrollable, matching KeyManager.
           Using flex-col so header stays fixed and only the form body scrolls. */}
       <div
-        className="w-full max-w-md rounded-2xl border border-[var(--border)] shadow-2xl flex flex-col my-auto"
+        className="w-full max-w-md rounded-2xl border border-(--border) shadow-2xl flex flex-col my-auto"
         style={{ background: "var(--bg2)", maxHeight: "85vh" }}
       >
         {/* Header — fixed, never scrolls */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] flex-shrink-0">
-          <h2 className="font-semibold text-[var(--text)]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-(--border) shrink-0">
+          <h2 className="font-semibold text-(--text)">
             {existing ? "Edit Host" : "Add New Host"}
           </h2>
           <button
             onClick={onClose}
-            className="text-[var(--text3)] hover:text-[var(--text)] transition-colors text-xl"
+            className="text-(--text3) hover:text-(--text) transition-colors text-xl"
           >
             ×
           </button>
@@ -168,7 +168,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
             {/* Display Name */}
             <div>
-              <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
+              <label className="block text-[11px] tracking-widest text-(--text3) uppercase mb-2">
                 Display Name
               </label>
               <input
@@ -176,20 +176,20 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
                 placeholder="e.g. Home NAS, VPS Sydney"
-                className={`w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] ${
-                  errors.hostname ? "border-[#ef4444]" : "border-[var(--border)]"
+                className={`w-full px-4 py-2.5 rounded-lg bg-(--bg) border text-sm text-(--text) placeholder-(--text5) outline-hidden transition-all focus:border-accent ${
+                  errors.hostname ? "border-status-fail" : "border-(--border)"
                 }`}
                 autoFocus
               />
               {errors.hostname && (
-                <p className="text-[#ef4444] text-xs mt-1">{errors.hostname}</p>
+                <p className="text-status-fail text-xs mt-1">{errors.hostname}</p>
               )}
             </div>
 
             {/* IP Addresses */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase">
+                <label className="block text-[11px] tracking-widest text-(--text3) uppercase">
                   IP Addresses
                 </label>
               </div>
@@ -201,21 +201,21 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                   value={ip}
                   onChange={(e) => setIp(e.target.value)}
                   placeholder="e.g. 192.168.1.10 or example.com"
-                  className={`flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                    errors.ip ? "border-[#ef4444]" : "border-[var(--border)]"
+                  className={`flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-(--bg) border text-sm text-(--text) placeholder-(--text5) font-mono outline-hidden transition-all focus:border-accent ${
+                    errors.ip ? "border-status-fail" : "border-(--border)"
                   }`}
                 />
                 <select
                   value={ipType}
                   onChange={(e) => setIpType(e.target.value as HostIp["type"])}
-                  className="px-2 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text3)] outline-none focus:border-[#6366f1] transition-all"
+                  className="px-2 py-2.5 rounded-lg bg-(--bg) border border-(--border) text-sm text-(--text3) outline-hidden focus:border-accent transition-all"
                 >
                   {IP_TYPES.map((t) => (
                     <option key={t} value={t}>{IP_TYPE_LABELS[t]}</option>
                   ))}
                 </select>
               </div>
-              {errors.ip && <p className="text-[#ef4444] text-xs mb-2">{errors.ip}</p>}
+              {errors.ip && <p className="text-status-fail text-xs mb-2">{errors.ip}</p>}
 
               {/* Extra IPs */}
               {extraIps.map((eip, idx) => (
@@ -229,7 +229,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                       setExtraIps(next);
                     }}
                     placeholder="e.g. 10.0.0.1"
-                    className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1]"
+                    className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-(--bg) border border-(--border) text-sm text-(--text) placeholder-(--text5) font-mono outline-hidden transition-all focus:border-accent"
                   />
                   <select
                     value={eip.type}
@@ -238,7 +238,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                       next[idx] = { ...next[idx], type: e.target.value as HostIp["type"] };
                       setExtraIps(next);
                     }}
-                    className="px-2 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text3)] outline-none focus:border-[#6366f1] transition-all"
+                    className="px-2 py-2.5 rounded-lg bg-(--bg) border border-(--border) text-sm text-(--text3) outline-hidden focus:border-accent transition-all"
                   >
                     {IP_TYPES.map((t) => (
                       <option key={t} value={t}>{IP_TYPE_LABELS[t]}</option>
@@ -247,7 +247,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                   <button
                     type="button"
                     onClick={() => setExtraIps(extraIps.filter((_, i) => i !== idx))}
-                    className="w-9 flex-shrink-0 flex items-center justify-center rounded-lg text-[var(--text4)] hover:text-[#ef4444] hover:bg-[#ef444415] border border-transparent hover:border-[#ef444430] transition-all"
+                    className="w-9 shrink-0 flex items-center justify-center rounded-lg text-(--text4) hover:text-status-fail hover:bg-[#ef444415] border border-transparent hover:border-[#ef444430] transition-all"
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -259,7 +259,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
               <button
                 type="button"
                 onClick={() => setExtraIps([...extraIps, { address: "", type: "local" }])}
-                className="flex items-center gap-1.5 text-[11px] text-[var(--text3)] hover:text-[#6366f1] transition-colors"
+                className="flex items-center gap-1.5 text-[11px] text-(--text3) hover:text-accent transition-colors"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -270,21 +270,21 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
 
             {/* Notes */}
             <div>
-              <label className="block text-[11px] tracking-widest text-[var(--text3)] uppercase mb-2">
-                Notes <span className="text-[var(--text5)] normal-case tracking-normal">(optional)</span>
+              <label className="block text-[11px] tracking-widest text-(--text3) uppercase mb-2">
+                Notes <span className="text-(--text5) normal-case tracking-normal">(optional)</span>
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="e.g. Home server rack, AP Southeast-2"
                 rows={2}
-                className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none transition-all focus:border-[#6366f1] resize-none"
+                className="w-full px-4 py-2.5 rounded-lg bg-(--bg) border border-(--border) text-sm text-(--text) placeholder-(--text5) outline-hidden transition-all focus:border-accent resize-none"
               />
             </div>
 
             {/* ── Alert Settings ─────────────────────────────────────────────── */}
-            <div className="border border-[var(--border)] rounded-xl p-4 space-y-3">
-              <p className="text-[11px] tracking-widest text-[var(--text3)] uppercase">Alerts</p>
+            <div className="border border-(--border) rounded-xl p-4 space-y-3">
+              <p className="text-[11px] tracking-widest text-(--text3) uppercase">Alerts</p>
               <Toggle
                 checked={alertDown}
                 onChange={setAlertDown}
@@ -296,9 +296,9 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                 label="Notify when host recovers"
               />
               <div>
-                <label className="text-sm text-[var(--text2)]">
+                <label className="text-sm text-(--text2)">
                   Latency spike threshold (ms){" "}
-                  <span className="text-[var(--text3)] text-xs">(optional)</span>
+                  <span className="text-(--text3) text-xs">(optional)</span>
                 </label>
                 <input
                   type="number"
@@ -306,12 +306,12 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                   value={alertLatency}
                   onChange={(e) => setAlertLatency(e.target.value)}
                   placeholder="e.g. 200"
-                  className={`mt-1.5 w-full px-4 py-2 rounded-lg bg-[var(--bg)] border text-sm text-[var(--text)] placeholder-[var(--text5)] font-mono outline-none transition-all focus:border-[#6366f1] ${
-                    errors.alertLatency ? "border-[#ef4444]" : "border-[var(--border)]"
+                  className={`mt-1.5 w-full px-4 py-2 rounded-lg bg-(--bg) border text-sm text-(--text) placeholder-(--text5) font-mono outline-hidden transition-all focus:border-accent ${
+                    errors.alertLatency ? "border-status-fail" : "border-(--border)"
                   }`}
                 />
                 {errors.alertLatency && (
-                  <p className="text-[#ef4444] text-xs mt-1">{errors.alertLatency}</p>
+                  <p className="text-status-fail text-xs mt-1">{errors.alertLatency}</p>
                 )}
               </div>
             </div>
@@ -322,7 +322,7 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
                 <button
                   type="button"
                   onClick={handleDeleteClick}
-                  className="px-4 py-2 rounded-lg text-sm text-[#ef4444] hover:bg-[#ef444410] border border-[#ef444430] hover:border-[#ef4444] transition-all"
+                  className="px-4 py-2 rounded-lg text-sm text-status-fail hover:bg-[#ef444410] border border-[#ef444430] hover:border-status-fail transition-all"
                 >
                   Delete
                 </button>
@@ -331,13 +331,13 @@ export default function AddEditModal({ existing, initialIp, onSave, onClose, onD
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg text-sm text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+                className="px-4 py-2 rounded-lg text-sm text-(--text3) hover:text-(--text) transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] transition-colors"
+                className="px-5 py-2 rounded-lg text-sm font-medium text-(--text) bg-accent hover:bg-accent-hover transition-colors"
               >
                 {existing ? "Save Changes" : "Add Host"}
               </button>

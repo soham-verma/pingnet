@@ -560,7 +560,7 @@ export default function SSHSessionView({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {staleTarget && (
-        <div role="alert" className="flex items-center gap-3 px-5 py-2 text-[12px] flex-shrink-0 border-b"
+        <div role="alert" className="flex items-center gap-3 px-5 py-2 text-[12px] shrink-0 border-b"
           style={{ background: "#f59e0b14", borderColor: "#f59e0b40", color: "#fcd34d" }}>
           <span className="flex-1">
             This host's address changed to <span className="font-mono">{ip}</span>, but{" "}
@@ -568,7 +568,7 @@ export default function SSHSessionView({
             <span className="font-mono font-semibold">{staleTarget}</span>. Commands, files and panels act on {staleTarget}.
           </span>
           <button onClick={reconnectStale}
-            className="px-3 py-1 rounded-lg text-[11px] font-semibold flex-shrink-0"
+            className="px-3 py-1 rounded-lg text-[11px] font-semibold shrink-0"
             style={{ background: "#f59e0b", color: "#000" }}>
             Reconnect to {ip}
           </button>
@@ -576,10 +576,10 @@ export default function SSHSessionView({
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0"
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-(--border) shrink-0"
         style={{ background: "var(--bg1)" }}>
 
-        <div className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0"
+        <div className="w-6 h-6 flex items-center justify-center rounded-md shrink-0"
           style={{ background: "#6366f115", border: "1px solid #6366f125" }}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <rect x="0.5" y="1.5" width="11" height="9" rx="1.5" stroke="#818cf8" strokeWidth="1" />
@@ -590,33 +590,33 @@ export default function SSHSessionView({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[var(--text)] font-semibold text-sm">{hostname}</span>
+            <span className="text-(--text) font-semibold text-sm">{hostname}</span>
             {anyConnected && (
               <span className="text-[11px] px-2 py-0.5 rounded-full"
                 style={{ background: "#22c55e15", color: "#22c55e", border: "1px solid #22c55e25" }}>
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e] mr-1 align-middle" />
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-ok mr-1 align-middle" />
                 {connectedTabs.length} connected
               </span>
             )}
           </div>
-          <div className="text-[11px] text-[var(--text4)] font-mono mt-0.5">
+          <div className="text-[11px] text-(--text4) font-mono mt-0.5">
             {storedCreds ? `${storedCreds.config.username}@${primaryTarget}:${storedCreds.config.port}` : primaryTarget}
           </div>
         </div>
 
         {/* View tabs */}
-        <div className="flex items-center gap-1 bg-[var(--bg2)] rounded-lg p-1 border border-[var(--border)]">
+        <div className="flex items-center gap-1 bg-(--bg2) rounded-lg p-1 border border-(--border)">
           {(["terminal", "files", "history", "metrics", "speedtest", "grafana", "api", "docker"] as ViewTab[]).map((t) => (
             <button key={t}
               onClick={() => setViewTab(t)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all capitalize ${
-                viewTab === t ? "bg-[var(--border)] text-[var(--text)]" : "text-[var(--text3)] hover:text-[var(--text2)]"
+                viewTab === t ? "bg-(--border) text-(--text)" : "text-(--text3) hover:text-(--text2)"
               }`}
             >
               {t}
               {/* files: badge for active transfers */}
               {t === "files" && activeTransfers > 0 && (
-                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#6366f1] text-[var(--text)]">
+                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-accent text-(--text)">
                   {activeTransfers}
                 </span>
               )}
@@ -626,16 +626,16 @@ export default function SSHSessionView({
               )}
               {/* history: audit badge */}
               {t === "history" && !newToolFlash && auditNewCount > 0 && (
-                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#ef4444] text-[var(--text)]">
+                <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-status-fail text-(--text)">
                   {auditNewCount > 99 ? "99+" : auditNewCount}
                 </span>
               )}
               {/* history: command count */}
               {t === "history" && !newToolFlash && auditNewCount === 0 && commands.length > 0 && (
-                <span className="text-[9px] text-[var(--text4)]">{commands.length}</span>
+                <span className="text-[9px] text-(--text4)">{commands.length}</span>
               )}
               {t === "grafana" && grafanaConfig.url && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-status-warn" />
               )}
             </button>
           ))}
@@ -655,7 +655,7 @@ export default function SSHSessionView({
             <>
               {/* Broadcast banner */}
               {broadcastMode && connectedTabs.length > 1 && (
-                <div className="flex items-center gap-2 px-4 py-1.5 flex-shrink-0 text-[11px] font-medium"
+                <div className="flex items-center gap-2 px-4 py-1.5 shrink-0 text-[11px] font-medium"
                   style={{ background: "#2e1f05", borderBottom: "1px solid #f59e0b30", color: "#f59e0b" }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <path d="M5 12s1.5-4 7-4 7 4 7 4M5 12s1.5 4 7 4 7-4 7-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
@@ -703,7 +703,7 @@ export default function SSHSessionView({
                     <>
                       {/* Drag divider */}
                       <div
-                        className="flex-shrink-0 cursor-col-resize transition-colors"
+                        className="shrink-0 cursor-col-resize transition-colors"
                         style={{ width: 3, background: "var(--border2)" }}
                         onMouseDown={handleDividerDrag}
                         onMouseEnter={e => (e.currentTarget.style.background = "#6366f1")}
@@ -715,13 +715,13 @@ export default function SSHSessionView({
 
                         {/* Right pane header */}
                         <div
-                          className="flex items-center gap-2 px-3 flex-shrink-0 border-b select-none"
+                          className="flex items-center gap-2 px-3 shrink-0 border-b select-none"
                           style={{ height: 30, background: "var(--bg1)", borderColor: "var(--border)", borderTop: `2px solid ${sc}` }}
                         >
                           {splitTab.icon ? (
                             <span className="text-[12px] leading-none">{splitTab.icon}</span>
                           ) : (
-                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0"
                               style={{ background: sc }} />
                           )}
                           <span className="text-[11px] font-medium truncate max-w-[120px]"
@@ -735,7 +735,7 @@ export default function SSHSessionView({
                           <button
                             onClick={handleMerge}
                             title="Merge — move terminal back to main panel (keeps session)"
-                            className="h-6 px-2 flex items-center gap-1 rounded text-[10px] font-medium transition-colors"
+                            className="h-6 px-2 flex items-center gap-1 rounded-sm text-[10px] font-medium transition-colors"
                             style={{ color: "var(--text3)" }}
                             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg3)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--text3)"; }}
@@ -753,7 +753,7 @@ export default function SSHSessionView({
                           <button
                             onClick={handleRemoveSplit}
                             title="Close terminal — disconnect and remove"
-                            className="h-6 w-6 flex items-center justify-center rounded text-[11px] transition-colors ml-0.5"
+                            className="h-6 w-6 flex items-center justify-center rounded-sm text-[11px] transition-colors ml-0.5"
                             style={{ color: "var(--text3)" }}
                             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#2e0d0d"; (e.currentTarget as HTMLElement).style.color = "#f87171"; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--text3)"; }}
@@ -830,18 +830,18 @@ export default function SSHSessionView({
         {viewTab === "files" && (
           <div className="absolute inset-0 flex flex-col">
             {/* Sub-tab strip */}
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)]" style={{ background: "var(--bg1)" }}>
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-(--border)" style={{ background: "var(--bg1)" }}>
               {(["browse", "transfers"] as const).map((s) => (
                 <button key={s}
                   onClick={() => setFilesSubTab(s)}
-                  className="px-3 py-1 rounded text-[11px] font-medium capitalize transition-all flex items-center gap-1.5"
+                  className="px-3 py-1 rounded-sm text-[11px] font-medium capitalize transition-all flex items-center gap-1.5"
                   style={filesSubTab === s
                     ? { background: "var(--border)", color: "var(--text)" }
                     : { color: "var(--text3)" }}
                 >
                   {s === "browse" ? "Browse" : "Transfers"}
                   {s === "transfers" && activeTransfers > 0 && (
-                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#6366f1] text-[var(--text)]">
+                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-accent text-(--text)">
                       {activeTransfers}
                     </span>
                   )}
@@ -868,9 +868,9 @@ export default function SSHSessionView({
                     />
                   </div>
                 ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text4)]">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--text4)">
                     <p className="text-sm">No active connection</p>
-                    <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
+                    <p className="text-[12px] text-(--text5)">Open a terminal and connect first</p>
                   </div>
                 )
               )}
@@ -892,24 +892,24 @@ export default function SSHSessionView({
         {viewTab === "history" && (
           <div className="absolute inset-0 flex flex-col">
             {/* Sub-tab strip */}
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)]" style={{ background: "var(--bg1)" }}>
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-(--border)" style={{ background: "var(--bg1)" }}>
               {(["commands", "audit"] as const).map((s) => (
                 <button key={s}
                   onClick={() => {
                     setHistorySubTab(s);
                     if (s === "audit") setAuditNewCount(0);
                   }}
-                  className="px-3 py-1 rounded text-[11px] font-medium capitalize transition-all flex items-center gap-1.5"
+                  className="px-3 py-1 rounded-sm text-[11px] font-medium capitalize transition-all flex items-center gap-1.5"
                   style={historySubTab === s
                     ? { background: "var(--border)", color: "var(--text)" }
                     : { color: "var(--text3)" }}
                 >
                   {s === "commands" ? "Commands" : "Audit log"}
                   {s === "commands" && commands.length > 0 && (
-                    <span className="text-[9px] text-[var(--text4)]">{commands.length}</span>
+                    <span className="text-[9px] text-(--text4)">{commands.length}</span>
                   )}
                   {s === "audit" && auditNewCount > 0 && (
-                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-[#ef4444] text-[var(--text)]">
+                    <span className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold bg-status-fail text-(--text)">
                       {auditNewCount > 99 ? "99+" : auditNewCount}
                     </span>
                   )}
@@ -953,9 +953,9 @@ export default function SSHSessionView({
             />
           </div>
         ) : viewTab === "metrics" ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text4)]">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--text4)">
             <p className="text-sm">No active connection</p>
-            <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
+            <p className="text-[12px] text-(--text5)">Open a terminal and connect first</p>
           </div>
         ) : null}
 
@@ -1089,8 +1089,8 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
         {reconnecting && (
           <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(8,8,15,0.45)" }}>
             <div className="flex items-center gap-3 rounded-xl px-5 py-3" style={{ background: "var(--bg2)", border: "1px solid var(--border)" }}>
-              <div className="w-4 h-4 rounded-full border-2 border-transparent border-t-[#6366f1] animate-spin" />
-              <span className="text-[13px] text-[var(--text2)]">{status === "checking" ? `Pinging ${ip}…` : "Reconnecting…"}</span>
+              <div className="w-4 h-4 rounded-full border-2 border-transparent border-t-accent animate-spin" />
+              <span className="text-[13px] text-(--text2)">{status === "checking" ? `Pinging ${ip}…` : "Reconnecting…"}</span>
             </div>
           </div>
         )}
@@ -1107,7 +1107,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
                 </svg>
               </div>
               <div className="text-center">
-                <p className="text-[var(--text)] font-semibold mb-1">Connection lost</p>
+                <p className="text-(--text) font-semibold mb-1">Connection lost</p>
                 <p className="text-[#6b3333] text-[13px]">{tab.target ?? ip} stopped responding — output is kept below</p>
               </div>
               <div className="flex gap-2 w-full">
@@ -1133,8 +1133,8 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="relative">
-          <div className="w-12 h-12 rounded-full border-2 border-[var(--border)] flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#6366f1] animate-spin" />
+          <div className="w-12 h-12 rounded-full border-2 border-(--border) flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" />
             {status === "checking" ? (
               /* Ping icon */
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -1153,8 +1153,8 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
           </div>
         </div>
         <div className="text-center">
-          <p className="text-[var(--text)] font-medium text-sm mb-1">{label}</p>
-          <p className="text-[var(--text4)] text-[12px]">{subLabel}</p>
+          <p className="text-(--text) font-medium text-sm mb-1">{label}</p>
+          <p className="text-(--text4) text-[12px]">{subLabel}</p>
         </div>
       </div>
     );
@@ -1172,9 +1172,9 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
           </svg>
         </div>
         <div className="text-center max-w-xs">
-          <p className="text-[var(--text)] font-semibold mb-1">Host unreachable</p>
+          <p className="text-(--text) font-semibold mb-1">Host unreachable</p>
           <p className="text-[#6b3333] text-[13px] mb-1">{tab.error}</p>
-          <p className="text-[var(--text4)] text-[12px]">
+          <p className="text-(--text4) text-[12px]">
             ICMP ping failed. The host may be offline, or a firewall is blocking ping.
           </p>
         </div>
@@ -1185,7 +1185,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
             Try again
           </button>
           <button onClick={onRetrySkipPing}
-            className="w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all border border-[var(--border)]">
+            className="w-full py-2.5 rounded-xl text-sm font-medium text-(--text3) hover:text-(--text) hover:bg-(--border) transition-all border border-(--border)">
             Try SSH anyway
           </button>
         </div>
@@ -1208,7 +1208,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
       // ── First connection: verify the fingerprint before trusting ─────────
       return (
         <div className="flex flex-col items-center justify-center h-full gap-5 px-8">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
             style={{ background: "#6366f110", border: "1px solid #6366f135" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <circle cx="9" cy="10" r="4" stroke="#818cf8" strokeWidth="1.5" />
@@ -1216,15 +1216,15 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
             </svg>
           </div>
           <div className="text-center max-w-md">
-            <p className="text-[var(--text)] font-semibold text-base mb-1">Verify this host</p>
-            <p className="text-[var(--text2)] text-[13px] mb-4">
-              This is the first connection to <span className="text-[var(--text)] font-mono">{issue.host}</span>.
+            <p className="text-(--text) font-semibold text-base mb-1">Verify this host</p>
+            <p className="text-(--text2) text-[13px] mb-4">
+              This is the first connection to <span className="text-(--text) font-mono">{issue.host}</span>.
               Check the fingerprint matches the server's before trusting it — on the server, run
-              <span className="font-mono text-[var(--text)]"> ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>
+              <span className="font-mono text-(--text)"> ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>
             </p>
             <div className="rounded-xl text-left px-4 py-3 mb-2" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-              <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-1">{issue.keyType || "Host key"} fingerprint</p>
-              <p className="font-mono text-[12px] text-[#818cf8] break-all select-all">{issue.currentSha || issue.current}</p>
+              <p className="text-[9px] uppercase tracking-wider text-(--text3) mb-1">{issue.keyType || "Host key"} fingerprint</p>
+              <p className="font-mono text-[12px] text-accent-hover break-all select-all">{issue.currentSha || issue.current}</p>
             </div>
           </div>
           <div className="flex flex-col gap-2 w-full max-w-xs">
@@ -1234,7 +1234,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
               Trust &amp; Connect
             </button>
             <button onClick={onRetry}
-              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-[var(--text3)] hover:text-[var(--text)]"
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-(--text3) hover:text-(--text)"
               style={{ border: "1px solid var(--border)" }}>
               Cancel
             </button>
@@ -1247,11 +1247,11 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 px-8">
           <div className="text-center max-w-md">
-            <p className="text-[var(--text)] font-semibold mb-1">Host key store unavailable</p>
-            <p className="text-[var(--text2)] text-[13px] mb-2">
+            <p className="text-(--text) font-semibold mb-1">Host key store unavailable</p>
+            <p className="text-(--text2) text-[13px] mb-2">
               Pingnet couldn't read its trusted host keys, so it refused to connect rather than trust an unverified server.
             </p>
-            <p className="text-[#f59e0b] text-[12px] font-mono break-all">{issue.detail}</p>
+            <p className="text-status-warn text-[12px] font-mono break-all">{issue.detail}</p>
           </div>
           <button onClick={onRetry}
             className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all"
@@ -1267,7 +1267,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
       // ── Host key changed warning ──────────────────────────────────────────
       return (
         <div className="flex flex-col items-center justify-center h-full gap-5 px-8">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
             style={{ background: "#f59e0b10", border: "1px solid #f59e0b35" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path d="M12 2L2 20h20L12 2z" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" />
@@ -1276,29 +1276,29 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
           </div>
 
           <div className="text-center max-w-sm">
-            <p className="text-[var(--text)] font-semibold text-base mb-1">Host key has changed</p>
-            <p className="text-[var(--text2)] text-[13px] mb-4">
-              The SSH fingerprint for <span className="text-[var(--text)] font-mono">{hkc.host}</span> no longer matches what was stored. This could mean the server was reinstalled — or it could be a man-in-the-middle attack.
+            <p className="text-(--text) font-semibold text-base mb-1">Host key has changed</p>
+            <p className="text-(--text2) text-[13px] mb-4">
+              The SSH fingerprint for <span className="text-(--text) font-mono">{hkc.host}</span> no longer matches what was stored. This could mean the server was reinstalled — or it could be a man-in-the-middle attack.
             </p>
 
             <div className="rounded-xl overflow-hidden text-left mb-4"
               style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-2.5 border-b border-[var(--border)]">
-                <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--text3)]">Fingerprint comparison</p>
+              <div className="px-4 py-2.5 border-b border-(--border)">
+                <p className="text-[10px] tracking-[0.15em] uppercase text-(--text3)">Fingerprint comparison</p>
               </div>
               <div className="px-4 py-3 space-y-2">
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-0.5">Stored (trusted)</p>
-                  <p className="font-mono text-[12px] text-[#22c55e] break-all">{hkc.storedSha || hkc.stored}</p>
+                  <p className="text-[9px] uppercase tracking-wider text-(--text3) mb-0.5">Stored (trusted)</p>
+                  <p className="font-mono text-[12px] text-status-ok break-all">{hkc.storedSha || hkc.stored}</p>
                 </div>
-                <div className="border-t border-[var(--border)] pt-2">
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text3)] mb-0.5">Current (server)</p>
-                  <p className="font-mono text-[12px] text-[#f59e0b] break-all">{hkc.currentSha || hkc.current}</p>
+                <div className="border-t border-(--border) pt-2">
+                  <p className="text-[9px] uppercase tracking-wider text-(--text3) mb-0.5">Current (server)</p>
+                  <p className="font-mono text-[12px] text-status-warn break-all">{hkc.currentSha || hkc.current}</p>
                 </div>
               </div>
             </div>
 
-            <p className="text-[11px] text-[var(--text3)]">
+            <p className="text-[11px] text-(--text3)">
               Only click "Trust New Key" if you are certain the server was legitimately reinstalled or the key was rotated.
             </p>
           </div>
@@ -1311,7 +1311,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
               Trust New Key &amp; Reconnect
             </button>
             <button onClick={onRetry}
-              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-[var(--text3)] hover:text-[var(--text)]"
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all text-(--text3) hover:text-(--text)"
               style={{ border: "1px solid var(--border)" }}>
               Abort — Keep Stored Key
             </button>
@@ -1333,8 +1333,8 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
           </svg>
         </div>
         <div className="text-center max-w-xs">
-          <p className="text-[var(--text)] font-semibold mb-1">SSH failed</p>
-          <p className="text-[#6b3333] text-[13px] font-mono break-words">{tab.error}</p>
+          <p className="text-(--text) font-semibold mb-1">SSH failed</p>
+          <p className="text-[#6b3333] text-[13px] font-mono wrap-break-word">{tab.error}</p>
         </div>
         <button onClick={onRetry}
           className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all"
@@ -1347,7 +1347,7 @@ function TabContent({ tab, ip, port, themeId, suggestions, onCommand, onRetry, o
 
   // Disconnected (never tried)
   return (
-    <div className="flex items-center justify-center h-full text-[var(--text5)] text-sm">
+    <div className="flex items-center justify-center h-full text-(--text5) text-sm">
       Not connected
     </div>
   );
@@ -1408,7 +1408,7 @@ function TabBar({
   const ctxTab = ctxMenu ? tabs.find(t => t.id === ctxMenu.tabId) : null;
 
   return (
-    <div className="flex items-center border-t border-[var(--border)] flex-shrink-0 overflow-x-auto relative"
+    <div className="flex items-center border-t border-(--border) shrink-0 overflow-x-auto relative"
       style={{ background: "var(--bg1)", minHeight: 36 }}>
 
       {/* ── Tab list ── */}
@@ -1422,17 +1422,17 @@ function TabBar({
           <div key={tab.id}
             onClick={() => onActivate(tab.id)}
             onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ tabId: tab.id, x: e.clientX, y: e.clientY }); }}
-            className={`group flex items-center gap-1.5 px-3 h-9 border-r border-[var(--border)] cursor-pointer flex-shrink-0 select-none transition-colors ${
-              isActive ? "bg-[var(--bg2)]" : "hover:bg-[var(--bg2)]"
+            className={`group flex items-center gap-1.5 px-3 h-9 border-r border-(--border) cursor-pointer shrink-0 select-none transition-colors ${
+              isActive ? "bg-(--bg2)" : "hover:bg-(--bg2)"
             }`}
             style={{ borderTop: (isActive || isSplit) ? `2px solid ${sc}` : "2px solid transparent",
                      opacity: isSplit && !isActive ? 0.85 : 1 }}
           >
             {/* Icon (emoji) or status dot */}
             {tab.icon ? (
-              <span className="text-[12px] leading-none flex-shrink-0">{tab.icon}</span>
+              <span className="text-[12px] leading-none shrink-0">{tab.icon}</span>
             ) : (
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isTransient(tab.status) ? "ping-pulsing" : ""}`}
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isTransient(tab.status) ? "ping-pulsing" : ""}`}
                 style={{ background: sc }} />
             )}
 
@@ -1440,7 +1440,7 @@ function TabBar({
             {isEditing ? (
               <input
                 ref={renameInputRef}
-                className="w-24 bg-transparent text-[var(--text)] text-[12px] font-medium outline-none border-b border-[#6366f1]"
+                className="w-24 bg-transparent text-(--text) text-[12px] font-medium outline-hidden border-b border-accent"
                 value={editingName}
                 onChange={(e) => onEditChange(e.target.value)}
                 onKeyDown={(e) => {
@@ -1453,7 +1453,7 @@ function TabBar({
             ) : (
               <span
                 className={`text-[12px] font-medium max-w-[120px] truncate ${
-                  isActive ? "text-[var(--text)]" : "text-[var(--text3)] group-hover:text-[var(--text2)]"
+                  isActive ? "text-(--text)" : "text-(--text3) group-hover:text-(--text2)"
                 }`}
                 onDoubleClick={(e) => { e.stopPropagation(); onStartRename(tab); }}
                 title={tab.name}
@@ -1464,7 +1464,7 @@ function TabBar({
 
             {/* "split" badge on the right-pane tab */}
             {isSplit && (
-              <span className="text-[9px] px-1 rounded flex-shrink-0"
+              <span className="text-[9px] px-1 rounded-sm shrink-0"
                 style={{ background: "#6366f115", color: "#818cf8", border: "1px solid #6366f125" }}>
                 split
               </span>
@@ -1473,10 +1473,10 @@ function TabBar({
             {/* Close */}
             <button
               onClick={(e) => onClose(tab.id, e)}
-              className={`flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] transition-all ${
+              className={`shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] transition-all ${
                 isActive
-                  ? "text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] opacity-100"
-                  : "text-[var(--text5)] hover:text-[var(--text3)] opacity-0 group-hover:opacity-100"
+                  ? "text-(--text3) hover:text-(--text) hover:bg-(--border) opacity-100"
+                  : "text-(--text5) hover:text-(--text3) opacity-0 group-hover:opacity-100"
               }`}
             >✕</button>
           </div>
@@ -1485,7 +1485,7 @@ function TabBar({
 
       {/* ── New tab ── */}
       <button onClick={onAdd}
-        className="h-9 px-3 flex items-center text-[var(--text4)] hover:text-[#6366f1] hover:bg-[var(--bg2)] transition-all flex-shrink-0"
+        className="h-9 px-3 flex items-center text-(--text4) hover:text-accent hover:bg-(--bg2) transition-all shrink-0"
         title="New terminal (new SSH session)">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -1495,12 +1495,12 @@ function TabBar({
       <div className="flex-1" />
 
       {/* ── Toolbar actions ── */}
-      <div className="flex items-center gap-0.5 px-2 flex-shrink-0">
+      <div className="flex items-center gap-0.5 px-2 shrink-0">
 
         {/* Terminal theme */}
         <div className="flex items-center gap-1.5 mr-1">
           <span
-            className="w-3 h-3 rounded-sm flex-shrink-0 border border-white/10"
+            className="w-3 h-3 rounded-xs shrink-0 border border-white/10"
             style={{ background: activeTheme.xterm.background }}
             title="Terminal theme preview"
           />
@@ -1508,7 +1508,7 @@ function TabBar({
             value={terminalThemeId}
             onChange={(e) => onTerminalThemeChange(e.target.value)}
             title="Terminal color theme"
-            className="h-7 max-w-[120px] rounded px-1.5 text-[11px] font-medium bg-[var(--bg2)] border border-[var(--border)] text-[var(--text2)] focus:outline-none focus:border-[#6366f1] cursor-pointer"
+            className="h-7 max-w-[120px] rounded-sm px-1.5 text-[11px] font-medium bg-(--bg2) border border-(--border) text-(--text2) focus:outline-hidden focus:border-accent cursor-pointer"
           >
             {TERMINAL_THEMES.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
@@ -1520,7 +1520,7 @@ function TabBar({
         <button
           onClick={onToggleBroadcast}
           title={broadcastMode ? "Broadcast ON — click to turn off" : "Broadcast input to all terminals"}
-          className="h-7 px-2 flex items-center gap-1 rounded text-[11px] font-medium transition-all"
+          className="h-7 px-2 flex items-center gap-1 rounded-sm text-[11px] font-medium transition-all"
           style={broadcastMode
             ? { background: "#2e1f05", color: "#f59e0b", border: "1px solid #f59e0b30" }
             : { color: "var(--text4)", background: "transparent" }}
@@ -1536,7 +1536,7 @@ function TabBar({
         <button
           onClick={onSplit}
           title={splitTabId ? "Open another split terminal" : "Split terminal — opens new session side-by-side"}
-          className="h-7 px-2 flex items-center gap-1 rounded text-[11px] font-medium transition-colors"
+          className="h-7 px-2 flex items-center gap-1 rounded-sm text-[11px] font-medium transition-colors"
           style={splitTabId
             ? { color: "#818cf8", background: "#6366f110", border: "1px solid #6366f120" }
             : { color: "var(--text3)" }}
@@ -1565,7 +1565,7 @@ function TabBar({
         >
           {/* Colour swatches */}
           <div className="px-3 pb-1.5">
-            <p className="text-[9px] tracking-widest uppercase text-[var(--text3)] mb-2">Colour</p>
+            <p className="text-[9px] tracking-widest uppercase text-(--text3) mb-2">Colour</p>
             <div className="flex gap-1.5 flex-wrap">
               {TAB_COLORS.map(c => (
                 <button key={c}
@@ -1586,8 +1586,8 @@ function TabBar({
           </div>
 
           {/* Icon swatches */}
-          <div className="px-3 pt-1 pb-1.5 border-t border-[var(--border)]">
-            <p className="text-[9px] tracking-widest uppercase text-[var(--text3)] mb-2 mt-1.5">Icon</p>
+          <div className="px-3 pt-1 pb-1.5 border-t border-(--border)">
+            <p className="text-[9px] tracking-widest uppercase text-(--text3) mb-2 mt-1.5">Icon</p>
             <div className="flex gap-1 flex-wrap">
               {TAB_ICONS.map(ic => (
                 <button key={ic}
@@ -1602,15 +1602,15 @@ function TabBar({
           </div>
 
           {/* Actions */}
-          <div className="pt-1 border-t border-[var(--border)]">
+          <div className="pt-1 border-t border-(--border)">
             <button
               onClick={() => { onStartRename(ctxTab); setCtxMenu(null); }}
-              className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--text2)] hover:bg-[var(--bg3)] hover:text-[var(--text)] transition-colors"
+              className="w-full text-left px-3 py-1.5 text-[12px] text-(--text2) hover:bg-(--bg3) hover:text-(--text) transition-colors"
             >Rename</button>
             {ctxTab.id !== splitTabId && (
               <button
                 onClick={() => { onSplitActivate(ctxTab.id); setCtxMenu(null); }}
-                className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--text2)] hover:bg-[var(--bg3)] hover:text-[var(--text)] transition-colors"
+                className="w-full text-left px-3 py-1.5 text-[12px] text-(--text2) hover:bg-(--bg3) hover:text-(--text) transition-colors"
               >{splitTabId ? "Replace split pane" : "Move to split pane"}</button>
             )}
             <button
@@ -1638,8 +1638,8 @@ function EmptyTerminalState({ hostname, onOpen }: { hostname: string; onOpen: ()
         </svg>
       </div>
       <div className="text-center">
-        <p className="text-[var(--text)] font-semibold mb-1">No terminals open</p>
-        <p className="text-[var(--text3)] text-sm">Start an SSH session to {hostname}</p>
+        <p className="text-(--text) font-semibold mb-1">No terminals open</p>
+        <p className="text-(--text3) text-sm">Start an SSH session to {hostname}</p>
       </div>
       <button onClick={onOpen}
         className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
@@ -1684,20 +1684,20 @@ function GrafanaPanel({
     onToggleSettings();
   };
 
-  const inputCls = "w-full bg-[var(--bg1)] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[var(--text)] font-mono placeholder-[var(--text4)] outline-none focus:border-[#00c8a860]";
-  const labelCls = "block text-[10px] tracking-[0.12em] text-[var(--text3)] uppercase mb-1.5";
+  const inputCls = "w-full bg-(--bg1) border border-(--border) rounded-lg px-3 py-2 text-[13px] text-(--text) font-mono placeholder-(--text4) outline-hidden focus:border-[#00c8a860]";
+  const labelCls = "block text-[10px] tracking-[0.12em] text-(--text3) uppercase mb-1.5";
 
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border)] flex-shrink-0"
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-(--border) shrink-0"
         style={{ background: "var(--bg1)" }}>
         {/* Grafana "G" badge */}
-        <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+        <div className="w-5 h-5 rounded-sm flex items-center justify-center shrink-0"
           style={{ background: "#f59e0b20", border: "1px solid #f59e0b30" }}>
-          <span className="text-[#f59e0b] text-[9px] font-bold">G</span>
+          <span className="text-status-warn text-[9px] font-bold">G</span>
         </div>
-        <span className="text-[11px] text-[var(--text2)] font-medium flex-1 truncate">
+        <span className="text-[11px] text-(--text2) font-medium flex-1 truncate">
           {config.url || "No dashboard configured"}
         </span>
         {config.url && (
@@ -1707,21 +1707,21 @@ function GrafanaPanel({
               const el = document.getElementById("grafana-iframe") as HTMLIFrameElement | null;
               if (el) { const s = el.src; el.src = ""; el.src = s; }
             }}
-            className="text-[10px] text-[var(--text3)] hover:text-[var(--text)] px-2 py-1 rounded transition-colors"
+            className="text-[10px] text-(--text3) hover:text-(--text) px-2 py-1 rounded-sm transition-colors"
             title="Reload">
             ↻
           </button>
         )}
         <button
           onClick={onToggleSettings}
-          className={`text-[10px] px-2.5 py-1 rounded transition-all ${showSettings ? "text-[var(--text)] bg-[var(--border)]" : "text-[var(--text3)] hover:text-[var(--text)]"}`}>
+          className={`text-[10px] px-2.5 py-1 rounded-sm transition-all ${showSettings ? "text-(--text) bg-(--border)" : "text-(--text3) hover:text-(--text)"}`}>
           {showSettings ? "✕ Close" : "⚙ Configure"}
         </button>
       </div>
 
       {/* Settings drawer */}
       {showSettings && (
-        <div className="flex-shrink-0 border-b border-[var(--border)] px-5 py-4"
+        <div className="shrink-0 border-b border-(--border) px-5 py-4"
           style={{ background: "var(--bg2)" }}>
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="col-span-2">
@@ -1760,11 +1760,11 @@ function GrafanaPanel({
                     style={{ transform: draft.kiosk ? "translateX(17px)" : "translateX(2px)" }} />
                 </div>
               </span>
-              <span className="text-[11px] text-[var(--text2)]">Kiosk mode (hides Grafana navigation)</span>
+              <span className="text-[11px] text-(--text2)">Kiosk mode (hides Grafana navigation)</span>
             </label>
             <div className="flex gap-2">
               <button onClick={onToggleSettings}
-                className="px-3 py-1.5 rounded-lg text-[11px] text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+                className="px-3 py-1.5 rounded-lg text-[11px] text-(--text3) hover:text-(--text) transition-colors"
                 style={{ border: "1px solid var(--border)" }}>
                 Cancel
               </button>
@@ -1784,11 +1784,11 @@ function GrafanaPanel({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-8">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
               style={{ background: "#f59e0b10", border: "1px solid #f59e0b20" }}>
-              <span className="text-[#f59e0b] text-xl font-bold">G</span>
+              <span className="text-status-warn text-xl font-bold">G</span>
             </div>
             <div>
-              <p className="text-[var(--text)] font-semibold mb-1">No Grafana dashboard configured</p>
-              <p className="text-[var(--text3)] text-sm max-w-xs">
+              <p className="text-(--text) font-semibold mb-1">No Grafana dashboard configured</p>
+              <p className="text-(--text3) text-sm max-w-xs">
                 Paste the URL of any Grafana dashboard to embed it here. Works with local instances on the same network.
               </p>
             </div>
@@ -1846,16 +1846,16 @@ function AuditPanel({
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] flex-shrink-0"
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--border) shrink-0"
         style={{ background: "var(--bg1)" }}>
         <input
           type="text"
           placeholder="Filter commands…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] transition-colors font-mono"
+          className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent transition-colors font-mono"
         />
-        <span className="text-[11px] text-[var(--text4)]">{entries.length} entries</span>
+        <span className="text-[11px] text-(--text4)">{entries.length} entries</span>
         <button
           onClick={exportLog}
           disabled={entries.length === 0}
@@ -1875,7 +1875,7 @@ function AuditPanel({
             </button>
             <button
               onClick={() => setConfirmClear(false)}
-              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[var(--text3)] hover:text-[var(--text)] transition-all border border-[var(--border)]"
+              className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-(--text3) hover:text-(--text) transition-all border border-(--border)"
             >
               Cancel
             </button>
@@ -1884,7 +1884,7 @@ function AuditPanel({
           <button
             onClick={() => setConfirmClear(true)}
             disabled={entries.length === 0}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-[var(--text3)] hover:text-[#ef4444] transition-all disabled:opacity-30 border border-[var(--border)]"
+            className="text-[11px] font-medium px-3 py-1.5 rounded-lg text-(--text3) hover:text-status-fail transition-all disabled:opacity-30 border border-(--border)"
           >
             Clear
           </button>
@@ -1893,39 +1893,39 @@ function AuditPanel({
 
       {/* Log entries */}
       {entries.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text4)]">
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-(--text4)">
           <p className="text-sm">No commands logged yet</p>
-          <p className="text-[12px] text-[var(--text5)]">Every command you run in the terminal is recorded here</p>
+          <p className="text-[12px] text-(--text5)">Every command you run in the terminal is recorded here</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto font-mono text-[12px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-              <tr className="text-left border-b border-[var(--border)]">
-                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)] w-44">Time</th>
-                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)] w-28">User</th>
-                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">Command</th>
+              <tr className="text-left border-b border-(--border)">
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-(--text4) w-44">Time</th>
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-(--text4) w-28">User</th>
+                <th className="px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-(--text4)">Command</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((e, i) => (
                 <tr
                   key={i}
-                  className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors"
+                  className="border-b border-(--bg2) hover:bg-(--bg2) transition-colors"
                 >
-                  <td className="px-4 py-2 text-[var(--text4)] whitespace-nowrap">
+                  <td className="px-4 py-2 text-(--text4) whitespace-nowrap">
                     {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    <span className="ml-1.5 text-[10px] text-[var(--text5)]">
+                    <span className="ml-1.5 text-[10px] text-(--text5)">
                       {new Date(e.ts).toLocaleDateString([], { month: "short", day: "numeric" })}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-[var(--text3)] whitespace-nowrap">{e.username}</td>
-                  <td className="px-4 py-2 text-[var(--text2)] break-all">{e.command}</td>
+                  <td className="px-4 py-2 text-(--text3) whitespace-nowrap">{e.username}</td>
+                  <td className="px-4 py-2 text-(--text2) break-all">{e.command}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-[var(--text4)]">No commands match "{filter}"</td>
+                  <td colSpan={3} className="px-4 py-8 text-center text-(--text4)">No commands match "{filter}"</td>
                 </tr>
               )}
             </tbody>

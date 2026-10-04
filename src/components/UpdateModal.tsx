@@ -67,12 +67,12 @@ export default function UpdateModal({ update, onClose }: Props) {
         }}
       >
         {/* Header */}
-        <div className="px-6 pt-7 pb-5 text-center border-b border-[var(--border)]">
-          <p className="text-[10px] tracking-[0.2em] text-[var(--text3)] uppercase mb-2">Software Update</p>
+        <div className="px-6 pt-7 pb-5 text-center border-b border-(--border)">
+          <p className="text-[10px] tracking-[0.2em] text-(--text3) uppercase mb-2">Software Update</p>
           {/* Version comparison — shows exactly what is being compared */}
           {showsUpgrade && ver ? (
             <div className="flex items-center justify-center gap-2 font-mono text-[11px]">
-              <span className="text-[var(--text4)]">{cur || "—"}</span>
+              <span className="text-(--text4)">{cur || "—"}</span>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-40">
                 <path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -80,9 +80,9 @@ export default function UpdateModal({ update, onClose }: Props) {
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2 font-mono text-[11px]">
-              <span className="text-[var(--text3)]">v{cur || "…"}</span>
+              <span className="text-(--text3)">v{cur || "…"}</span>
               {mode === "up-to-date" && (
-                <span className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded tracking-wider uppercase"
+                <span className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded-sm tracking-wider uppercase"
                   style={{ color: "#22c55e", background: "#22c55e18" }}>
                   Latest
                 </span>
@@ -130,13 +130,13 @@ export default function UpdateModal({ update, onClose }: Props) {
 
           {update.installed ? (
             <>
-              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">Installed — restarting…</h2>
-              <p className="text-[var(--text3)] text-[13px] text-center">Pingnet {ver} will open in a moment.</p>
+              <h2 className="text-(--text) text-lg font-semibold mb-1">Installed — restarting…</h2>
+              <p className="text-(--text3) text-[13px] text-center">Pingnet {ver} will open in a moment.</p>
             </>
           ) : update.downloading ? (
             <>
-              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">Downloading update…</h2>
-              <p className="text-[var(--text3)] text-[13px] text-center">
+              <h2 className="text-(--text) text-lg font-semibold mb-1">Downloading update…</h2>
+              <p className="text-(--text3) text-[13px] text-center">
                 {pct !== null
                   ? `${pct}%${update.progress?.total ? ` · ${formatBytes(update.progress.downloaded)} / ${formatBytes(update.progress.total)}` : ""}`
                   : update.progress ? formatBytes(update.progress.downloaded) : "Starting…"}
@@ -144,27 +144,27 @@ export default function UpdateModal({ update, onClose }: Props) {
             </>
           ) : mode === "available" ? (
             <>
-              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">A new version is available.</h2>
-              <p className="text-[var(--text3)] text-[13px] text-center">
+              <h2 className="text-(--text) text-lg font-semibold mb-1">A new version is available.</h2>
+              <p className="text-(--text3) text-[13px] text-center">
                 Pingnet {ver} will download and install automatically.
               </p>
             </>
           ) : mode === "checking" ? (
             <>
-              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">Checking for updates…</h2>
-              <p className="text-[var(--text3)] text-[13px] text-center">Contacting the release server.</p>
+              <h2 className="text-(--text) text-lg font-semibold mb-1">Checking for updates…</h2>
+              <p className="text-(--text3) text-[13px] text-center">Contacting the release server.</p>
             </>
           ) : mode === "check-failed" ? (
             <>
-              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">Couldn't check for updates.</h2>
-              <p className="text-[var(--text3)] text-[13px] text-center">
+              <h2 className="text-(--text) text-lg font-semibold mb-1">Couldn't check for updates.</h2>
+              <p className="text-(--text3) text-[13px] text-center">
                 Check your connection and try again.
               </p>
             </>
           ) : (
             <>
-              <h2 className="text-[var(--text)] text-lg font-semibold mb-1">You're up to date.</h2>
-              <p className="text-[var(--text3)] text-[13px] text-center">
+              <h2 className="text-(--text) text-lg font-semibold mb-1">You're up to date.</h2>
+              <p className="text-(--text3) text-[13px] text-center">
                 Pingnet {cur} is the latest version.
               </p>
             </>
@@ -191,25 +191,25 @@ export default function UpdateModal({ update, onClose }: Props) {
         {/* Error */}
         {mode === "check-failed" && update.checkError && (
           <div className="mx-4 mb-4 rounded-xl px-4 py-2.5" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <p className="text-[10px] font-mono text-[var(--text4)] break-all">{update.checkError}</p>
+            <p className="text-[10px] font-mono text-(--text4) break-all">{update.checkError}</p>
           </div>
         )}
 
         {update.error && (
           <div className="mx-4 mb-4 rounded-xl px-4 py-3" style={{ background: "#ef444412", border: "1px solid #ef444440" }}>
-            <p className="text-[12px] text-[#ef4444]">{update.error}</p>
+            <p className="text-[12px] text-status-fail">{update.error}</p>
           </div>
         )}
 
         {/* Release notes */}
         {mode === "available" && hasNotes && (
           <div className="mx-4 mb-4 rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
-              <span className="text-[10px] tracking-[0.15em] text-[var(--text3)] uppercase">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border)">
+              <span className="text-[10px] tracking-[0.15em] text-(--text3) uppercase">
                 What's new in {ver}
               </span>
               <span
-                className="text-[9px] font-bold px-2 py-0.5 rounded tracking-wider uppercase"
+                className="text-[9px] font-bold px-2 py-0.5 rounded-sm tracking-wider uppercase"
                 style={{ color: BUMP_COLOR[bump], background: `${BUMP_COLOR[bump]}18` }}
               >
                 {BUMP_LABEL[bump]}
@@ -218,11 +218,11 @@ export default function UpdateModal({ update, onClose }: Props) {
             <div className="px-4 py-3 space-y-3">
               {update.releaseNotes.map((n, i) => (
                 <div key={i} className="flex gap-2.5">
-                  <span className="mt-1 w-1 h-1 rounded-full bg-[#00c8a8] flex-shrink-0" style={{ marginTop: "6px" }} />
+                  <span className="mt-1 w-1 h-1 rounded-full bg-[#00c8a8] shrink-0" style={{ marginTop: "6px" }} />
                   <div>
-                    <p className="text-[12px] text-[var(--text)] font-medium leading-snug">{n.title}</p>
+                    <p className="text-[12px] text-(--text) font-medium leading-snug">{n.title}</p>
                     {n.detail && (
-                      <p className="text-[11px] text-[var(--text3)] leading-snug mt-0.5">{n.detail}</p>
+                      <p className="text-[11px] text-(--text3) leading-snug mt-0.5">{n.detail}</p>
                     )}
                   </div>
                 </div>
@@ -235,7 +235,7 @@ export default function UpdateModal({ update, onClose }: Props) {
         {!busy && (mode === "available" ? !hasNotes && !update.error : mode === "up-to-date") && (
           <button
             onClick={() => open(update.changelogUrl)}
-            className="block w-[calc(100%-2rem)] mx-4 mb-4 rounded-xl px-4 py-3 text-center text-[11px] text-[var(--text4)] hover:text-[#00c8a8] transition-colors"
+            className="block w-[calc(100%-2rem)] mx-4 mb-4 rounded-xl px-4 py-3 text-center text-[11px] text-(--text4) hover:text-[#00c8a8] transition-colors"
             style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}
           >
             See the full changelog on GitHub →
@@ -248,7 +248,7 @@ export default function UpdateModal({ update, onClose }: Props) {
             <button
               onClick={() => update.checkNow()}
               disabled={mode === "checking"}
-              className="flex-1 py-3 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] transition-colors disabled:opacity-50"
+              className="flex-1 py-3 rounded-xl text-sm font-medium text-(--text3) hover:text-(--text) transition-colors disabled:opacity-50"
               style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}
             >
               {mode === "checking" ? "Checking…" : "Check Again"}
@@ -282,7 +282,7 @@ export default function UpdateModal({ update, onClose }: Props) {
             </button>
             <button
               onClick={onClose}
-              className="flex-1 py-3 rounded-xl text-sm font-medium text-[var(--text3)] hover:text-[var(--text)] transition-colors"
+              className="flex-1 py-3 rounded-xl text-sm font-medium text-(--text3) hover:text-(--text) transition-colors"
               style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}
             >
               Remind Me Later
@@ -292,7 +292,7 @@ export default function UpdateModal({ update, onClose }: Props) {
         {!busy && mode === "available" && !update.skipped && (
           <button
             onClick={() => { update.skipVersion(); onClose(); }}
-            className="w-full text-center text-[10px] text-[var(--text5)] hover:text-[var(--text3)] -mt-1 pb-3 transition-colors"
+            className="w-full text-center text-[10px] text-(--text5) hover:text-(--text3) -mt-1 pb-3 transition-colors"
           >
             Skip this version
           </button>
@@ -302,7 +302,7 @@ export default function UpdateModal({ update, onClose }: Props) {
         {update.error && (
           <button
             onClick={() => open(update.releaseUrl)}
-            className="w-full text-center text-[11px] text-[var(--text4)] hover:text-[var(--text3)] pb-4 transition-colors"
+            className="w-full text-center text-[11px] text-(--text4) hover:text-(--text3) pb-4 transition-colors"
           >
             Or download it manually from GitHub →
           </button>
@@ -310,7 +310,7 @@ export default function UpdateModal({ update, onClose }: Props) {
 
         {/* Footer */}
         {!update.error && showsUpgrade && (
-          <p className="text-center text-[10px] text-[var(--text5)] pb-4 px-4">
+          <p className="text-center text-[10px] text-(--text5) pb-4 px-4">
             {busy
               ? "Please keep Pingnet open until this finishes."
               : "Downloads, verifies, and installs in place — Pingnet will restart automatically."}

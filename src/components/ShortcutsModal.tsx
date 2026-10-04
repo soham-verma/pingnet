@@ -82,7 +82,7 @@ function KeyChip({ k }: { k: string }) {
   const isSymbol = ["⌘", "⌥", "Ctrl", "Shift", "Alt", "↑", "↓", "←", "→", "⌫", "Enter", "Esc", "Tab"].includes(k);
   return (
     <kbd
-      className="inline-flex items-center justify-center rounded-md text-[11px] font-medium px-2 py-0.5 min-w-[24px] leading-5 flex-shrink-0"
+      className="inline-flex items-center justify-center rounded-md text-[11px] font-medium px-2 py-0.5 min-w-[24px] leading-5 shrink-0"
       style={{
         background: "var(--bg2)",
         border: "1px solid var(--border)",
@@ -101,7 +101,7 @@ function Combo({ keys }: { keys: string[] }) {
     <div className="flex items-center gap-1">
       {keys.map((k, i) => (
         <span key={i} className="flex items-center gap-1">
-          {i > 0 && <span className="text-[9px] text-[var(--text5)]">+</span>}
+          {i > 0 && <span className="text-[9px] text-(--text5)">+</span>}
           <KeyChip k={k} />
         </span>
       ))}
@@ -161,12 +161,12 @@ export default function ShortcutsModal({ onClose }: Props) {
         }}
       >
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 flex-shrink-0">
+        <div className="px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[var(--text)] font-semibold text-base">Keyboard Shortcuts</h2>
+            <h2 className="text-(--text) font-semibold text-base">Keyboard Shortcuts</h2>
             <button
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all text-base"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-(--text3) hover:text-(--text) hover:bg-(--border) transition-all text-base"
             >
               ×
             </button>
@@ -174,10 +174,10 @@ export default function ShortcutsModal({ onClose }: Props) {
 
           {/* Search */}
           <div
-            className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-[var(--border)] focus-within:border-[#6366f1] transition-colors"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-(--border) focus-within:border-accent transition-colors"
             style={{ background: "var(--bg)" }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0 text-[var(--text4)]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-(--text4)">
               <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
               <path d="M10 10l2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
@@ -187,10 +187,10 @@ export default function ShortcutsModal({ onClose }: Props) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search shortcuts…"
-              className="flex-1 bg-transparent text-sm text-[var(--text)] placeholder-[var(--text4)] outline-none"
+              className="flex-1 bg-transparent text-sm text-(--text) placeholder-(--text4) outline-hidden"
             />
             {query && (
-              <button onClick={() => setQuery("")} className="text-[var(--text4)] hover:text-[var(--text)] transition-colors text-sm">×</button>
+              <button onClick={() => setQuery("")} className="text-(--text4) hover:text-(--text) transition-colors text-sm">×</button>
             )}
           </div>
 
@@ -201,7 +201,7 @@ export default function ShortcutsModal({ onClose }: Props) {
                 <button
                   key={cat.id}
                   onClick={() => setActiveCategory(cat.id)}
-                  className="flex-shrink-0 px-4 py-2 rounded-lg text-[12px] font-medium transition-all"
+                  className="shrink-0 px-4 py-2 rounded-lg text-[12px] font-medium transition-all"
                   style={
                     activeCategory === cat.id
                       ? { background: "#6366f1", color: "#fff" }
@@ -222,7 +222,7 @@ export default function ShortcutsModal({ onClose }: Props) {
             filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="text-3xl mb-3 opacity-30">⌨</div>
-                <p className="text-[var(--text3)] text-sm">No shortcuts match "<span className="text-[var(--text)]">{query}</span>"</p>
+                <p className="text-(--text3) text-sm">No shortcuts match "<span className="text-(--text)">{query}</span>"</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -234,7 +234,7 @@ export default function ShortcutsModal({ onClose }: Props) {
           ) : (
             /* Category view */
             <div>
-              <p className="text-[11px] tracking-widest text-[#6366f1] uppercase font-medium mb-3 px-2 pt-2">
+              <p className="text-[11px] tracking-widest text-accent uppercase font-medium mb-3 px-2 pt-2">
                 {currentCategory.label}
               </p>
               <div className="space-y-1">
@@ -247,15 +247,15 @@ export default function ShortcutsModal({ onClose }: Props) {
         </div>
 
         {/* Footer hint */}
-        <div className="flex items-center gap-3 px-6 py-3 border-t border-[var(--border)] flex-shrink-0">
+        <div className="flex items-center gap-3 px-6 py-3 border-t border-(--border) shrink-0">
           <div className="flex items-center gap-1.5">
             <KeyChip k="?" />
-            <span className="text-[11px] text-[var(--text4)]">to toggle this panel anywhere</span>
+            <span className="text-[11px] text-(--text4)">to toggle this panel anywhere</span>
           </div>
           <div className="flex-1" />
           <div className="flex items-center gap-1.5">
             <KeyChip k="Esc" />
-            <span className="text-[11px] text-[var(--text4)]">close</span>
+            <span className="text-[11px] text-(--text4)">close</span>
           </div>
         </div>
       </div>
@@ -268,24 +268,24 @@ export default function ShortcutsModal({ onClose }: Props) {
 function ShortcutRow({ shortcut, categoryLabel }: { shortcut: Shortcut; categoryLabel?: string }) {
   return (
     <div
-      className="flex items-center justify-between gap-4 px-3 py-2.5 rounded-xl transition-colors hover:bg-[var(--bg)]"
+      className="flex items-center justify-between gap-4 px-3 py-2.5 rounded-xl transition-colors hover:bg-(--bg)"
     >
       <div className="min-w-0">
-        <span className="text-sm text-[var(--text)]">{shortcut.action}</span>
+        <span className="text-sm text-(--text)">{shortcut.action}</span>
         {shortcut.note && (
-          <span className="ml-2 text-[11px] text-[var(--text4)]">{shortcut.note}</span>
+          <span className="ml-2 text-[11px] text-(--text4)">{shortcut.note}</span>
         )}
         {categoryLabel && (
-          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: "#6366f120", color: "#818cf8" }}>
+          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-sm font-medium" style={{ background: "#6366f120", color: "#818cf8" }}>
             {categoryLabel}
           </span>
         )}
       </div>
       {/* Key combos — "or" separated */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         {shortcut.keys.slice(0, 2).map((combo, i) => (
           <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-[10px] text-[var(--text5)]">or</span>}
+            {i > 0 && <span className="text-[10px] text-(--text5)">or</span>}
             <Combo keys={combo} />
           </span>
         ))}
