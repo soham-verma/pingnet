@@ -30,7 +30,7 @@ tauri-plugin-process = "2"
 ureq = { version = "2", features = ["json"] }
 open = "5"
 portable-pty = "0.8"
-dns-lookup = "2"
+dns-lookup = "4"
 sha2 = "0.10"
 base64 = "0.22"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
