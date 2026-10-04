@@ -8,6 +8,8 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getTerminalTheme, type TerminalThemeDef } from "../../utils/terminalThemes";
 
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 interface Props {
   sessionId: string;
   isConnected: boolean;
@@ -214,6 +216,20 @@ export default function SSHTerminal({ sessionId, isConnected, themeId, suggestio
           return false; // consumed — don't let xterm send Tab to SSH
         }
         return true; // no ghost — let xterm forward Tab to SSH for bash completion
+      }
+
+      // Option/Alt+←/→ jumps by word. xterm 6 dropped its built-in mapping and
+      // now sends ESC[1;3D / ESC[1;3C, which shells don't bind, so restore
+      // xterm 5's behaviour: readline's ESC b / ESC f on macOS, Ctrl+Arrow
+      // elsewhere. term.input() routes it through onData (tracking + broadcast).
+      if (
+        event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+        (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      ) {
+        event.preventDefault();
+        const left = event.key === "ArrowLeft";
+        term.input(IS_MAC ? (left ? "\x1bb" : "\x1bf") : (left ? "\x1b[1;5D" : "\x1b[1;5C"));
+        return false;
       }
 
       if (hasCompletion && event.key === "ArrowRight") {
