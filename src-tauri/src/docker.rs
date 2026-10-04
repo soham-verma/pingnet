@@ -1062,9 +1062,68 @@ fn dur_ns(v: Option<&serde_json::Value>) -> Option<String> {
     v.and_then(|x| x.as_i64()).filter(|n| *n > 0).map(|n| format!("{}ms", n / 1_000_000))
 }
 
+/// Containers named in HostConfig.VolumesFrom ("name" or "name:ro").
+pub(crate) fn volumes_from_sources(v: &serde_json::Value) -> Vec<String> {
+    s_arr(v.get("HostConfig").and_then(|hc| hc.get("VolumesFrom")))
+        .into_iter()
+        .map(|e| e.split(':').next().unwrap_or("").to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// HostConfig.Links entry "/db:/web/db" → `--link` value "db:db".
+fn link_flag_value(link: &str) -> Result<String, String> {
+    let (target, alias_path) = link.split_once(':').ok_or_else(|| format!("Unrecognised link '{}'", link))?;
+    let target = target.trim_start_matches('/');
+    let alias = alias_path.rsplit('/').next().unwrap_or("");
+    if target.is_empty() || alias.is_empty() {
+        return Err(format!("Unrecognised link '{}'", link));
+    }
+    Ok(format!("{}:{}", target, alias))
+}
+
+/// One CSV field for `--gpus`; fields containing commas must be double-quoted.
+fn csv_field(s: &str) -> String {
+    if s.contains(',') || s.contains('"') { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() }
+}
+
+/// HostConfig.DeviceRequests entry → `--gpus` value, as the docker CLI parses it
+/// (it always adds the "gpu" capability itself). Refuses requests the flag can't express.
+fn gpus_flag_value(req: &serde_json::Value) -> Result<String, String> {
+    let caps: Vec<Vec<String>> = req.get("Capabilities").and_then(|x| x.as_array()).cloned().unwrap_or_default()
+        .iter().map(|g| s_arr(Some(g))).collect();
+    if caps.len() != 1 || !caps[0].iter().any(|c| c == "gpu") {
+        return Err("a device request that isn't a single GPU capability set".to_string());
+    }
+    if req.get("Options").and_then(|x| x.as_object()).map(|o| !o.is_empty()).unwrap_or(false) {
+        return Err("GPU request options".to_string());
+    }
+    let mut fields = Vec::new();
+    if let Some(d) = req.get("Driver").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) {
+        fields.push(format!("driver={}", d));
+    }
+    let ids = s_arr(req.get("DeviceIDs"));
+    if ids.is_empty() {
+        match req.get("Count").and_then(|x| x.as_i64()).unwrap_or(0) {
+            -1 => fields.push("count=all".to_string()),
+            n => fields.push(format!("count={}", n)),
+        }
+    } else {
+        fields.push(format!("device={}", ids.join(",")));
+    }
+    let extra: Vec<&str> = caps[0].iter().map(String::as_str).filter(|c| *c != "gpu").collect();
+    if !extra.is_empty() {
+        fields.push(format!("capabilities={}", extra.join(",")));
+    }
+    Ok(fields.iter().map(|f| csv_field(f)).collect::<Vec<_>>().join(","))
+}
+
 /// Build a recreation plan from `docker inspect` JSON, refusing settings it
 /// can't reproduce faithfully rather than silently dropping them.
-pub(crate) fn build_recreate_plan(v: &serde_json::Value) -> Result<RecreatePlan, String> {
+/// `inherited_dests` are the mount destinations of the --volumes-from source
+/// containers: those mounts come back via --volumes-from, so they mustn't be
+/// --mount'ed again (Docker rejects duplicate mount points).
+pub(crate) fn build_recreate_plan(v: &serde_json::Value, inherited_dests: &[String]) -> Result<RecreatePlan, String> {
     let config = v.get("Config").ok_or("inspect: missing Config")?;
     let hc = v.get("HostConfig").ok_or("inspect: missing HostConfig")?;
     let q = |s: &str| shell_quote(s);
@@ -1076,20 +1135,9 @@ pub(crate) fn build_recreate_plan(v: &serde_json::Value) -> Result<RecreatePlan,
     if p.name.is_empty() {
         return Err("Container has no name — can't recreate it safely".to_string());
     }
-
-    // ── Refuse what we can't reproduce ──
-    let mut unsupported = Vec::new();
-    if !s_arr(hc.get("VolumesFrom")).is_empty() { unsupported.push("--volumes-from"); }
-    if !s_arr(hc.get("Links")).is_empty() { unsupported.push("legacy --link"); }
-    if hc.get("DeviceRequests").and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false) { unsupported.push("GPU/device requests"); }
     let net_mode = hc.get("NetworkMode").and_then(|x| x.as_str()).unwrap_or("default").to_string();
-    if net_mode.starts_with("container:") { unsupported.push("--network container:…"); }
-    if !unsupported.is_empty() {
-        return Err(format!(
-            "Can't recreate this container safely — it uses {}. Recreate it manually or with compose.",
-            unsupported.join(", ")
-        ));
-    }
+    // container:<id> shares another container's network stack, hostname included
+    let shares_net = net_mode.starts_with("container:");
 
     let o = &mut p.run_opts;
 
@@ -1097,11 +1145,11 @@ pub(crate) fn build_recreate_plan(v: &serde_json::Value) -> Result<RecreatePlan,
     if let Some(h) = config.get("Hostname").and_then(|x| x.as_str()) {
         let id = v.get("Id").and_then(|x| x.as_str()).unwrap_or("");
         // Docker defaults the hostname to the short container id — don't pin that
-        if !h.is_empty() && !id.starts_with(h) && net_mode != "host" {
+        if !h.is_empty() && !id.starts_with(h) && net_mode != "host" && !shares_net {
             o.push(format!("--hostname {}", q(h)));
         }
     }
-    if let Some(d) = config.get("Domainname").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) { o.push(format!("--domainname {}", q(d))); }
+    if let Some(d) = config.get("Domainname").and_then(|x| x.as_str()).filter(|s| !s.is_empty() && !shares_net) { o.push(format!("--domainname {}", q(d))); }
     if let Some(u) = config.get("User").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) { o.push(format!("--user {}", q(u))); }
     if let Some(w) = config.get("WorkingDir").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) { o.push(format!("--workdir {}", q(w))); }
     if let Some(sig) = config.get("StopSignal").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) { o.push(format!("--stop-signal {}", q(sig))); }
@@ -1172,9 +1220,10 @@ pub(crate) fn build_recreate_plan(v: &serde_json::Value) -> Result<RecreatePlan,
     let binds = s_arr(hc.get("Binds"));
     let bind_dests: Vec<String> = binds.iter().filter_map(|b| b.split(':').nth(1).map(String::from)).collect();
     for b in &binds { o.push(format!("-v {}", q(b))); }
+    for vf in s_arr(hc.get("VolumesFrom")) { o.push(format!("--volumes-from {}", q(&vf))); }
     for m in v.get("Mounts").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
         let dest = m.get("Destination").and_then(|x| x.as_str()).unwrap_or("");
-        if dest.is_empty() || bind_dests.iter().any(|d| d == dest) { continue; }
+        if dest.is_empty() || bind_dests.iter().any(|d| d == dest) || inherited_dests.iter().any(|d| d == dest) { continue; }
         let ro = m.get("RW").and_then(|x| x.as_bool()) == Some(false);
         let typ = m.get("Type").and_then(|x| x.as_str()).unwrap_or("");
         let src = match typ {
@@ -1226,6 +1275,13 @@ pub(crate) fn build_recreate_plan(v: &serde_json::Value) -> Result<RecreatePlan,
         let perm = d.get("CgroupPermissions").and_then(|x| x.as_str()).unwrap_or("rwm");
         if !h.is_empty() { o.push(format!("--device {}", q(&format!("{}:{}:{}", h, c, perm)))); }
     }
+    for r in hc.get("DeviceRequests").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
+        let gpus = gpus_flag_value(&r).map_err(|what| format!(
+            "Can't recreate this container safely — it uses {}. Recreate it manually or with compose.", what
+        ))?;
+        o.push(format!("--gpus {}", q(&gpus)));
+    }
+    for l in s_arr(hc.get("Links")) { o.push(format!("--link {}", q(&link_flag_value(&l)?))); }
     if let Some(u) = hc.get("Ulimits").and_then(|x| x.as_array()) {
         for l in u {
             let n = l.get("Name").and_then(|x| x.as_str()).unwrap_or("");
@@ -1280,7 +1336,7 @@ pub(crate) fn build_recreate_plan(v: &serde_json::Value) -> Result<RecreatePlan,
     if net_mode != "default" && net_mode != "bridge" {
         o.push(format!("--network {}", q(&net_mode)));
     }
-    if net_mode != "host" && net_mode != "none" {
+    if net_mode != "host" && net_mode != "none" && !shares_net {
         let (aliases, ip) = endpoint(&primary);
         for a in aliases { o.push(format!("--network-alias {}", q(&a))); }
         if let Some(ip) = ip { o.push(format!("--ip {}", q(&ip))); }
@@ -1355,7 +1411,18 @@ pub(crate) fn rebuild_container(session: &ssh2::Session, container_id: &str, sud
         }
 
         // ── Standalone: plan first (refuses unsupported settings up front) ──
-        let plan = build_recreate_plan(&inspect)?;
+        // --volumes-from mounts also appear in this container's own Mounts;
+        // collect the source containers' destinations so they aren't re-mounted.
+        let mut inherited = Vec::new();
+        for src in volumes_from_sources(&inspect) {
+            let out = d(&format!("docker inspect --format '{{{{json .Mounts}}}}' {}", shell_quote(&src)))
+                .map_err(|e| format!("Couldn't inspect --volumes-from container '{}': {}", src, e))?;
+            let mounts: serde_json::Value = serde_json::from_str(out.trim())
+                .map_err(|e| format!("Couldn't read mounts of '{}': {}", src, e))?;
+            inherited.extend(mounts.as_array().into_iter().flatten()
+                .filter_map(|m| m.get("Destination").and_then(|x| x.as_str()).map(String::from)));
+        }
+        let plan = build_recreate_plan(&inspect, &inherited)?;
         let was_running = inspect.get("State").and_then(|s| s.get("Running")).and_then(|x| x.as_bool()) == Some(true);
         let mut log = Vec::new();
 
@@ -1480,7 +1547,7 @@ mod rebuild_tests {
 
     #[test]
     fn basic_plan_keeps_env_out_of_argv() {
-        let p = build_recreate_plan(&base()).unwrap();
+        let p = build_recreate_plan(&base(), &[]).unwrap();
         let opts = p.run_opts.join(" ");
         assert_eq!(p.name, "myapp");
         assert!(opts.contains("--restart 'always'"));
@@ -1501,7 +1568,7 @@ mod rebuild_tests {
             { "Type": "bind", "Source": "/srv/conf", "Destination": "/etc/app", "RW": true },
             { "Type": "volume", "Name": "0f1e2d3c", "Destination": "/cache", "RW": true }
         ]);
-        let p = build_recreate_plan(&v).unwrap();
+        let p = build_recreate_plan(&v, &[]).unwrap();
         let o = p.run_opts.join(" ");
         assert!(o.contains("--entrypoint '/bin/tini'"));
         assert_eq!(p.args[0], "'--'");
@@ -1519,7 +1586,7 @@ mod rebuild_tests {
             "appnet": { "Aliases": ["api", "abc123def456"], "IPAMConfig": { "IPv4Address": "172.20.0.10" } },
             "monitoring": { "Aliases": ["api-metrics"] }
         }});
-        let p = build_recreate_plan(&v).unwrap();
+        let p = build_recreate_plan(&v, &[]).unwrap();
         let o = p.run_opts.join(" ");
         assert!(o.contains("--network 'appnet'"));
         assert!(o.contains("--network-alias 'api'"));
@@ -1529,16 +1596,60 @@ mod rebuild_tests {
     }
 
     #[test]
-    fn refuses_what_it_cannot_reproduce() {
+    fn volumes_from_kept_without_duplicating_inherited_mounts() {
         let mut v = base();
-        v["HostConfig"]["VolumesFrom"] = json!(["other"]);
-        assert!(build_recreate_plan(&v).unwrap_err().contains("volumes-from"));
+        v["HostConfig"]["VolumesFrom"] = json!(["datastore:ro", "logs"]);
+        v["Mounts"] = json!([
+            { "Type": "volume", "Name": "shared", "Destination": "/data", "RW": false },
+            { "Type": "volume", "Name": "0f1e2d3c", "Destination": "/cache", "RW": true }
+        ]);
+        assert_eq!(volumes_from_sources(&v), vec!["datastore", "logs"]);
+        let p = build_recreate_plan(&v, &["/data".to_string()]).unwrap();
+        let o = p.run_opts.join(" ");
+        assert!(o.contains("--volumes-from 'datastore:ro'") && o.contains("--volumes-from 'logs'"), "{}", o);
+        assert!(!o.contains("target=/data"), "inherited mount must not be re-mounted: {}", o);
+        assert!(o.contains("--mount 'type=volume,source=0f1e2d3c,target=/cache'"), "own volume still reattached: {}", o);
+    }
+
+    #[test]
+    fn legacy_links_become_link_flags() {
         let mut v = base();
-        v["HostConfig"]["NetworkMode"] = json!("container:vpn");
-        assert!(build_recreate_plan(&v).is_err());
+        v["HostConfig"]["Links"] = json!(["/db:/myapp/db", "/redis-1:/myapp/cache"]);
+        let o = build_recreate_plan(&v, &[]).unwrap().run_opts.join(" ");
+        assert!(o.contains("--link 'db:db'") && o.contains("--link 'redis-1:cache'"), "{}", o);
+        v["HostConfig"]["Links"] = json!(["nonsense"]);
+        assert!(build_recreate_plan(&v, &[]).is_err());
+    }
+
+    #[test]
+    fn gpu_requests_become_gpus_flags() {
         let mut v = base();
-        v["HostConfig"]["DeviceRequests"] = json!([{ "Driver": "nvidia", "Count": -1 }]);
-        assert!(build_recreate_plan(&v).is_err());
+        v["HostConfig"]["DeviceRequests"] = json!([{ "Driver": "", "Count": -1, "DeviceIDs": null, "Capabilities": [["gpu"]], "Options": {} }]);
+        assert!(build_recreate_plan(&v, &[]).unwrap().run_opts.contains(&"--gpus 'count=all'".to_string()));
+
+        v["HostConfig"]["DeviceRequests"] = json!([{ "Driver": "nvidia", "Count": 0, "DeviceIDs": ["0", "2"], "Capabilities": [["gpu", "compute", "utility"]] }]);
+        let o = build_recreate_plan(&v, &[]).unwrap().run_opts.join(" ");
+        // multi-value fields are CSV-quoted, as the docker CLI parses --gpus
+        assert!(o.contains(r#"--gpus 'driver=nvidia,"device=0,2","capabilities=compute,utility"'"#), "{}", o);
+
+        v["HostConfig"]["DeviceRequests"] = json!([{ "Count": 1, "Capabilities": [["gpu"]], "Options": { "foo": "bar" } }]);
+        assert!(build_recreate_plan(&v, &[]).unwrap_err().contains("GPU request options"));
+        v["HostConfig"]["DeviceRequests"] = json!([{ "Count": 1, "Capabilities": [["tpu"]] }]);
+        assert!(build_recreate_plan(&v, &[]).is_err());
+    }
+
+    #[test]
+    fn container_network_mode_skips_hostname_and_aliases() {
+        let mut v = base();
+        v["HostConfig"]["NetworkMode"] = json!("container:9f8e7d6c5b4a");
+        // Docker copies the joined container's hostname into this one's config
+        v["Config"]["Hostname"] = json!("vpn-box");
+        v["Config"]["Domainname"] = json!("lan");
+        let p = build_recreate_plan(&v, &[]).unwrap();
+        let o = p.run_opts.join(" ");
+        assert!(o.contains("--network 'container:9f8e7d6c5b4a'"), "{}", o);
+        assert!(!o.contains("--hostname") && !o.contains("--domainname"), "conflicts with container network mode: {}", o);
+        assert!(!o.contains("--network-alias") && p.extra_networks.is_empty());
     }
 
     #[test]
@@ -1546,7 +1657,10 @@ mod rebuild_tests {
         let mut v = base();
         v["Config"]["Labels"] = json!({ "com.example.note": "it's fine" });
         v["Config"]["Healthcheck"] = json!({ "Test": ["CMD-SHELL", "curl -f http://localhost/ || exit 1"], "Interval": 30_000_000_000i64, "Retries": 3 });
-        let p = build_recreate_plan(&v).unwrap();
+        v["HostConfig"]["VolumesFrom"] = json!(["datastore:ro"]);
+        v["HostConfig"]["Links"] = json!(["/db:/myapp/db"]);
+        v["HostConfig"]["DeviceRequests"] = json!([{ "Driver": "nvidia", "DeviceIDs": ["0", "1"], "Capabilities": [["gpu", "compute"]] }]);
+        let p = build_recreate_plan(&v, &[]).unwrap();
         let cmd = format!("docker run -d --name x {} {} {}", p.run_opts.join(" "), shell_quote(&p.image), p.args.join(" "));
         let st = std::process::Command::new("sh").args(["-n", "-c", &cmd]).status().unwrap();
         assert!(st.success(), "{}", cmd);
