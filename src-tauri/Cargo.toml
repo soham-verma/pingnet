@@ -34,7 +34,7 @@ dns-lookup = "2"
 sha2 = "0.10"
 base64 = "0.22"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 url = "2"
 
 [features]
