@@ -18,18 +18,25 @@ A cross-platform network diagnostics desktop app for developers and sysadmins. B
 
 ## Features
 
-### Ping & Diagnostics
+### Devices & Ping
 - Add hosts by IP or hostname with custom display names
-- One-click ping with real-time latency graph
+- Drag to reorder devices and group them into collapsible folders
+- Dashboard of all your devices with live status
+- One-click ping with real-time latency graph and an animated network route view
 - Smart failure diagnostics — detects active VPNs, missing routes, DNS failures
 - Animated diagnostic console with timestamped entries
+- Per-host alerts (down, recovered, latency over threshold) as native desktop notifications
+- Network Info — reverse DNS for each address and a TCP port scan from this machine
+- Keyboard shortcuts for navigating hosts, pinging, and opening SSH (press `?` to see them)
 
 ### SSH Client (embedded)
 - Full terminal emulator (xterm.js) directly in the app — no external terminal needed
-- Multi-terminal tabs with rename support (like VS Code)
+- Multi-terminal tabs with rename support (like VS Code), plus a split pane
 - Password, key file, SSH agent, app-generated keys (stored in the OS keychain), and TOTP / keyboard-interactive authentication
+- Host key verification — confirm the server's `SHA256:` fingerprint on first connect
 - Pre-flight connectivity check before every connection attempt
 - Graceful connection-loss detection with one-click reconnect
+- 8 terminal color themes (Dracula, Nord, Monokai, Solarized, and more)
 
 ### SFTP File Browser
 - Browse, download, upload, rename, delete, and create folders over SSH
@@ -41,12 +48,32 @@ A cross-platform network diagnostics desktop app for developers and sysadmins. B
 - Fish-style ghost-text autosuggestions from your history (Tab or → to accept)
 - Captures tab-completed and up-arrow-recalled commands accurately by reading the terminal buffer
 - History panel with search, grouped by tool, click-to-run
+- Session audit log, with credentials redacted
 
----
+### Remote Metrics
+- CPU, memory, disk, network, load average, uptime, and a sortable process list
+- Works on Linux, macOS, and Windows targets (OS detected on connect)
+- Ports tab — the device's hostname/FQDN, public IP, and the sockets listening on it
+- Partition manager with a queue-then-confirm workflow, and an A/B slot view for dual-partition devices
 
-## Screenshots
+### Docker
+- Containers — start, stop, restart, remove, rebuild, and view logs
+- Compose projects — up, down, restart, and pull
+- Images, volumes, and networks tabs; disk usage summary and prune
+- Runs over the existing SSH session — no Docker daemon port to expose
 
-> Coming soon.
+### API Client
+- HTTP client with method picker, headers, and JSON / form / text bodies
+- Environment variables (`{{VARIABLE}}`) and saved collections per host
+- SSH tunnel mode — call `localhost` services on the remote host without opening a port
+- Secret headers and variables stored in the OS keychain
+
+### More Tools
+- Speed test (ping / download / upload via Cloudflare) on a remote host over SSH, or on this machine; pick a network interface to test
+- Embedded Grafana dashboards per host
+- Local terminal on this machine
+- Light and dark themes
+- In-app auto-update
 
 ---
 
@@ -56,7 +83,7 @@ Download the latest release for your platform from the [Releases page](../../rel
 
 ### macOS
 
-Requires **macOS 10.15 (Catalina) or later**. Release builds are signed with a Developer ID certificate and notarized by Apple, so they open normally after you drag Pingnet.app into Applications.
+Requires **macOS 10.15 (Catalina) or later**. Download the `aarch64` `.dmg` for Apple silicon or the `x64` one for Intel Macs. Release builds are signed with a Developer ID certificate and notarized by Apple, so they open normally after you drag Pingnet.app into Applications.
 
 If macOS refuses to open it, don't strip the quarantine flag — that hides a real problem (a damaged download or a broken signature). Check the app instead:
 
@@ -72,10 +99,13 @@ If any of these fail, delete the app, download it again from the [Releases page]
 
 ```bash
 # AppImage
-chmod +x Pingnet_0.1.0_amd64.AppImage && ./Pingnet_0.1.0_amd64.AppImage
+chmod +x Pingnet_*_amd64.AppImage && ./Pingnet_*_amd64.AppImage
 
-# .deb
-sudo dpkg -i Pingnet_0.1.0_amd64.deb
+# .deb (Debian / Ubuntu)
+sudo dpkg -i Pingnet_*_amd64.deb
+
+# .rpm (Fedora / RHEL)
+sudo rpm -i Pingnet-*.x86_64.rpm
 ```
 
 ### Windows
@@ -138,7 +168,8 @@ npm run tauri build
 
 Outputs:
 - **macOS** — `src-tauri/target/release/bundle/macos/Pingnet.app` + `.dmg`
-- **Linux** — `src-tauri/target/release/bundle/appimage/*.AppImage` + `deb/*.deb`
+- **Linux** — `src-tauri/target/release/bundle/appimage/*.AppImage` + `deb/*.deb` + `rpm/*.rpm`
+- **Windows** — `src-tauri/target/release/bundle/msi/*.msi` + `nsis/*-setup.exe`
 
 ### Quick start (macOS)
 
@@ -150,29 +181,41 @@ Double-click `run-dev.command` in the project root. It checks dependencies, clea
 
 ```
 src/                          React + TypeScript frontend
-  App.tsx                     Root layout — sidebar, ping view, SSH view
+  App.tsx                     Root layout — sidebar, views, keyboard shortcuts
   types.ts                    Shared TypeScript types
   components/
-    Sidebar.tsx               Host list with ping status indicators
-    HostDetailView.tsx        Ping dashboard — latency chart, diagnostics
-    AddEditModal.tsx          Add / edit host form
+    Sidebar.tsx               Device list, folders, drag-to-sort
+    DashboardView.tsx         Overview of all devices
+    HostDetailView.tsx        Ping view — latency chart, diagnostics
+    NetworkInfoPanel.tsx      Reverse DNS + port scan
+    KeyManager.tsx            SSH key generation (OS keychain)
+    LocalTerminalView.tsx     Terminal on this machine
     ssh/
-      SSHSessionView.tsx      SSH view — tab bar, panel routing
+      SSHSessionView.tsx      SSH view — tab bar, split pane, panel routing
       SSHTerminal.tsx         xterm.js terminal + ghost-text suggestions
-      SSHConnectModal.tsx     Auth form (password / SSH key)
-      SFTPBrowser.tsx         File browser with breadcrumbs
-      TransferQueue.tsx       Upload / download progress
-      CommandHistory.tsx      Persistent command history panel
-  hooks/
-    usePing.ts                Ping state, session history, diagnostic logs
+      SFTPBrowser.tsx         File browser + TransferQueue.tsx
+      CommandHistory.tsx      Command history + audit log
+      MetricsPanel.tsx        Remote metrics, ports, partitions
+      DockerManager.tsx       Containers, compose, images, volumes, networks
+      ApiClient.tsx           HTTP client with SSH tunnel mode
+      Speedtest.tsx           Cloudflare speed test
+  hooks/                      Ping state, polling, theme, update check
+  utils/                      Pure helpers (unit-tested in tests/)
 
 src-tauri/src/                Rust backend
   lib.rs                      Tauri command registration
-  ping.rs                     Cross-platform ping + error classification
-  vpn.rs                      VPN detection (macOS: scutil, Linux: ip/nmcli)
+  ping.rs / vpn.rs            Ping, error classification, VPN detection
   storage.rs                  JSON host persistence (app data dir)
-  ssh.rs                      SSH shell + SFTP commands (ssh2 crate)
-  command_history.rs          Per-host command history persistence
+  ssh.rs / remote.rs          SSH shell, SFTP, remote command execution
+  keys.rs / api_secrets.rs    OS-keychain storage for SSH keys and API secrets
+  command_history.rs / audit.rs / secrets.rs
+                              History, audit log, credential redaction
+  metrics.rs / docker.rs      Remote metrics and Docker management
+  netinfo.rs                  DNS lookups and port scanning
+  http_client.rs / tunnel_tls.rs
+                              API client, TLS over SSH tunnels
+  speedtest.rs                Speed test
+  local_pty.rs                Local terminal
 ```
 
 ---
