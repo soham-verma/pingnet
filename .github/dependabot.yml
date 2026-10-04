@@ -1,4 +1,12 @@
 version: 2
+
+# npm/Cargo major versions are ignored: they need a deliberate migration (and
+# usually fail CI anyway), so they're done by hand rather than as surprise PRs.
+# Ignore rules also cover security updates, so a fix that needs a major bump
+# shows up as an alert under Security -> Dependabot instead of a PR.
+# GitHub Actions majors stay on: they're rarely breaking, and come as one
+# grouped monthly PR.
+
 updates:
   - package-ecosystem: npm
     directory: /
@@ -7,6 +15,9 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: /src-tauri
@@ -15,6 +26,9 @@ updates:
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
