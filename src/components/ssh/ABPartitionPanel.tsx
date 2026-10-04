@@ -235,14 +235,14 @@ function DiskBar({ disk, activeSlot, selectedPart, onSelect }: {
           <rect x="1" y="3" width="12" height="8" rx="1.5" stroke="var(--text3)" strokeWidth="1.2" />
           <path d="M3 5.5h8M3 8h5" stroke="var(--text3)" strokeWidth="0.9" strokeLinecap="round" strokeOpacity="0.5" />
         </svg>
-        <span className="font-mono text-[12px] text-[var(--text2)]">/dev/{disk.name}</span>
-        <span className="text-[11px] text-[var(--text4)]">{disk.size}</span>
+        <span className="font-mono text-[12px] text-(--text2)">/dev/{disk.name}</span>
+        <span className="text-[11px] text-(--text4)">{disk.size}</span>
       </div>
 
       {/* The bar */}
-      <div className="flex h-10 rounded-lg overflow-hidden border border-[var(--border)] gap-px bg-[var(--border)]">
+      <div className="flex h-10 rounded-lg overflow-hidden border border-(--border) gap-px bg-(--border)">
         {disk.partitions.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center bg-[var(--bg)] text-[11px] text-[var(--text4)]">
+          <div className="flex-1 flex items-center justify-center bg-(--bg) text-[11px] text-(--text4)">
             Unpartitioned / empty
           </div>
         ) : disk.partitions.map((p) => {
@@ -295,8 +295,8 @@ function DiskBar({ disk, activeSlot, selectedPart, onSelect }: {
               className="flex items-center gap-1 text-[10px] transition-opacity"
               style={{ opacity: selectedPart && selectedPart !== p.name ? 0.45 : 1 }}
             >
-              <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: color }} />
-              <span className="font-mono text-[var(--text3)]">{p.name.replace(/^.*\//, "")}</span>
+              <span className="w-2 h-2 rounded-xs shrink-0" style={{ background: color }} />
+              <span className="font-mono text-(--text3)">{p.name.replace(/^.*\//, "")}</span>
             </button>
           );
         })}
@@ -316,7 +316,7 @@ function PartTable({ partitions, activeSlot, selectedPart, onSelect }: {
   return (
     <table className="w-full text-[11px]" style={{ borderCollapse: "separate", borderSpacing: "0 2px" }}>
       <thead>
-        <tr className="text-[9px] tracking-widest text-[var(--text4)] uppercase">
+        <tr className="text-[9px] tracking-widest text-(--text4) uppercase">
           {["Name", "Size", "File System", "Label", "Mount", "Flags"].map((h) => (
             <th key={h} className="text-left px-2 py-1 font-medium">{h}</th>
           ))}
@@ -337,36 +337,36 @@ function PartTable({ partitions, activeSlot, selectedPart, onSelect }: {
               }}
             >
               {/* Name + slot badge */}
-              <td className="px-2 py-1.5 rounded-l font-mono text-[var(--text)]">
+              <td className="px-2 py-1.5 rounded-l font-mono text-(--text)">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: color }} />
+                  <span className="w-2 h-2 rounded-xs shrink-0" style={{ background: color }} />
                   {p.name.replace(/^.*\//, "")}
                   {p.slot && (
                     <span
-                      className="text-[8px] px-1 py-0.5 rounded font-bold"
+                      className="text-[8px] px-1 py-0.5 rounded-sm font-bold"
                       style={{ background: `${color}25`, color }}
                     >
                       {p.slot.toUpperCase()}
                     </span>
                   )}
                   {p.isActive && (
-                    <span className="text-[8px] px-1 py-0.5 rounded font-bold bg-[#00c8a820] text-[#00c8a8]">
+                    <span className="text-[8px] px-1 py-0.5 rounded-sm font-bold bg-[#00c8a820] text-[#00c8a8]">
                       live
                     </span>
                   )}
                 </div>
               </td>
-              <td className="px-2 py-1.5 font-mono text-[var(--text3)]">{p.size}</td>
-              <td className="px-2 py-1.5 text-[var(--text3)]">{p.fstype ?? <span className="text-[var(--text5)]">—</span>}</td>
-              <td className="px-2 py-1.5 text-[var(--text4)] max-w-[100px] truncate">
-                {p.partlabel ?? p.label ?? <span className="text-[var(--text5)]">—</span>}
+              <td className="px-2 py-1.5 font-mono text-(--text3)">{p.size}</td>
+              <td className="px-2 py-1.5 text-(--text3)">{p.fstype ?? <span className="text-(--text5)">—</span>}</td>
+              <td className="px-2 py-1.5 text-(--text4) max-w-[100px] truncate">
+                {p.partlabel ?? p.label ?? <span className="text-(--text5)">—</span>}
               </td>
-              <td className="px-2 py-1.5 font-mono text-[var(--text4)] max-w-[80px] truncate">
-                {p.mountpoint ?? <span className="text-[var(--text5)]">—</span>}
+              <td className="px-2 py-1.5 font-mono text-(--text4) max-w-[80px] truncate">
+                {p.mountpoint ?? <span className="text-(--text5)">—</span>}
               </td>
               <td className="px-2 py-1.5 rounded-r">
                 <div className="flex items-center gap-1">
-                  {p.ro && <span className="text-[8px] px-1 py-0.5 rounded bg-[#ef444415] text-[#ef4444]">ro</span>}
+                  {p.ro && <span className="text-[8px] px-1 py-0.5 rounded-sm bg-[#ef444415] text-status-fail">ro</span>}
                 </div>
               </td>
             </tr>
@@ -384,15 +384,15 @@ function SlotBar({ result, onSwitch }: { result: ScanResult; onSwitch: (target: 
   const target: "a" | "b" = result.activeSlot === "a" ? "b" : "a";
   return (
     <div
-      className="flex items-center gap-3 px-5 py-2.5 border-b border-[var(--border)] flex-shrink-0 text-[11px]"
+      className="flex items-center gap-3 px-5 py-2.5 border-b border-(--border) shrink-0 text-[11px]"
       style={{ background: "rgba(0,200,168,0.04)" }}
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
         <rect x="1" y="2" width="5" height="10" rx="1" stroke="#00c8a8" strokeWidth="1.2" />
         <rect x="8" y="2" width="5" height="10" rx="1" stroke="#6366f1" strokeWidth="1.2" strokeOpacity="0.5" />
         <path d="M3.5 6.5L3.5 7.5M10.5 6.5L10.5 7.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.4" />
       </svg>
-      <span className="text-[var(--text3)]">A/B Seamless Updates</span>
+      <span className="text-(--text3)">A/B Seamless Updates</span>
       <div className="flex items-center gap-2 ml-2">
         {(["a", "b"] as const).map((s) => (
           <span
@@ -486,7 +486,7 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
           <rect x="3" y="8" width="34" height="24" rx="3" stroke="currentColor" strokeWidth="2" />
           <path d="M10 16h20M10 22h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.5" />
         </svg>
-        <p className="text-[var(--text3)] text-sm">Connect via SSH to manage partitions</p>
+        <p className="text-(--text3) text-sm">Connect via SSH to manage partitions</p>
       </div>
     );
   }
@@ -505,8 +505,8 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
             <text x="13" y="16" fontSize="5" fill="#6366f1" fontWeight="bold">B</text>
           </svg>
         </div>
-        <h3 className="text-[var(--text)] font-semibold mb-1">Partition Manager</h3>
-        <p className="text-[var(--text3)] text-sm mb-5 max-w-xs">
+        <h3 className="text-(--text) font-semibold mb-1">Partition Manager</h3>
+        <p className="text-(--text3) text-sm mb-5 max-w-xs">
           Visualise disk layout, detect A/B slots, and switch boot targets — all over SSH.
         </p>
         <button
@@ -526,8 +526,8 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <div className="w-7 h-7 rounded-full border-2 border-[#6366f1] border-t-transparent animate-spin" />
-        <p className="text-[var(--text3)] text-sm">Scanning disk layout…</p>
+        <div className="w-7 h-7 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+        <p className="text-(--text3) text-sm">Scanning disk layout…</p>
       </div>
     );
   }
@@ -535,8 +535,8 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
-        <p className="text-[#ef4444] text-sm">{error}</p>
-        <button onClick={scan} className="px-4 py-2 rounded-lg text-sm font-medium text-[#6366f1] border border-[#6366f130] hover:border-[#6366f1] transition-colors">Retry</button>
+        <p className="text-status-fail text-sm">{error}</p>
+        <button onClick={scan} className="px-4 py-2 rounded-lg text-sm font-medium text-accent border border-[#6366f130] hover:border-accent transition-colors">Retry</button>
       </div>
     );
   }
@@ -548,7 +548,7 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
 
       {/* Toolbar */}
       <div
-        className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0"
+        className="flex items-center gap-3 px-5 py-3 border-b border-(--border) shrink-0"
         style={{ background: "var(--bg1)" }}
       >
         {/* Disk selector */}
@@ -575,7 +575,7 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
         <div className="flex-1" />
 
         {/* View mode tabs */}
-        <div className="flex items-center gap-1 bg-[var(--bg)] rounded-lg p-0.5 border border-[var(--border)]">
+        <div className="flex items-center gap-1 bg-(--bg) rounded-lg p-0.5 border border-(--border)">
           {(["visual", "table", "raw"] as PanelTab[]).map((t) => (
             <button
               key={t}
@@ -595,7 +595,7 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
         <button
           onClick={scan}
           title="Re-scan"
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-(--text3) hover:text-(--text) hover:bg-(--border) transition-all"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M12 6.5A5.5 5.5 0 1 1 6.5 1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -607,15 +607,15 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
       {/* Main content */}
       <div className="flex-1 overflow-y-auto">
         {panelTab === "raw" ? (
-          <pre className="font-mono text-[11px] text-[var(--text3)] whitespace-pre-wrap p-5 leading-relaxed">
+          <pre className="font-mono text-[11px] text-(--text3) whitespace-pre-wrap p-5 leading-relaxed">
             {result?.rawOutput}
           </pre>
         ) : panelTab === "visual" ? (
           <div className="p-5 space-y-6">
             {result?.disks.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-center text-[var(--text4)]">
+              <div className="flex flex-col items-center py-12 text-center text-(--text4)">
                 <p className="text-sm">No disks detected — lsblk may not be available on this host</p>
-                <button onClick={() => setPanelTab("raw")} className="mt-2 text-[11px] text-[#6366f1] hover:underline">View raw output</button>
+                <button onClick={() => setPanelTab("raw")} className="mt-2 text-[11px] text-accent hover:underline">View raw output</button>
               </div>
             ) : (
               result!.disks.map((disk) => (
@@ -644,8 +644,8 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
                           ["Flags", p.ro ? "read-only" : "read-write"],
                         ].map(([k, v]) => (
                           <div key={k}>
-                            <div className="text-[9px] tracking-widest text-[var(--text4)] uppercase mb-0.5">{k}</div>
-                            <div className="font-mono text-[var(--text)] truncate">{v}</div>
+                            <div className="text-[9px] tracking-widest text-(--text4) uppercase mb-0.5">{k}</div>
+                            <div className="font-mono text-(--text) truncate">{v}</div>
                           </div>
                         ))}
                       </div>
@@ -673,10 +673,10 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
       {/* FS legend strip */}
       {panelTab === "visual" && (result?.disks.length ?? 0) > 0 && (
         <div
-          className="flex-shrink-0 flex items-center gap-3 px-5 py-2.5 border-t border-[var(--border)] overflow-x-auto"
+          className="shrink-0 flex items-center gap-3 px-5 py-2.5 border-t border-(--border) overflow-x-auto"
           style={{ background: "var(--bg1)" }}
         >
-          <span className="text-[9px] tracking-widest text-[var(--text4)] uppercase flex-shrink-0">Legend</span>
+          <span className="text-[9px] tracking-widest text-(--text4) uppercase shrink-0">Legend</span>
           {[
             { label: "Slot A (active)", color: "#00c8a8" },
             { label: "Slot B",          color: "#6366f1" },
@@ -686,8 +686,8 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
             { label: "swap",            color: FS_COLORS.swap },
             { label: "squashfs",        color: FS_COLORS.squashfs },
           ].map(({ label, color }) => (
-            <span key={label} className="flex items-center gap-1 flex-shrink-0 text-[10px] text-[var(--text4)]">
-              <span className="w-2 h-2 rounded-sm" style={{ background: color }} />
+            <span key={label} className="flex items-center gap-1 shrink-0 text-[10px] text-(--text4)">
+              <span className="w-2 h-2 rounded-xs" style={{ background: color }} />
               {label}
             </span>
           ))}
@@ -697,7 +697,7 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
       {/* Switch confirmation */}
       {switchTarget && result && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] p-6" style={{ background: "var(--bg2)" }}>
+          <div className="w-full max-w-sm rounded-2xl border border-(--border) p-6" style={{ background: "var(--bg2)" }}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#f59e0b18" }}>
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -706,15 +706,15 @@ export default function ABPartitionPanel({ hostId, sessionId, isConnected }: Pro
                 </svg>
               </div>
               <div>
-                <h3 className="font-semibold text-[var(--text)]">Switch to Slot {switchTarget.toUpperCase()}?</h3>
-                <p className="text-[12px] text-[var(--text3)]">Takes effect on next reboot</p>
+                <h3 className="font-semibold text-(--text)">Switch to Slot {switchTarget.toUpperCase()}?</h3>
+                <p className="text-[12px] text-(--text3)">Takes effect on next reboot</p>
               </div>
             </div>
             {result.switchCmd && (
-              <pre className="font-mono text-[11px] text-[var(--text3)] bg-[var(--bg)] rounded-lg p-3 mb-4 border border-[var(--border)] whitespace-pre-wrap">{result.switchCmd}</pre>
+              <pre className="font-mono text-[11px] text-(--text3) bg-(--bg) rounded-lg p-3 mb-4 border border-(--border) whitespace-pre-wrap">{result.switchCmd}</pre>
             )}
             <div className="flex gap-2">
-              <button onClick={() => setSwitchTarget(null)} className="flex-1 py-2.5 rounded-xl text-sm text-[var(--text3)] border border-[var(--border)] hover:text-[var(--text)] transition-colors">
+              <button onClick={() => setSwitchTarget(null)} className="flex-1 py-2.5 rounded-xl text-sm text-(--text3) border border-(--border) hover:text-(--text) transition-colors">
                 Cancel
               </button>
               <button

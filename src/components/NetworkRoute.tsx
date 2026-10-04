@@ -37,7 +37,7 @@ function dnsLabel(ip: string): string {
 function NodeIcon({ type, color }: { type: "device" | "gateway" | "dns" | "internet" | "target"; color: string }) {
   return (
     <div
-      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
       style={{ background: `${color}18`, border: `1px solid ${color}40` }}
     >
       {type === "device" && (
@@ -174,7 +174,7 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
 
   return (
     <div
-      className="rounded-xl border border-[var(--border)] p-5 overflow-hidden relative"
+      className="rounded-xl border border-(--border) p-5 overflow-hidden relative"
       style={{ background: "var(--bg1)" }}
     >
       {/* Subtle grid background */}
@@ -189,22 +189,22 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
 
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase">Network Path</span>
+          <span className="text-[10px] tracking-widest text-(--text3) uppercase">Network Path</span>
           {isRunning && (
-            <span className="flex items-center gap-1.5 text-[11px] text-[#f59e0b]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b] animate-pulse" />
+            <span className="flex items-center gap-1.5 text-[11px] text-status-warn">
+              <span className="w-1.5 h-1.5 rounded-full bg-status-warn animate-pulse" />
               Tracing
             </span>
           )}
           {!isRunning && success === true && (
-            <span className="flex items-center gap-1.5 text-[11px] text-[#22c55e]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
+            <span className="flex items-center gap-1.5 text-[11px] text-status-ok">
+              <span className="w-1.5 h-1.5 rounded-full bg-status-ok" />
               Reachable
             </span>
           )}
           {!isRunning && success === false && (
-            <span className="flex items-center gap-1.5 text-[11px] text-[#ef4444]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
+            <span className="flex items-center gap-1.5 text-[11px] text-status-fail">
+              <span className="w-1.5 h-1.5 rounded-full bg-status-fail" />
               Unreachable
             </span>
           )}
@@ -242,18 +242,18 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
                       </span>
                       {hop.badge && (
                         <span
-                          className="text-[8px] px-1.5 py-0.5 rounded font-medium tracking-wide"
+                          className="text-[8px] px-1.5 py-0.5 rounded-sm font-medium tracking-wide"
                           style={{ background: `${hop.color}20`, color: hop.color }}
                         >
                           {hop.badge}
                         </span>
                       )}
                     </div>
-                    <div className="font-mono text-[12px] text-[var(--text)] truncate leading-snug">
+                    <div className="font-mono text-[12px] text-(--text) truncate leading-snug">
                       {hop.primary}
                     </div>
                     {hop.secondary && (
-                      <div className="text-[10px] text-[var(--text4)] truncate">
+                      <div className="text-[10px] text-(--text4) truncate">
                         {hop.secondary}
                       </div>
                     )}
@@ -262,7 +262,7 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
                   {/* Success/fail indicator on target node */}
                   {hop.type === "target" && success !== null && (
                     <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
                       style={{ background: `${statusColor}20` }}
                     >
                       {success ? (
@@ -281,7 +281,7 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
                 {/* Connector line to next node */}
                 {!isLast && (
                   <div className="ml-[18px] my-1 flex items-stretch" style={{ height: "28px" }}>
-                    <div className="w-px relative flex-shrink-0" style={{ background: "var(--border)" }}>
+                    <div className="w-px relative shrink-0" style={{ background: "var(--border)" }}>
                       {/* Animated packet on this segment */}
                       {isRunning && (
                         (() => {
@@ -322,10 +322,10 @@ export default function NetworkRoute({ ip, hostname, isRunning, success }: Props
 
         {/* DNS servers footnote — show extras */}
         {netInfo && netInfo.dns_servers.length > 1 && (
-          <div className="mt-3 pt-3 border-t border-[var(--border)] flex items-center gap-2">
-            <span className="text-[9px] tracking-wider text-[var(--text4)] uppercase">Also</span>
+          <div className="mt-3 pt-3 border-t border-(--border) flex items-center gap-2">
+            <span className="text-[9px] tracking-wider text-(--text4) uppercase">Also</span>
             {netInfo.dns_servers.slice(1).map((s) => (
-              <span key={s} className="font-mono text-[10px] text-[var(--text4)]">{s}</span>
+              <span key={s} className="font-mono text-[10px] text-(--text4)">{s}</span>
             ))}
           </div>
         )}

@@ -61,7 +61,7 @@ function Dial({
   const ticks = Array.from({ length: 11 }, (_, i) => i / 10);
 
   return (
-    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <g transform={`rotate(${START_ANGLE} ${cx} ${cy})`}>
           <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth="8"
@@ -84,11 +84,11 @@ function Dial({
         </g>
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span className="text-[9px] tracking-widest text-[var(--text4)] uppercase mb-1">{label}</span>
+        <span className="text-[9px] tracking-widest text-(--text4) uppercase mb-1">{label}</span>
         <span className="text-3xl font-bold font-mono tabular-nums" style={{ color }}>
           {displayValue.toFixed(decimals)}
         </span>
-        <span className="text-[10px] text-[var(--text4)] mt-0.5">{unit}</span>
+        <span className="text-[10px] text-(--text4) mt-0.5">{unit}</span>
       </div>
     </div>
   );
@@ -97,9 +97,9 @@ function Dial({
 function StatTile({ label, value, unit, color }: { label: string; value: string; unit: string; color: string }) {
   return (
     <div className="flex-1 rounded-xl p-4 text-center" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
-      <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase mb-1.5">{label}</p>
+      <p className="text-[9px] tracking-widest text-(--text5) uppercase mb-1.5">{label}</p>
       <p className="text-2xl font-bold font-mono tabular-nums" style={{ color }}>
-        {value}<span className="text-xs text-[var(--text4)] ml-1 font-normal">{unit}</span>
+        {value}<span className="text-xs text-(--text4) ml-1 font-normal">{unit}</span>
       </p>
     </div>
   );
@@ -169,13 +169,13 @@ export default function Speedtest({ sessionId, isActive, mode = "remote" }: Prop
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)] flex-shrink-0" style={{ background: "var(--bg1)" }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[var(--text3)]">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-(--border) shrink-0" style={{ background: "var(--bg1)" }}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-(--text3)">
           <circle cx="7" cy="7" r="5.3" stroke="currentColor" strokeWidth="1.2" />
           <path d="M7 4.2v3l2 1.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <span className="text-sm font-semibold text-[var(--text)]">Speed Test</span>
-        <span className="text-[11px] text-[var(--text4)] ml-1">
+        <span className="text-sm font-semibold text-(--text)">Speed Test</span>
+        <span className="text-[11px] text-(--text4) ml-1">
           {isLocal ? "this device · via speed.cloudflare.com" : "via speed.cloudflare.com"}
         </span>
       </div>
@@ -184,11 +184,11 @@ export default function Speedtest({ sessionId, isActive, mode = "remote" }: Prop
         {/* Interface picker — remote hosts only; not shown mid-flight */}
         {!isLocal && !isRunning && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[var(--text4)] uppercase tracking-widest">Interface</span>
+            <span className="text-[11px] text-(--text4) uppercase tracking-widest">Interface</span>
             <select
               value={iface}
               onChange={(e) => setIface(e.target.value)}
-              className="px-3 py-1.5 rounded-lg bg-[var(--bg1)] border border-[var(--border)] text-sm text-[var(--text2)] outline-none focus:border-[#00c8a8] transition-all"
+              className="px-3 py-1.5 rounded-lg bg-(--bg1) border border-(--border) text-sm text-(--text2) outline-hidden focus:border-[#00c8a8] transition-all"
             >
               <option value="">Auto (default route)</option>
               {ifaces.map((i) => (
@@ -214,10 +214,10 @@ export default function Speedtest({ sessionId, isActive, mode = "remote" }: Prop
         {phase === "testing" && (
           <div className="flex flex-col items-center gap-4">
             <div className="w-36 h-36 rounded-full flex items-center justify-center relative">
-              <div className="absolute inset-0 rounded-full border-4 border-[var(--border)]" />
+              <div className="absolute inset-0 rounded-full border-4 border-(--border)" />
               <div className="absolute inset-0 rounded-full border-4 border-transparent animate-spin"
                 style={{ borderTopColor: "#00c8a8", borderRightColor: "#00c8a8" }} />
-              <span className="text-[11px] text-[var(--text3)] text-center px-4">{statusMsg}</span>
+              <span className="text-[11px] text-(--text3) text-center px-4">{statusMsg}</span>
             </div>
           </div>
         )}
@@ -240,7 +240,7 @@ export default function Speedtest({ sessionId, isActive, mode = "remote" }: Prop
               <StatTile label="Download" value={result.download_mbps.toFixed(1)} unit="Mbps" color="#00c8a8" />
               <StatTile label="Upload" value={result.upload_mbps.toFixed(1)} unit="Mbps" color="#818cf8" />
             </div>
-            <div className="text-[11px] text-[var(--text4)] text-center">
+            <div className="text-[11px] text-(--text4) text-center">
               Jitter {result.jitter_ms.toFixed(1)} ms · {result.interface ? `via ${result.interface}` : "via default route"} · {result.server}
             </div>
             <button
@@ -262,11 +262,11 @@ export default function Speedtest({ sessionId, isActive, mode = "remote" }: Prop
                 <circle cx="10" cy="10" r="8" stroke="#ef4444" strokeWidth="1.4" />
               </svg>
             </div>
-            <p className="text-[13px] text-[var(--text2)]">{result.error}</p>
+            <p className="text-[13px] text-(--text2)">{result.error}</p>
             <div className="flex gap-2">
               <button
                 onClick={() => run(false)}
-                className="px-4 py-2 rounded-lg text-[12px] font-medium text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] transition-all"
+                className="px-4 py-2 rounded-lg text-[12px] font-medium text-(--text3) hover:text-(--text) hover:bg-(--border) transition-all"
               >
                 Retry
               </button>
@@ -284,7 +284,7 @@ export default function Speedtest({ sessionId, isActive, mode = "remote" }: Prop
         )}
 
         {!isLocal && !sessionId && phase === "idle" && (
-          <p className="text-[11px] text-[var(--text5)]">Open a terminal and connect first</p>
+          <p className="text-[11px] text-(--text5)">Open a terminal and connect first</p>
         )}
       </div>
     </div>

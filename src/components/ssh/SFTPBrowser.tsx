@@ -229,11 +229,11 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
   return (
     <div className="flex flex-col h-full" onClick={() => setContextMenu(null)}>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] flex-shrink-0" style={{ background: "var(--bg1)" }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--border) shrink-0" style={{ background: "var(--bg1)" }}>
         <button
           onClick={goUp}
           disabled={path === "/" || loading}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] disabled:opacity-30 transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-(--text) hover:bg-(--border) disabled:opacity-30 transition-all"
           title="Parent directory"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -244,7 +244,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
         <button
           onClick={() => load(path)}
           disabled={loading}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] disabled:opacity-30 transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-(--text) hover:bg-(--border) disabled:opacity-30 transition-all"
           title="Refresh"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={loading ? "animate-spin" : ""}>
@@ -263,13 +263,13 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
                 : "/" + breadcrumbs.slice(1, i + 1).join("/");
             return (
               <span key={i} className="flex items-center gap-1 min-w-0">
-                {i > 0 && <span className="text-[var(--text5)] text-[10px]">/</span>}
+                {i > 0 && <span className="text-(--text5) text-[10px]">/</span>}
                 <button
                   onClick={() => !isLast && load(targetPath)}
                   className={`text-[12px] truncate transition-colors ${
                     isLast
-                      ? "text-[var(--text2)] font-medium cursor-default"
-                      : "text-[var(--text3)] hover:text-[#00c8a8]"
+                      ? "text-(--text2) font-medium cursor-default"
+                      : "text-(--text3) hover:text-[#00c8a8]"
                   }`}
                 >
                   {crumb}
@@ -282,7 +282,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
         {/* Actions */}
         <button
           onClick={() => setCreating(true)}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#6366f1] hover:bg-[var(--border)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-accent hover:bg-(--border) transition-all"
           title="New folder"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -294,7 +294,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
 
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#00c8a8] hover:bg-[var(--border)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-[#00c8a8] hover:bg-(--border) transition-all"
           title="Upload file"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -305,7 +305,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileInputChange} />
 
         {/* Divider */}
-        <div className="w-px h-4 bg-[var(--border)] mx-0.5 flex-shrink-0" />
+        <div className="w-px h-4 bg-(--border) mx-0.5 shrink-0" />
 
         {/* Open in VS Code */}
         <button
@@ -317,7 +317,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
               setError(`Could not open VS Code: ${e}`);
             }
           }}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#0098ff] hover:bg-[var(--border)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-[#0098ff] hover:bg-(--border) transition-all"
           title={`Open in VS Code (${path})`}
         >
           {/* VS Code icon */}
@@ -336,7 +336,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
               setError(`Could not open Cursor: ${e}`);
             }
           }}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#9b5cf6] hover:bg-[var(--border)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-[#9b5cf6] hover:bg-(--border) transition-all"
           title={`Open in Cursor (${path})`}
         >
           {/* Cursor icon — simplified "C" mark */}
@@ -362,7 +362,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
               setError(`Could not open JetBrains Gateway: ${e}`);
             }
           }}
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#fe315d] hover:bg-[var(--border)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-[#fe315d] hover:bg-(--border) transition-all"
           title={`Open in JetBrains Gateway (${path})`}
         >
           {/* JetBrains "diamond" mark */}
@@ -375,14 +375,14 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
 
       {/* New folder input */}
       {creating && (
-        <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-2" style={{ background: "var(--bg1)" }}>
+        <div className="px-4 py-2 border-b border-(--border) flex items-center gap-2" style={{ background: "var(--bg1)" }}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M2 4.5C2 3.67 2.67 3 3.5 3H6.5L8 5H12.5C13.33 5 14 5.67 14 6.5V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V4.5Z"
               fill="#6366f130" stroke="#6366f1" strokeWidth="1" />
           </svg>
           <input
             autoFocus
-            className="flex-1 bg-transparent border-b border-[#6366f1] text-[var(--text)] text-sm outline-none py-0.5 font-mono"
+            className="flex-1 bg-transparent border-b border-accent text-(--text) text-sm outline-hidden py-0.5 font-mono"
             placeholder="folder name"
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
@@ -391,13 +391,13 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
               if (e.key === "Escape") { setCreating(false); setNewFolderName(""); }
             }}
           />
-          <button onClick={() => { setCreating(false); setNewFolderName(""); }} className="text-[var(--text3)] text-xs">Cancel</button>
+          <button onClick={() => { setCreating(false); setNewFolderName(""); }} className="text-(--text3) text-xs">Cancel</button>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-3 p-3 rounded-lg border border-[#ef444430] text-[#ef4444] text-[12px]" style={{ background: "#140808" }}>
+        <div className="mx-4 mt-3 p-3 rounded-lg border border-[#ef444430] text-status-fail text-[12px]" style={{ background: "#140808" }}>
           {error}
         </div>
       )}
@@ -405,18 +405,18 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
       {/* File list */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-[var(--text4)] text-sm">
-            <span className="animate-spin w-4 h-4 border-2 border-[#6366f1] border-t-transparent rounded-full mr-2" />
+          <div className="flex items-center justify-center h-32 text-(--text4) text-sm">
+            <span className="animate-spin w-4 h-4 border-2 border-accent border-t-transparent rounded-full mr-2" />
             Loading...
           </div>
         ) : entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-[var(--text5)] text-sm">
+          <div className="flex flex-col items-center justify-center h-32 text-(--text5) text-sm">
             Empty directory
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-              <tr className="text-[10px] tracking-widest text-[var(--text5)] uppercase">
+              <tr className="text-[10px] tracking-widest text-(--text5) uppercase">
                 <th className="text-left px-4 py-2 font-medium">Name</th>
                 <th className="text-right px-4 py-2 font-medium hidden sm:table-cell">Size</th>
                 <th className="text-right px-4 py-2 font-medium hidden md:table-cell">Modified</th>
@@ -427,8 +427,8 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
               {entries.map((entry) => (
                 <tr
                   key={entry.path}
-                  className={`group transition-colors cursor-pointer border-b border-[var(--bg2)] ${
-                    selected === entry.path ? "bg-[var(--bg-sel)]" : "hover:bg-[var(--bg3)]"
+                  className={`group transition-colors cursor-pointer border-b border-(--bg2) ${
+                    selected === entry.path ? "bg-(--bg-sel)" : "hover:bg-(--bg3)"
                   }`}
                   onClick={() => setSelected(entry.path)}
                   onDoubleClick={() => navigate(entry)}
@@ -443,7 +443,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
                         <FileIcon entry={entry} />
                         <input
                           autoFocus
-                          className="bg-transparent border-b border-[#6366f1] text-[var(--text)] text-sm outline-none flex-1 font-mono"
+                          className="bg-transparent border-b border-accent text-(--text) text-sm outline-hidden flex-1 font-mono"
                           value={renameVal}
                           onChange={(e) => setRenameVal(e.target.value)}
                           onKeyDown={(e) => {
@@ -457,7 +457,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
                       <div className="flex items-center gap-2.5">
                         <FileIcon entry={entry} />
                         <span
-                          className={`truncate ${entry.is_dir ? "text-[#818cf8] font-medium" : "text-[var(--text2)]"}`}
+                          className={`truncate ${entry.is_dir ? "text-accent-hover font-medium" : "text-(--text2)"}`}
                         >
                           {entry.name}
                           {entry.is_symlink && (
@@ -467,10 +467,10 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-[12px] text-[var(--text4)] font-mono hidden sm:table-cell">
+                  <td className="px-4 py-2.5 text-right text-[12px] text-(--text4) font-mono hidden sm:table-cell">
                     {entry.is_dir ? "—" : formatSize(entry.size)}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-[12px] text-[var(--text4)] hidden md:table-cell">
+                  <td className="px-4 py-2.5 text-right text-[12px] text-(--text4) hidden md:table-cell">
                     {formatDate(entry.modified)}
                   </td>
                   <td className="px-4 py-2.5 text-right">
@@ -478,7 +478,7 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
                     {!entry.is_dir && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDownload(entry); }}
-                        className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-[var(--text3)] hover:text-[#00c8a8] hover:bg-[var(--border)] transition-all"
+                        className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-sm text-(--text3) hover:text-[#00c8a8] hover:bg-(--border) transition-all"
                         title="Download"
                       >
                         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -496,44 +496,44 @@ export default function SFTPBrowser({ sessionId, host, username, port, onUploadS
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 border-t border-[var(--border)] flex items-center justify-between flex-shrink-0" style={{ background: "var(--bg1)" }}>
-        <span className="text-[11px] text-[var(--text5)]">{entries.length} items</span>
+      <div className="px-4 py-2 border-t border-(--border) flex items-center justify-between shrink-0" style={{ background: "var(--bg1)" }}>
+        <span className="text-[11px] text-(--text5)">{entries.length} items</span>
         {selected && (
-          <span className="text-[11px] text-[var(--text3)] font-mono truncate max-w-xs">{selected}</span>
+          <span className="text-[11px] text-(--text3) font-mono truncate max-w-xs">{selected}</span>
         )}
       </div>
 
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 rounded-xl border border-[var(--border)] py-1 shadow-2xl"
+          className="fixed z-50 rounded-xl border border-(--border) py-1 shadow-2xl"
           style={{ top: contextMenu.y, left: contextMenu.x, background: "var(--bg2)", minWidth: 160 }}
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.entry.is_dir ? (
             <button
-              className="w-full text-left px-4 py-2 text-sm text-[var(--text2)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors"
+              className="w-full text-left px-4 py-2 text-sm text-(--text2) hover:bg-(--border) hover:text-(--text) transition-colors"
               onClick={() => { navigate(contextMenu.entry); setContextMenu(null); }}
             >
               Open folder
             </button>
           ) : (
             <button
-              className="w-full text-left px-4 py-2 text-sm text-[var(--text2)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors"
+              className="w-full text-left px-4 py-2 text-sm text-(--text2) hover:bg-(--border) hover:text-(--text) transition-colors"
               onClick={() => handleDownload(contextMenu.entry)}
             >
               <span className="text-[#00c8a8] mr-2">↓</span> Download
             </button>
           )}
           <button
-            className="w-full text-left px-4 py-2 text-sm text-[var(--text2)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors"
+            className="w-full text-left px-4 py-2 text-sm text-(--text2) hover:bg-(--border) hover:text-(--text) transition-colors"
             onClick={() => startRename(contextMenu.entry)}
           >
             Rename
           </button>
-          <div className="h-px bg-[var(--border)] my-1" />
+          <div className="h-px bg-(--border) my-1" />
           <button
-            className="w-full text-left px-4 py-2 text-sm text-[#ef4444] hover:bg-[var(--border)] transition-colors"
+            className="w-full text-left px-4 py-2 text-sm text-status-fail hover:bg-(--border) transition-colors"
             onClick={() => handleDelete(contextMenu.entry)}
           >
             Delete

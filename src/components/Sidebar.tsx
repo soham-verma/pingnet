@@ -67,7 +67,7 @@ function MiniBar({ history }: { history: { latency: number | null; success: bool
         return (
           <div
             key={i}
-            className="w-[3px] rounded-sm"
+            className="w-[3px] rounded-xs"
             style={{
               height: `${height}px`,
               backgroundColor: h.success ? CYAN : "#ef4444",
@@ -271,11 +271,11 @@ export default function Sidebar({
   // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
     return (
-      <aside className="flex-shrink-0 flex flex-col h-full border-r border-[var(--border)] items-center py-4 gap-3" style={{ width: 44, background: "var(--bg1)" }}>
+      <aside className="shrink-0 flex flex-col h-full border-r border-(--border) items-center py-4 gap-3" style={{ width: 44, background: "var(--bg1)" }}>
         <button
           onClick={onToggleCollapse}
           title="Expand sidebar"
-          className="w-7 h-7 flex items-center justify-center rounded text-[var(--text3)] hover:text-[var(--text2)] hover:bg-[var(--bg3)] transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-(--text3) hover:text-(--text2) hover:bg-(--bg3) transition-all"
         >
           <svg width="13" height="11" viewBox="0 0 13 11" fill="none">
             <rect y="0" width="13" height="1.5" rx="0.75" fill="currentColor"/>
@@ -287,7 +287,7 @@ export default function Sidebar({
         <div className="flex flex-col items-center gap-2 flex-1 overflow-hidden pt-1">
           {groups.filter((g) => g.hosts.length > 0).map((g, gi) => (
             <div key={g.folder?.id ?? "ungrouped"} className="flex flex-col items-center gap-2">
-              {gi > 0 && <div className="w-4 h-px bg-[var(--border2)]" />}
+              {gi > 0 && <div className="w-4 h-px bg-(--border2)" />}
               {g.hosts.map((host) => {
                 const statusColor = statusColorFor(sessions[host.id]);
                 const isSelected = host.id === selectedId;
@@ -296,7 +296,7 @@ export default function Sidebar({
                     key={host.id}
                     onClick={() => onSelect(host.id)}
                     title={g.folder ? `${g.folder.name} / ${host.hostname}` : host.hostname}
-                    className="w-7 h-7 flex items-center justify-center rounded transition-all"
+                    className="w-7 h-7 flex items-center justify-center rounded-sm transition-all"
                     style={isSelected ? { background: "var(--bg-sel)", border: "1px solid var(--border2)" } : {}}
                   >
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor, boxShadow: `0 0 5px ${statusColor}80` }} />
@@ -310,7 +310,7 @@ export default function Sidebar({
         <button
           onClick={onOpenLocalTerminal}
           title="Local Terminal"
-          className="w-7 h-7 flex items-center justify-center rounded transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm transition-all"
           style={localTerminalActive ? { color: CYAN, background: "#00c8a815" } : { color: "var(--text4)" }}
         >
           <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
@@ -323,7 +323,7 @@ export default function Sidebar({
         <button
           onClick={onOpenSpeedtest}
           title="Speed Test"
-          className="w-7 h-7 flex items-center justify-center rounded transition-all"
+          className="w-7 h-7 flex items-center justify-center rounded-sm transition-all"
           style={localSpeedtestActive ? { color: CYAN, background: "#00c8a815" } : { color: "var(--text4)" }}
         >
           <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
@@ -336,7 +336,7 @@ export default function Sidebar({
         <button
           onClick={onOpenKeyManager}
           title="SSH Keys"
-          className="w-7 h-7 flex items-center justify-center rounded transition-all text-[var(--text4)] hover:text-[#818cf8]"
+          className="w-7 h-7 flex items-center justify-center rounded-sm transition-all text-(--text4) hover:text-accent-hover"
         >
           <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
             <circle cx="5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
@@ -374,8 +374,8 @@ export default function Sidebar({
         onPointerDown={(e) => startPress(e, { kind: "host", id: host.id, label: host.hostname })}
         className={`relative rounded-lg mb-1 transition-colors select-none ${
           isSelected
-            ? "bg-[var(--bg-sel)] border border-[var(--border2)]"
-            : "hover:bg-[var(--bg3)] border border-transparent"
+            ? "bg-(--bg-sel) border border-(--border2)"
+            : "hover:bg-(--bg3) border border-transparent"
         }`}
         style={{ opacity: isDragged ? 0.35 : 1 }}
       >
@@ -388,24 +388,24 @@ export default function Sidebar({
           className="w-full text-left px-3 pt-3 pb-2"
         >
           <div className="flex items-center justify-between mb-1">
-            <span className={`text-sm font-medium truncate ${isSelected ? "text-[var(--text)]" : "text-[var(--text2)]"}`}>
+            <span className={`text-sm font-medium truncate ${isSelected ? "text-(--text)" : "text-(--text2)"}`}>
               {host.hostname}
             </span>
             <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ml-2 ${isRunning ? "ping-pulsing" : ""}`}
+              className={`w-2 h-2 rounded-full shrink-0 ml-2 ${isRunning ? "ping-pulsing" : ""}`}
               style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }}
             />
           </div>
-          <div className="font-mono text-[11px] text-[var(--text3)] mb-2">{host.ip}</div>
+          <div className="font-mono text-[11px] text-(--text3) mb-2">{host.ip}</div>
           {lastHistory.length > 0 ? (
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-[var(--text4)]">
+              <span className="text-[11px] text-(--text4)">
                 {lastResult?.success ? formatLatency(lastResult.latency_ms ?? 0) : "FAIL"}
               </span>
               <MiniBar history={lastHistory} />
             </div>
           ) : (
-            <div className="text-[11px] text-[var(--text5)]">not pinged</div>
+            <div className="text-[11px] text-(--text5)">not pinged</div>
           )}
         </button>
 
@@ -418,7 +418,7 @@ export default function Sidebar({
               className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-md text-[10px] font-medium transition-all ${
                 viewMode === "ping"
                   ? "bg-[#00c8a818] text-[#00c8a8] border border-[#00c8a820]"
-                  : "text-[var(--text4)] hover:text-[var(--text3)] hover:bg-[var(--border)]"
+                  : "text-(--text4) hover:text-(--text3) hover:bg-(--border)"
               }`}
             >
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
@@ -432,8 +432,8 @@ export default function Sidebar({
               onClick={guardClick(() => onOpenSSH(host.id))}
               className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-md text-[10px] font-medium transition-all ${
                 isSSHActive
-                  ? "bg-[#6366f118] text-[#818cf8] border border-[#6366f120]"
-                  : "text-[var(--text4)] hover:text-[var(--text3)] hover:bg-[var(--border)]"
+                  ? "bg-[#6366f118] text-accent-hover border border-[#6366f120]"
+                  : "text-(--text4) hover:text-(--text3) hover:bg-(--border)"
               }`}
             >
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
@@ -482,17 +482,17 @@ export default function Sidebar({
             onToggleFolder(folder.id);
           }}
           onDoubleClick={() => startRename(folder)}
-          className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[var(--bg3)] select-none cursor-default"
+          className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-(--bg3) select-none cursor-default"
           title={folder.collapsed ? "Expand folder" : "Collapse folder"}
         >
           <svg
             width="8" height="8" viewBox="0 0 8 8" fill="none"
-            className="flex-shrink-0 text-[var(--text4)] transition-transform"
+            className="shrink-0 text-(--text4) transition-transform"
             style={{ transform: folder.collapsed ? "rotate(-90deg)" : "none" }}
           >
             <path d="M1.5 2.75L4 5.25L6.5 2.75" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0" style={{ color: CYAN, opacity: 0.8 }}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0" style={{ color: CYAN, opacity: 0.8 }}>
             <path d="M1 3.2c0-.66.54-1.2 1.2-1.2h2.3l1.1 1.2h4.2c.66 0 1.2.54 1.2 1.2v4.4c0 .66-.54 1.2-1.2 1.2H2.2C1.54 10 1 9.46 1 8.8V3.2z"
               stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/>
           </svg>
@@ -511,10 +511,10 @@ export default function Sidebar({
                 if (e.key === "Escape") setEditingFolderId(null);
               }}
               maxLength={40}
-              className="flex-1 min-w-0 bg-[var(--bg)] border border-[#00c8a860] rounded px-1.5 py-0.5 text-[11px] text-[var(--text)] outline-none"
+              className="flex-1 min-w-0 bg-(--bg) border border-[#00c8a860] rounded-sm px-1.5 py-0.5 text-[11px] text-(--text) outline-hidden"
             />
           ) : (
-            <span className={`flex-1 min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider ${hasSelected && folder.collapsed ? "text-[var(--text2)]" : "text-[var(--text3)]"}`}>
+            <span className={`flex-1 min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider ${hasSelected && folder.collapsed ? "text-(--text2)" : "text-(--text3)"}`}>
               {folder.name}
             </span>
           )}
@@ -522,17 +522,17 @@ export default function Sidebar({
           {!isEditing && (
             <>
               {downCount > 0 && (
-                <span className="flex items-center gap-1 text-[10px] text-[#ef4444] group-hover:hidden" title={`${downCount} down`}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />{downCount}
+                <span className="flex items-center gap-1 text-[10px] text-status-fail group-hover:hidden" title={`${downCount} down`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-status-fail" />{downCount}
                 </span>
               )}
-              <span className="text-[10px] font-mono text-[var(--text5)] group-hover:hidden">{folderHosts.length}</span>
+              <span className="text-[10px] font-mono text-(--text5) group-hover:hidden">{folderHosts.length}</span>
               <div className="hidden group-hover:flex items-center gap-0.5">
                 <button
                   data-nodrag
                   title="Rename folder"
                   onClick={(e) => { e.stopPropagation(); startRename(folder); }}
-                  className="w-5 h-5 flex items-center justify-center rounded text-[var(--text4)] hover:text-[var(--text2)] hover:bg-[var(--border)]"
+                  className="w-5 h-5 flex items-center justify-center rounded-sm text-(--text4) hover:text-(--text2) hover:bg-(--border)"
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                     <path d="M6.5 1.5l2 2L3.5 8.5H1.5v-2l5-5z" stroke="currentColor" strokeWidth="0.9" strokeLinejoin="round"/>
@@ -542,7 +542,7 @@ export default function Sidebar({
                   data-nodrag
                   title="Delete folder (devices move to Ungrouped)"
                   onClick={(e) => { e.stopPropagation(); onDeleteFolder(folder.id); }}
-                  className="w-5 h-5 flex items-center justify-center rounded text-[var(--text4)] hover:text-[#ef4444] hover:bg-[var(--border)]"
+                  className="w-5 h-5 flex items-center justify-center rounded-sm text-(--text4) hover:text-status-fail hover:bg-(--border)"
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                     <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
@@ -555,10 +555,10 @@ export default function Sidebar({
 
         {/* Children */}
         {!folder.collapsed && (
-          <div className="ml-2.5 pl-1.5 border-l border-[var(--border)] mt-0.5">
+          <div className="ml-2.5 pl-1.5 border-l border-(--border) mt-0.5">
             {folderHosts.map(renderHost)}
             {folderHosts.length === 0 && (
-              <div className="px-2 py-2 text-[10px] text-[var(--text5)]">
+              <div className="px-2 py-2 text-[10px] text-(--text5)">
                 Drag devices here
               </div>
             )}
@@ -573,27 +573,27 @@ export default function Sidebar({
 
   // ── Expanded ────────────────────────────────────────────────────────────────
   return (
-    <aside className="w-56 flex-shrink-0 flex flex-col h-full border-r border-[var(--border)]" style={{ background: "var(--bg1)" }}>
+    <aside className="w-56 shrink-0 flex flex-col h-full border-r border-(--border)" style={{ background: "var(--bg1)" }}>
       {/* Header */}
       <div className="px-4 pt-6 pb-4 flex items-center justify-between">
         <button
           onClick={onGoHome}
           title="Dashboard"
-          className="flex items-center gap-2 rounded transition-opacity hover:opacity-80"
+          className="flex items-center gap-2 rounded-sm transition-opacity hover:opacity-80"
         >
           <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
             <path d="M 80,148 L 80,64 C 80,44 96,36 112,36 C 138,36 148,60 148,86 C 148,110 132,124 110,124 L 90,124"
               stroke={CYAN} strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
             <circle cx="80" cy="148" r="10" fill={CYAN}/>
           </svg>
-          <span className="text-[11px] font-semibold tracking-[0.2em] text-[var(--text2)] uppercase">
+          <span className="text-[11px] font-semibold tracking-[0.2em] text-(--text2) uppercase">
             Pingboard
           </span>
         </button>
         <button
           onClick={onToggleCollapse}
           title="Collapse sidebar"
-          className="w-6 h-6 flex items-center justify-center rounded text-[var(--text5)] hover:text-[var(--text3)] hover:bg-[var(--bg3)] transition-all"
+          className="w-6 h-6 flex items-center justify-center rounded-sm text-(--text5) hover:text-(--text3) hover:bg-(--bg3) transition-all"
         >
           <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
             <path d="M9 1L5 5L1 1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -604,13 +604,13 @@ export default function Sidebar({
 
       {/* Section header — device count + new folder */}
       <div className="px-4 pb-1.5 flex items-center justify-between">
-        <span className="text-[10px] tracking-[0.15em] uppercase text-[var(--text4)]">
+        <span className="text-[10px] tracking-[0.15em] uppercase text-(--text4)">
           Devices{hosts.length > 0 ? ` · ${hosts.length}` : ""}
         </span>
         <button
           onClick={handleNewFolder}
           title="New folder"
-          className="w-5 h-5 flex items-center justify-center rounded text-[var(--text4)] hover:text-[#00c8a8] hover:bg-[var(--bg3)] transition-all"
+          className="w-5 h-5 flex items-center justify-center rounded-sm text-(--text4) hover:text-[#00c8a8] hover:bg-(--bg3) transition-all"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M1 3.2c0-.66.54-1.2 1.2-1.2h2.3l1.1 1.2h4.2c.66 0 1.2.54 1.2 1.2v4.4c0 .66-.54 1.2-1.2 1.2H2.2C1.54 10 1 9.46 1 8.8V3.2z"
@@ -623,7 +623,7 @@ export default function Sidebar({
       {/* Host list — folders first, then ungrouped */}
       <div ref={listRef} className="flex-1 overflow-y-auto px-2 pb-4">
         {hosts.length === 0 && folders.length === 0 && (
-          <div className="px-3 py-6 text-center text-[var(--text3)] text-xs">
+          <div className="px-3 py-6 text-center text-(--text3) text-xs">
             No hosts yet.<br />Add one below.
           </div>
         )}
@@ -636,7 +636,7 @@ export default function Sidebar({
         )}
 
         {showUngroupedLabel && (
-          <div className="px-2 pt-2 pb-1 text-[10px] tracking-[0.15em] uppercase text-[var(--text5)]">
+          <div className="px-2 pt-2 pb-1 text-[10px] tracking-[0.15em] uppercase text-(--text5)">
             Ungrouped
           </div>
         )}
@@ -645,7 +645,7 @@ export default function Sidebar({
         {/* Drop zone for pulling a device out of every folder */}
         {draggingHost && folders.length > 0 && ungrouped.length === 0 && (
           <div
-            className="mx-1 mb-1 rounded-lg px-3 py-3 text-center text-[10px] text-[var(--text4)]"
+            className="mx-1 mb-1 rounded-lg px-3 py-3 text-center text-[10px] text-(--text4)"
             style={{
               border: `1px dashed ${target?.kind === "host-ungrouped-end" ? CYAN : "var(--border2)"}`,
               color: target?.kind === "host-ungrouped-end" ? CYAN : undefined,
@@ -660,7 +660,7 @@ export default function Sidebar({
       </div>
 
       {/* Bottom toolbar — compact icon row + version */}
-      <div className="border-t border-[var(--border)]" style={{ background: "var(--bg1)" }}>
+      <div className="border-t border-(--border)" style={{ background: "var(--bg1)" }}>
 
         {/* Icon row */}
         <div className="flex items-center px-2 py-2 gap-0.5">
@@ -705,7 +705,7 @@ export default function Sidebar({
           <button
             onClick={onOpenKeyManager}
             title="SSH Keys"
-            className="flex-1 flex items-center justify-center py-2.5 rounded-lg text-[var(--text4)] hover:text-[#818cf8] transition-all"
+            className="flex-1 flex items-center justify-center py-2.5 rounded-lg text-(--text4) hover:text-accent-hover transition-all"
           >
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none">
               <circle cx="5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
@@ -730,7 +730,7 @@ export default function Sidebar({
           onClick={onOpenUpdate}
           className="w-full flex items-center justify-between px-4 pb-3 transition-all group"
         >
-          <span className="text-[10px] font-mono text-[var(--text5)] group-hover:text-[var(--text3)] transition-colors">
+          <span className="text-[10px] font-mono text-(--text5) group-hover:text-(--text3) transition-colors">
             v{currentVersion ?? "…"}
           </span>
           {updateAvailable && (
@@ -745,7 +745,7 @@ export default function Sidebar({
       {/* Drag ghost — follows the pointer; pointer-events off so hit-testing sees what's underneath */}
       {drag && (
         <div
-          className="fixed z-50 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-medium text-[var(--text)]"
+          className="fixed z-50 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-medium text-(--text)"
           style={{
             left: drag.x + 12,
             top: drag.y + 8,

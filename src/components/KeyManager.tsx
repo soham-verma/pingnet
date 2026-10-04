@@ -150,18 +150,18 @@ export default function KeyManager({ onClose }: Props) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-[var(--border)] shadow-2xl flex flex-col"
+        className="w-full max-w-lg rounded-2xl border border-(--border) shadow-2xl flex flex-col"
         style={{ background: "var(--bg2)", maxHeight: "85vh" }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-(--border) shrink-0">
           <div>
-            <h2 className="font-semibold text-[var(--text)] text-sm">SSH Key Manager</h2>
-            <p className="text-[11px] text-[var(--text3)] mt-0.5">Keys stored in OS keychain (Ed25519)</p>
+            <h2 className="font-semibold text-(--text) text-sm">SSH Key Manager</h2>
+            <p className="text-[11px] text-(--text3) mt-0.5">Keys stored in OS keychain (Ed25519)</p>
           </div>
           <button
             onClick={onClose}
-            className="text-[var(--text3)] hover:text-[var(--text)] transition-colors text-xl"
+            className="text-(--text3) hover:text-(--text) transition-colors text-xl"
           >
             ×
           </button>
@@ -169,40 +169,40 @@ export default function KeyManager({ onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto">
           {/* Generate form */}
-          <form onSubmit={handleGenerate} className="px-6 py-4 border-b border-[var(--border)] space-y-3">
-            <p className="text-[10px] tracking-widest text-[var(--text3)] uppercase">Generate New Key</p>
+          <form onSubmit={handleGenerate} className="px-6 py-4 border-b border-(--border) space-y-3">
+            <p className="text-[10px] tracking-widest text-(--text3) uppercase">Generate New Key</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Key name (e.g. work-vps)"
-                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none focus:border-[#6366f1] transition-all"
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-(--bg) border border-(--border) text-sm text-(--text) placeholder-(--text5) outline-hidden focus:border-accent transition-all"
               />
               <input
                 type="text"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Comment (optional)"
-                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--text5)] outline-none focus:border-[#6366f1] transition-all"
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-(--bg) border border-(--border) text-sm text-(--text) placeholder-(--text5) outline-hidden focus:border-accent transition-all"
               />
               <button
                 type="submit"
                 disabled={generating || !name.trim()}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text)] bg-[#6366f1] hover:bg-[#818cf8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-(--text) bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
               >
                 {generating ? "Generating…" : "Generate"}
               </button>
             </div>
-            {genError && <p className="text-[#ef4444] text-xs">{genError}</p>}
+            {genError && <p className="text-status-fail text-xs">{genError}</p>}
             {newPubKey && (
-              <div className="rounded-lg bg-[var(--bg)] border border-[#22c55e30] p-3 space-y-1">
-                <p className="text-[10px] text-[#22c55e] tracking-widest uppercase">Key generated — add this to your server's authorized_keys</p>
-                <pre className="text-[10px] text-[var(--text2)] font-mono break-all whitespace-pre-wrap">{newPubKey}</pre>
+              <div className="rounded-lg bg-(--bg) border border-[#22c55e30] p-3 space-y-1">
+                <p className="text-[10px] text-status-ok tracking-widest uppercase">Key generated — add this to your server's authorized_keys</p>
+                <pre className="text-[10px] text-(--text2) font-mono break-all whitespace-pre-wrap">{newPubKey}</pre>
                 <button
                   type="button"
                   onClick={() => copyKey(newPubKey, "new")}
-                  className="text-xs text-[#6366f1] hover:text-[#818cf8] transition-colors"
+                  className="text-xs text-accent hover:text-accent-hover transition-colors"
                 >
                   {copied === "new" ? "Copied!" : "Copy to clipboard"}
                 </button>
@@ -212,38 +212,38 @@ export default function KeyManager({ onClose }: Props) {
 
           {/* Key list */}
           <div className="px-6 py-4 space-y-3">
-            <p className="text-[10px] tracking-widest text-[var(--text3)] uppercase">Saved Keys ({keys.length})</p>
+            <p className="text-[10px] tracking-widest text-(--text3) uppercase">Saved Keys ({keys.length})</p>
 
             {loading ? (
-              <p className="text-[var(--text3)] text-sm py-4 text-center">Loading…</p>
+              <p className="text-(--text3) text-sm py-4 text-center">Loading…</p>
             ) : error ? (
-              <p className="text-[#ef4444] text-sm">{error}</p>
+              <p className="text-status-fail text-sm">{error}</p>
             ) : keys.length === 0 ? (
-              <p className="text-[var(--text5)] text-sm py-4 text-center">No keys yet — generate one above</p>
+              <p className="text-(--text5) text-sm py-4 text-center">No keys yet — generate one above</p>
             ) : (
               keys.map((k) => (
                 <div
                   key={k.name}
-                  className="bg-[var(--bg)] border border-[var(--border)] rounded-xl p-4 space-y-2"
+                  className="bg-(--bg) border border-(--border) rounded-xl p-4 space-y-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-[var(--text)] text-sm font-medium">{k.name}</p>
+                      <p className="text-(--text) text-sm font-medium">{k.name}</p>
                       {k.comment && (
-                        <p className="text-[11px] text-[var(--text3)]">{k.comment}</p>
+                        <p className="text-[11px] text-(--text3)">{k.comment}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => copyKey(k.public_key, k.name)}
-                        className="text-[11px] text-[#6366f1] hover:text-[#818cf8] transition-colors"
+                        className="text-[11px] text-accent hover:text-accent-hover transition-colors"
                       >
                         {copied === k.name ? "Copied!" : "Copy pub key"}
                       </button>
                       <button
                         onClick={() => handleRegenerate(k)}
                         disabled={regenerating === k.name}
-                        className="text-[11px] text-[#f59e0b] hover:text-[#fbbf24] transition-colors disabled:opacity-40"
+                        className="text-[11px] text-status-warn hover:text-[#fbbf24] transition-colors disabled:opacity-40"
                         title="Generate a new keypair under this name — replaces the old key"
                       >
                         {regenerating === k.name ? "Regenerating…" : "Regenerate"}
@@ -251,26 +251,26 @@ export default function KeyManager({ onClose }: Props) {
                       <button
                         onClick={() => handleDelete(k.name)}
                         disabled={deleting === k.name}
-                        className="text-[11px] text-[var(--text3)] hover:text-[#ef4444] transition-colors disabled:opacity-40"
+                        className="text-[11px] text-(--text3) hover:text-status-fail transition-colors disabled:opacity-40"
                       >
                         {deleting === k.name ? "Deleting…" : "Delete"}
                       </button>
                     </div>
                   </div>
-                  <pre className="text-[9px] text-[var(--text4)] font-mono truncate">{k.public_key}</pre>
-                  <p className="text-[10px] text-[var(--text5)]">
+                  <pre className="text-[9px] text-(--text4) font-mono truncate">{k.public_key}</pre>
+                  <p className="text-[10px] text-(--text5)">
                     Created {new Date(k.created_at).toLocaleDateString()}
                   </p>
 
                   {/* Regen success banner */}
                   {regenResult?.name === k.name && (
-                    <div className="rounded-lg bg-[var(--bg)] border border-[#f59e0b30] p-3 space-y-1 mt-1">
-                      <p className="text-[10px] text-[#f59e0b] tracking-widest uppercase">New key — update authorized_keys on your servers</p>
-                      <pre className="text-[10px] text-[var(--text2)] font-mono break-all whitespace-pre-wrap">{regenResult.pubKey}</pre>
+                    <div className="rounded-lg bg-(--bg) border border-[#f59e0b30] p-3 space-y-1 mt-1">
+                      <p className="text-[10px] text-status-warn tracking-widest uppercase">New key — update authorized_keys on your servers</p>
+                      <pre className="text-[10px] text-(--text2) font-mono break-all whitespace-pre-wrap">{regenResult.pubKey}</pre>
                       <button
                         type="button"
                         onClick={() => copyKey(regenResult.pubKey, `regen-${k.name}`)}
-                        className="text-xs text-[#f59e0b] hover:text-[#fbbf24] transition-colors"
+                        className="text-xs text-status-warn hover:text-[#fbbf24] transition-colors"
                       >
                         {copied === `regen-${k.name}` ? "Copied!" : "Copy to clipboard"}
                       </button>

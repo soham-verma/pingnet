@@ -47,12 +47,12 @@ function ConfirmCheckbox({
   label: string;
 }) {
   return (
-    <label className="flex items-start gap-2.5 text-[11px] text-[var(--text2)] cursor-pointer">
+    <label className="flex items-start gap-2.5 text-[11px] text-(--text2) cursor-pointer">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 flex-shrink-0"
+        className="mt-0.5 shrink-0"
       />
       <span>{label}</span>
     </label>
@@ -85,7 +85,7 @@ function ActionBtn({
       type="button"
       disabled={!enabled}
       onClick={onClick}
-      className="px-2.5 py-1 rounded text-[10px] font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+      className="px-2.5 py-1 rounded-sm text-[10px] font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
       style={{
         background: danger ? "#ef444418" : "#6366f115",
         color: danger ? "#f87171" : "#818cf8",
@@ -115,10 +115,10 @@ function PartDiskBar({
   return (
     <div className="mb-4">
       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-        <span className="font-mono text-[11px] text-[var(--text2)]">{devPath(disk.name)}</span>
-        <span className="text-[10px] text-[var(--text4)]">{disk.size || fmtPartBytes(disk.sizeBytes)}</span>
+        <span className="font-mono text-[11px] text-(--text2)">{devPath(disk.name)}</span>
+        <span className="text-[10px] text-(--text4)">{disk.size || fmtPartBytes(disk.sizeBytes)}</span>
         {free > 0 && (
-          <span className="text-[9px] text-[var(--text5)]">{fmtPartBytes(free)} free</span>
+          <span className="text-[9px] text-(--text5)">{fmtPartBytes(free)} free</span>
         )}
         {disk.parts.some((p) => p.slot) && (
           <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: "#00c8a815", color: "#00c8a8" }}>
@@ -127,12 +127,12 @@ function PartDiskBar({
         )}
       </div>
 
-      <div className="flex h-9 rounded-lg overflow-hidden border border-[var(--border)] gap-px bg-[var(--border)]">
+      <div className="flex h-9 rounded-lg overflow-hidden border border-(--border) gap-px bg-(--border)">
         {disk.parts.length === 0 ? (
           <button
             type="button"
             onClick={() => onSelect(null)}
-            className="flex-1 flex items-center justify-center bg-[var(--bg)] text-[10px] text-[var(--text4)] hover:bg-white/[0.03]"
+            className="flex-1 flex items-center justify-center bg-(--bg) text-[10px] text-(--text4) hover:bg-white/3"
           >
             {disk.sizeBytes > 0 ? `${fmtPartBytes(disk.sizeBytes)} · unallocated` : "Empty disk — create partition"}
           </button>
@@ -184,8 +184,8 @@ function PartDiskBar({
             ["Flags", selPart.ro ? "ro" : "rw"],
           ].map(([k, v]) => (
             <div key={k}>
-              <div className="text-[9px] text-[var(--text4)] uppercase tracking-wider mb-0.5">{k}</div>
-              <div className="font-mono text-[var(--text)] truncate">{v}</div>
+              <div className="text-[9px] text-(--text4) uppercase tracking-wider mb-0.5">{k}</div>
+              <div className="font-mono text-(--text) truncate">{v}</div>
             </div>
           ))}
         </div>
@@ -330,11 +330,11 @@ export default function PartitionManager({ sessionId }: Props) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] gap-2 flex-wrap">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-(--border) gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Partitions</span>
+          <span className="text-[9px] tracking-widest text-(--text5) uppercase">Partitions</span>
           {scan && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded font-mono" style={{ background: "var(--bg2)", color: "var(--text4)" }}>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-sm font-mono" style={{ background: "var(--bg2)", color: "var(--text4)" }}>
               {scan.platform} · {scan.method}
             </span>
           )}
@@ -343,7 +343,7 @@ export default function PartitionManager({ sessionId }: Props) {
           <button
             type="button"
             onClick={() => setShowSudo((s) => !s)}
-            className="text-[10px] px-2 py-1 rounded transition-colors"
+            className="text-[10px] px-2 py-1 rounded-sm transition-colors"
             style={{ color: sudoPassword ? "#00c8a8" : "var(--text4)", border: "1px solid var(--border)" }}
           >
             {sudoPassword ? "Sudo ✓" : "Sudo"}
@@ -352,13 +352,13 @@ export default function PartitionManager({ sessionId }: Props) {
             <button
               type="button"
               onClick={() => void doScan()}
-              className="text-[10px] px-2 py-1 rounded font-medium"
+              className="text-[10px] px-2 py-1 rounded-sm font-medium"
               style={{ background: "#6366f115", color: "#818cf8", border: "1px solid #6366f130" }}
             >
               Scan
             </button>
           ) : (
-            <button type="button" onClick={() => void doScan()} className="text-[10px] text-[var(--text4)] hover:text-[var(--text3)]">
+            <button type="button" onClick={() => void doScan()} className="text-[10px] text-(--text4) hover:text-(--text3)">
               ↻ Rescan
             </button>
           )}
@@ -366,36 +366,36 @@ export default function PartitionManager({ sessionId }: Props) {
       </div>
 
       {showSudo && (
-        <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-2" style={{ background: "var(--bg)" }}>
-          <span className="text-[10px] text-[var(--text4)] flex-shrink-0">Sudo password</span>
+        <div className="px-4 py-2 border-b border-(--border) flex items-center gap-2" style={{ background: "var(--bg)" }}>
+          <span className="text-[10px] text-(--text4) shrink-0">Sudo password</span>
           <input
             type="password"
             value={sudoPassword}
             onChange={(e) => setSudoPassword(e.target.value)}
             placeholder="Required for mount/format/resize…"
-            className="flex-1 px-2 py-1 rounded text-[11px] font-mono bg-[var(--bg1)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[#6366f1]"
+            className="flex-1 px-2 py-1 rounded-sm text-[11px] font-mono bg-(--bg1) border border-(--border) text-(--text) outline-hidden focus:border-accent"
           />
         </div>
       )}
 
       <div className="px-4 py-3 space-y-3">
         {state === "idle" && (
-          <p className="text-[11px] text-[var(--text5)] italic text-center py-2">
+          <p className="text-[11px] text-(--text5) italic text-center py-2">
             Scan disks to view layout and manage partitions (Linux, macOS, BSD)
           </p>
         )}
         {state === "loading" && (
           <div className="flex items-center justify-center gap-2 py-4">
-            <span className="w-4 h-4 rounded-full border-2 border-[#6366f1] border-t-transparent animate-spin" />
-            <span className="text-[11px] text-[var(--text4)]">Scanning…</span>
+            <span className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+            <span className="text-[11px] text-(--text4)">Scanning…</span>
           </div>
         )}
-        {state === "error" && <p className="text-[11px] text-[#ef4444] text-center py-2">{err}</p>}
+        {state === "error" && <p className="text-[11px] text-status-fail text-center py-2">{err}</p>}
 
         {state === "done" && scan && (
           <>
             {!manageable && (
-              <p className="text-[10px] text-[#f59e0b] bg-[#f59e0b10] border border-[#f59e0b30] rounded-lg px-3 py-2">
+              <p className="text-[10px] text-status-warn bg-[#f59e0b10] border border-[#f59e0b30] rounded-lg px-3 py-2">
                 Read-only view — full management requires lsblk, diskutil, or gpart. Mount/unmount may still work via device paths.
               </p>
             )}
@@ -406,7 +406,7 @@ export default function PartitionManager({ sessionId }: Props) {
                 <button
                   type="button"
                   onClick={() => queueAbSwitch(scan.activeSlot === "a" ? "b" : "a")}
-                  className="ml-auto text-[10px] px-2 py-1 rounded font-medium"
+                  className="ml-auto text-[10px] px-2 py-1 rounded-sm font-medium"
                   style={{ background: "#f59e0b18", color: "#f59e0b", border: "1px solid #f59e0b30" }}
                 >
                   Switch to {scan.activeSlot === "a" ? "B" : "A"}
@@ -438,7 +438,7 @@ export default function PartitionManager({ sessionId }: Props) {
             )}
 
             {scan.disks.length === 0 ? (
-              <p className="text-[11px] text-[var(--text5)] italic text-center py-2">No disks detected</p>
+              <p className="text-[11px] text-(--text5) italic text-center py-2">No disks detected</p>
             ) : (
               activeDisk && (
                 <PartDiskBar
@@ -452,8 +452,8 @@ export default function PartitionManager({ sessionId }: Props) {
 
             {/* Action toolbar */}
             {manageable && activeDisk && (
-              <div className="rounded-lg border border-[var(--border)] p-3 space-y-3" style={{ background: "var(--bg)" }}>
-                <p className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Actions — queued until you apply</p>
+              <div className="rounded-lg border border-(--border) p-3 space-y-3" style={{ background: "var(--bg)" }}>
+                <p className="text-[9px] tracking-widest text-(--text5) uppercase">Actions — queued until you apply</p>
                 <div className="flex flex-wrap gap-1.5">
                   <ActionBtn label="Mount" enabled={actionAvailable("mount", scan, activePart ?? undefined)} onClick={() => openAction("mount")} />
                   <ActionBtn label="Unmount" enabled={actionAvailable("unmount", scan, activePart ?? undefined)} onClick={() => openAction("unmount")} />
@@ -464,46 +464,46 @@ export default function PartitionManager({ sessionId }: Props) {
                 </div>
 
                 {/* Shared form fields */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[var(--border)]">
-                  <label className="text-[10px] text-[var(--text4)]">
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-(--border)">
+                  <label className="text-[10px] text-(--text4)">
                     Filesystem
                     <select
                       value={fstype}
                       onChange={(e) => setFstype(e.target.value)}
-                      className="mt-1 w-full px-2 py-1 rounded text-[11px] bg-[var(--bg1)] border border-[var(--border)] text-[var(--text)]"
+                      className="mt-1 w-full px-2 py-1 rounded-sm text-[11px] bg-(--bg1) border border-(--border) text-(--text)"
                     >
                       {fmtOptions.map((f) => (
                         <option key={f} value={f}>{f}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="text-[10px] text-[var(--text4)]">
+                  <label className="text-[10px] text-(--text4)">
                     Label (optional)
                     <input
                       value={label}
                       onChange={(e) => setLabel(e.target.value)}
-                      className="mt-1 w-full px-2 py-1 rounded text-[11px] font-mono bg-[var(--bg1)] border border-[var(--border)] text-[var(--text)]"
+                      className="mt-1 w-full px-2 py-1 rounded-sm text-[11px] font-mono bg-(--bg1) border border-(--border) text-(--text)"
                     />
                   </label>
-                  <label className="text-[10px] text-[var(--text4)] col-span-2">
+                  <label className="text-[10px] text-(--text4) col-span-2">
                     Mount point (for Mount)
                     <input
                       value={mountPoint}
                       onChange={(e) => setMountPoint(e.target.value)}
                       placeholder="/mnt/data"
-                      className="mt-1 w-full px-2 py-1 rounded text-[11px] font-mono bg-[var(--bg1)] border border-[var(--border)] text-[var(--text)]"
+                      className="mt-1 w-full px-2 py-1 rounded-sm text-[11px] font-mono bg-(--bg1) border border-(--border) text-(--text)"
                     />
                   </label>
-                  <label className="text-[10px] text-[var(--text4)]">
+                  <label className="text-[10px] text-(--text4)">
                     Size (MiB)
                     <input
                       value={sizeMb}
                       onChange={(e) => setSizeMb(e.target.value)}
                       placeholder="2048"
-                      className="mt-1 w-full px-2 py-1 rounded text-[11px] font-mono bg-[var(--bg1)] border border-[var(--border)] text-[var(--text)]"
+                      className="mt-1 w-full px-2 py-1 rounded-sm text-[11px] font-mono bg-(--bg1) border border-(--border) text-(--text)"
                     />
                   </label>
-                  <label className="text-[10px] text-[var(--text4)] flex items-end gap-2 pb-1">
+                  <label className="text-[10px] text-(--text4) flex items-end gap-2 pb-1">
                     <input type="checkbox" checked={growMax} onChange={(e) => setGrowMax(e.target.checked)} />
                     Use all free space (resize/create)
                   </label>
@@ -524,7 +524,7 @@ export default function PartitionManager({ sessionId }: Props) {
                   <button
                     type="button"
                     onClick={clearPending}
-                    className="text-[10px] text-[var(--text4)] hover:text-[var(--text2)]"
+                    className="text-[10px] text-(--text4) hover:text-(--text2)"
                   >
                     Discard all
                   </button>
@@ -533,20 +533,20 @@ export default function PartitionManager({ sessionId }: Props) {
                   {pending.map((item, i) => (
                     <li
                       key={item.id}
-                      className="flex items-start gap-2 rounded-lg px-2.5 py-2 border border-[var(--border)]"
+                      className="flex items-start gap-2 rounded-lg px-2.5 py-2 border border-(--border)"
                       style={{ background: "var(--bg1)" }}
                     >
-                      <span className="text-[10px] font-mono text-[var(--text5)] mt-0.5">{i + 1}.</span>
+                      <span className="text-[10px] font-mono text-(--text5) mt-0.5">{i + 1}.</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[11px] text-[var(--text)]">{item.plan.summary}</p>
+                        <p className="text-[11px] text-(--text)">{item.plan.summary}</p>
                         {item.plan.destructive && (
-                          <span className="text-[9px] text-[#ef4444]">destructive</span>
+                          <span className="text-[9px] text-status-fail">destructive</span>
                         )}
                       </div>
                       <button
                         type="button"
                         onClick={() => removePending(item.id)}
-                        className="text-[10px] text-[var(--text4)] hover:text-[#ef4444] flex-shrink-0"
+                        className="text-[10px] text-(--text4) hover:text-status-fail shrink-0"
                         title="Remove"
                       >
                         ✕
@@ -567,7 +567,7 @@ export default function PartitionManager({ sessionId }: Props) {
             )}
 
             {lastOutput && (
-              <pre className="text-[10px] font-mono text-[var(--text3)] bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 whitespace-pre-wrap max-h-32 overflow-y-auto">
+              <pre className="text-[10px] font-mono text-(--text3) bg-(--bg) border border-(--border) rounded-lg p-3 whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {lastOutput}
               </pre>
             )}
@@ -578,20 +578,20 @@ export default function PartitionManager({ sessionId }: Props) {
       {/* Queue action modal — adds to pending, does not run */}
       {modal.kind === "queue" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] p-5" style={{ background: "var(--bg2)" }}>
-            <h3 className="font-semibold text-[var(--text)] mb-1">Queue change</h3>
-            <p className="text-[11px] text-[var(--text3)] mb-2">
+          <div className="w-full max-w-md rounded-2xl border border-(--border) p-5" style={{ background: "var(--bg2)" }}>
+            <h3 className="font-semibold text-(--text) mb-1">Queue change</h3>
+            <p className="text-[11px] text-(--text3) mb-2">
               This will <strong>not</strong> run until you apply pending changes and confirm both checkboxes.
             </p>
-            <p className="text-[12px] text-[var(--text)] mb-2">{modal.plan.summary}</p>
+            <p className="text-[12px] text-(--text) mb-2">{modal.plan.summary}</p>
             {modal.plan.warnings.map((w) => (
-              <p key={w} className="text-[11px] text-[#f59e0b] mb-1">⚠ {w}</p>
+              <p key={w} className="text-[11px] text-status-warn mb-1">⚠ {w}</p>
             ))}
-            <pre className="font-mono text-[10px] text-[var(--text3)] bg-[var(--bg)] rounded-lg p-3 my-3 border border-[var(--border)] whitespace-pre-wrap max-h-40 overflow-y-auto">
+            <pre className="font-mono text-[10px] text-(--text3) bg-(--bg) rounded-lg p-3 my-3 border border-(--border) whitespace-pre-wrap max-h-40 overflow-y-auto">
               {modal.plan.command}
             </pre>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setModal({ kind: "none" })} className="flex-1 py-2 rounded-xl text-sm border border-[var(--border)] text-[var(--text3)]">
+              <button type="button" onClick={() => setModal({ kind: "none" })} className="flex-1 py-2 rounded-xl text-sm border border-(--border) text-(--text3)">
                 Cancel
               </button>
               <button
@@ -610,17 +610,17 @@ export default function PartitionManager({ sessionId }: Props) {
       {/* Apply modal — requires two confirmation checkboxes */}
       {modal.kind === "apply" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] p-5" style={{ background: "var(--bg2)" }}>
-            <h3 className="font-semibold text-[var(--text)] mb-1">Apply partition changes</h3>
-            <p className="text-[11px] text-[var(--text3)] mb-3">
+          <div className="w-full max-w-md rounded-2xl border border-(--border) p-5" style={{ background: "var(--bg2)" }}>
+            <h3 className="font-semibold text-(--text) mb-1">Apply partition changes</h3>
+            <p className="text-[11px] text-(--text3) mb-3">
               {pending.length} operation{pending.length !== 1 ? "s" : ""} will run on the remote host. This cannot be undone.
             </p>
-            <ol className="text-[11px] text-[var(--text2)] space-y-1 mb-4 max-h-32 overflow-y-auto">
+            <ol className="text-[11px] text-(--text2) space-y-1 mb-4 max-h-32 overflow-y-auto">
               {pending.map((item, i) => (
                 <li key={item.id}>{i + 1}. {item.plan.summary}</li>
               ))}
             </ol>
-            <div className="space-y-3 mb-4 rounded-lg border border-[var(--border)] p-3" style={{ background: "var(--bg)" }}>
+            <div className="space-y-3 mb-4 rounded-lg border border-(--border) p-3" style={{ background: "var(--bg)" }}>
               <ConfirmCheckbox
                 checked={confirmUnderstand}
                 onChange={setConfirmUnderstand}
@@ -636,7 +636,7 @@ export default function PartitionManager({ sessionId }: Props) {
               <button
                 type="button"
                 onClick={() => { setModal({ kind: "none" }); setConfirmUnderstand(false); setConfirmBackup(false); }}
-                className="flex-1 py-2 rounded-xl text-sm border border-[var(--border)] text-[var(--text3)]"
+                className="flex-1 py-2 rounded-xl text-sm border border-(--border) text-(--text3)"
               >
                 Cancel
               </button>
@@ -656,12 +656,12 @@ export default function PartitionManager({ sessionId }: Props) {
 
       {modal.kind === "ab-switch" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] p-5" style={{ background: "var(--bg2)" }}>
-            <h3 className="font-semibold text-[var(--text)] mb-2">Queue A/B slot switch to {modal.target.toUpperCase()}?</h3>
-            <p className="text-[11px] text-[var(--text3)] mb-3">Takes effect on next reboot. Added to pending — not applied yet.</p>
-            <pre className="font-mono text-[10px] text-[var(--text3)] bg-[var(--bg)] rounded-lg p-3 mb-4 border border-[var(--border)]">{modal.plan.command}</pre>
+          <div className="w-full max-w-sm rounded-2xl border border-(--border) p-5" style={{ background: "var(--bg2)" }}>
+            <h3 className="font-semibold text-(--text) mb-2">Queue A/B slot switch to {modal.target.toUpperCase()}?</h3>
+            <p className="text-[11px] text-(--text3) mb-3">Takes effect on next reboot. Added to pending — not applied yet.</p>
+            <pre className="font-mono text-[10px] text-(--text3) bg-(--bg) rounded-lg p-3 mb-4 border border-(--border)">{modal.plan.command}</pre>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setModal({ kind: "none" })} className="flex-1 py-2 rounded-xl text-sm border border-[var(--border)]">Cancel</button>
+              <button type="button" onClick={() => setModal({ kind: "none" })} className="flex-1 py-2 rounded-xl text-sm border border-(--border)">Cancel</button>
               <button
                 type="button"
                 onClick={() => queuePlan(modal.plan)}

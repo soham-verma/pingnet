@@ -48,8 +48,8 @@ const REMOTE_LABEL: Record<string, string> = {
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="rounded-lg overflow-hidden min-w-0" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)]">
-        <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">{title}</span>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-(--border)">
+        <span className="text-[9px] tracking-widest text-(--text5) uppercase">{title}</span>
         {right}
       </div>
       {children}
@@ -60,7 +60,7 @@ function Card({ title, right, children }: { title: string; right?: React.ReactNo
 function KV({ label, value, mono = true, color }: { label: string; value: React.ReactNode; mono?: boolean; color?: string }) {
   return (
     <div className="flex justify-between gap-3 px-3 py-2">
-      <span className="text-[10px] text-[var(--text4)] flex-shrink-0">{label}</span>
+      <span className="text-[10px] text-(--text4) shrink-0">{label}</span>
       <span className={`text-[10px] text-right break-all ${mono ? "font-mono" : ""}`} style={{ color: color ?? "var(--text)" }}>
         {value}
       </span>
@@ -69,7 +69,7 @@ function KV({ label, value, mono = true, color }: { label: string; value: React.
 }
 
 function Spinner() {
-  return <div className="w-3 h-3 border border-[#00c8a8] border-t-transparent rounded-full animate-spin flex-shrink-0" />;
+  return <div className="w-3 h-3 border border-[#00c8a8] border-t-transparent rounded-full animate-spin shrink-0" />;
 }
 
 export default function NetworkInfoPanel({ target, extraTargets = [], sessionId, onOpenSSH }: Props) {
@@ -169,10 +169,10 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg1)", border: "1px solid var(--border)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border)">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[9px] tracking-widest text-[var(--text5)] uppercase">Network Info</span>
-          <span className="text-[10px] font-mono text-[var(--text3)] truncate">{target}</span>
+          <span className="text-[9px] tracking-widest text-(--text5) uppercase">Network Info</span>
+          <span className="text-[10px] font-mono text-(--text3) truncate">{target}</span>
         </div>
         <button
           onClick={() => { loadHostnames(); loadDevice(); }}
@@ -187,17 +187,17 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
       {/* Hostnames + device identity */}
       <div className="grid gap-3 p-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
         <Card title="Hostnames (DNS from here)" right={hnLoading ? <Spinner /> : undefined}>
-          <div className="divide-y divide-[var(--bg2)]">
+          <div className="divide-y divide-(--bg2)">
             {hostnames === null && !hnLoading && <KV label="—" value="—" />}
             {hostnames?.map((h) => (
               <div key={h.input} className="px-3 py-2 space-y-1">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] font-mono text-[var(--text2)] break-all">{h.input}</span>
-                  {h.error && <span className="text-[10px] text-[#ef4444] text-right">{h.error}</span>}
+                  <span className="text-[10px] font-mono text-(--text2) break-all">{h.input}</span>
+                  {h.error && <span className="text-[10px] text-status-fail text-right">{h.error}</span>}
                 </div>
                 {h.ptr.map((p) => (
                   <div key={p.ip} className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] font-mono text-[var(--text4)] break-all">
+                    <span className="text-[10px] font-mono text-(--text4) break-all">
                       {p.ip !== h.input ? `→ ${p.ip}` : "PTR"}
                     </span>
                     <span className="text-[10px] font-mono text-right break-all"
@@ -214,9 +214,9 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
         {sessionId ? (
           <Card title="Device (via SSH)" right={idLoading ? <Spinner /> : undefined}>
             {idErr ? (
-              <div className="px-3 py-2 text-[10px] text-[#ef4444] font-mono break-all">{idErr}</div>
+              <div className="px-3 py-2 text-[10px] text-status-fail font-mono break-all">{idErr}</div>
             ) : (
-              <div className="divide-y divide-[var(--bg2)]">
+              <div className="divide-y divide-(--bg2)">
                 <KV label="Hostname" value={identity?.hostname ?? (idLoading ? "…" : "—")} />
                 <KV label="FQDN" value={identity?.fqdn ?? (idLoading ? "…" : "—")} />
                 <KV label="Public IP" value={identity?.public_ip ?? (idLoading ? "…" : "unavailable")}
@@ -229,13 +229,13 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
         ) : (
           <Card title="Device (via SSH)">
             <div className="px-3 py-3 space-y-2">
-              <p className="text-[10px] text-[var(--text4)] leading-relaxed">
+              <p className="text-[10px] text-(--text4) leading-relaxed">
                 Connect over SSH to see the device's own hostname, its public IP / hostname, and which ports are
                 actually listening on it.
               </p>
               {onOpenSSH && (
                 <button onClick={onOpenSSH}
-                  className="text-[10px] font-medium px-3 py-1 rounded-lg transition-all text-[#818cf8] hover:bg-[#6366f110]"
+                  className="text-[10px] font-medium px-3 py-1 rounded-lg transition-all text-accent-hover hover:bg-[#6366f110]"
                   style={{ border: "1px solid #6366f130" }}>
                   Open SSH →
                 </button>
@@ -249,10 +249,10 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
       <div className="px-3 pb-3">
         <Card
           title="Ports"
-          right={listenLoading ? <span className="flex items-center gap-1.5 text-[9px] text-[var(--text5)]"><Spinner />device sockets</span> : undefined}
+          right={listenLoading ? <span className="flex items-center gap-1.5 text-[9px] text-(--text5)"><Spinner />device sockets</span> : undefined}
         >
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-(--border)">
             <div className="flex rounded-md overflow-hidden" style={{ border: "1px solid var(--border)" }}>
               {(["common", "custom"] as const).map((m) => (
                 <button key={m} onClick={() => setPortMode(m)}
@@ -270,7 +270,7 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
                 onChange={(e) => setPortSpec(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") runScan(); }}
                 placeholder="22, 80, 443, 8000-8100"
-                className="flex-1 min-w-[140px] bg-[var(--bg1)] rounded-md px-2 py-1 text-[11px] font-mono text-[var(--text)] outline-none"
+                className="flex-1 min-w-[140px] bg-(--bg1) rounded-md px-2 py-1 text-[11px] font-mono text-(--text) outline-hidden"
                 style={{ border: `1px solid ${portSpec && customParsed.error ? "#ef444480" : "var(--border)"}` }}
               />
             )}
@@ -285,7 +285,7 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
             </button>
             <div className="flex-1" />
             {rows.length > 0 && (
-              <label className="flex items-center gap-1.5 text-[10px] text-[var(--text4)] cursor-pointer select-none">
+              <label className="flex items-center gap-1.5 text-[10px] text-(--text4) cursor-pointer select-none">
                 <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="accent-[#00c8a8]" />
                 Show not active
               </label>
@@ -294,14 +294,14 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
 
           {/* Status / errors */}
           {portMode === "custom" && portSpec && customParsed.error && (
-            <p className="px-3 py-1.5 text-[10px] text-[#ef4444]">{customParsed.error}</p>
+            <p className="px-3 py-1.5 text-[10px] text-status-fail">{customParsed.error}</p>
           )}
-          {scanErr && <p className="px-3 py-1.5 text-[10px] text-[#ef4444] font-mono break-all">{scanErr}</p>}
-          {listenErr && <p className="px-3 py-1.5 text-[10px] text-[#f59e0b] break-all">Device sockets: {listenErr}</p>}
+          {scanErr && <p className="px-3 py-1.5 text-[10px] text-status-fail font-mono break-all">{scanErr}</p>}
+          {listenErr && <p className="px-3 py-1.5 text-[10px] text-status-warn break-all">Device sockets: {listenErr}</p>}
           {(scan || rows.length > 0) && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 border-b border-[var(--border)]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 border-b border-(--border)">
               {scan && (
-                <span className="text-[10px] text-[var(--text5)]">
+                <span className="text-[10px] text-(--text5)">
                   {scan.ports.length} TCP ports on <span className="font-mono">{scan.address}</span> in {(scan.duration_ms / 1000).toFixed(1)}s
                 </span>
               )}
@@ -316,18 +316,18 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
 
           {/* Table */}
           {rows.length === 0 && !scanning && !listenLoading ? (
-            <p className="px-3 py-4 text-center text-[11px] text-[var(--text5)] italic">
+            <p className="px-3 py-4 text-center text-[11px] text-(--text5) italic">
               {sessionId
                 ? "No listening sockets reported yet — run a scan to check reachability from this machine."
                 : "Run a scan to check which ports are reachable on this device from this machine."}
             </p>
           ) : visibleRows.length > 0 ? (
             <>
-              <div className="grid text-[9px] tracking-widest text-[var(--text5)] uppercase px-3 py-1.5 border-b border-[var(--border)]"
+              <div className="grid text-[9px] tracking-widest text-(--text5) uppercase px-3 py-1.5 border-b border-(--border)"
                 style={{ gridTemplateColumns: "72px minmax(70px,1fr) 128px 92px minmax(100px,1.6fr)" }}>
                 <span>Port</span><span>Service</span><span>Status</span><span>From here</span><span>On device</span>
               </div>
-              <div className="divide-y divide-[var(--bg2)]">
+              <div className="divide-y divide-(--bg2)">
                 {visibleRows.map((r) => {
                   const v = VERDICT[r.verdict];
                   const addrs = r.listening ? Array.from(new Set(r.listening.map((s) => s.address))) : [];
@@ -336,32 +336,32 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
                     : [];
                   return (
                     <div key={`${r.proto}:${r.port}`}
-                      className="grid items-center px-3 py-2 hover:bg-white/[0.02] transition-colors"
+                      className="grid items-center px-3 py-2 hover:bg-white/2 transition-colors"
                       style={{ gridTemplateColumns: "72px minmax(70px,1fr) 128px 92px minmax(100px,1.6fr)" }}>
-                      <span className="text-[11px] font-mono text-[var(--text)]">
-                        {r.port}<span className="text-[9px] text-[var(--text5)] ml-1">{r.proto}</span>
+                      <span className="text-[11px] font-mono text-(--text)">
+                        {r.port}<span className="text-[9px] text-(--text5) ml-1">{r.proto}</span>
                       </span>
-                      <span className="text-[10px] font-mono text-[var(--text3)] truncate pr-2">{r.service ?? "—"}</span>
+                      <span className="text-[10px] font-mono text-(--text3) truncate pr-2">{r.service ?? "—"}</span>
                       <span title={v.hint}>
-                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider whitespace-nowrap"
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-wider whitespace-nowrap"
                           style={{ color: v.color, background: "rgba(127,127,127,0.08)", boxShadow: "inset 0 0 0 1px currentColor" }}>
                           {v.label}
                         </span>
                       </span>
-                      <span className="text-[10px] font-mono text-[var(--text4)]">
+                      <span className="text-[10px] font-mono text-(--text4)">
                         {r.remote ? REMOTE_LABEL[r.remote] : "—"}
                         {r.remote === "open" && r.latency_ms != null && (
-                          <span className="text-[var(--text5)]"> · {Math.round(r.latency_ms)}ms</span>
+                          <span className="text-(--text5)"> · {Math.round(r.latency_ms)}ms</span>
                         )}
                       </span>
-                      <span className="text-[10px] font-mono text-[var(--text3)] min-w-0 break-all">
+                      <span className="text-[10px] font-mono text-(--text3) min-w-0 break-all">
                         {r.listening === null
-                          ? <span className="text-[var(--text5)]">{sessionId ? "…" : "needs SSH"}</span>
+                          ? <span className="text-(--text5)">{sessionId ? "…" : "needs SSH"}</span>
                           : addrs.length === 0
-                          ? <span className="text-[var(--text5)]">not listening</span>
+                          ? <span className="text-(--text5)">not listening</span>
                           : <>
                               {addrs.join(", ")}
-                              {procs.length > 0 && <span className="text-[#818cf8]"> · {procs.join(", ")}</span>}
+                              {procs.length > 0 && <span className="text-accent-hover"> · {procs.join(", ")}</span>}
                             </>}
                       </span>
                     </div>
@@ -372,7 +372,7 @@ export default function NetworkInfoPanel({ target, extraTargets = [], sessionId,
           ) : null}
           {hiddenCount > 0 && !showAll && (
             <button onClick={() => setShowAll(true)}
-              className="w-full px-3 py-2 text-[10px] text-[var(--text5)] hover:text-[var(--text3)] transition-colors border-t border-[var(--border)]">
+              className="w-full px-3 py-2 text-[10px] text-(--text5) hover:text-(--text3) transition-colors border-t border-(--border)">
               {hiddenCount} not-active port{hiddenCount === 1 ? "" : "s"} hidden · show
             </button>
           )}

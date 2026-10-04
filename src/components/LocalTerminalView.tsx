@@ -108,10 +108,10 @@ export default function LocalTerminalView() {
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0"
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-(--border) shrink-0"
         style={{ background: "var(--bg1)" }}>
 
-        <div className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0"
+        <div className="w-6 h-6 flex items-center justify-center rounded-md shrink-0"
           style={{ background: "#00c8a815", border: "1px solid #00c8a825" }}>
           {/* Terminal icon */}
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -122,8 +122,8 @@ export default function LocalTerminalView() {
         </div>
 
         <div className="flex-1 min-w-0">
-          <span className="text-[var(--text)] font-semibold text-sm">Local Terminal</span>
-          <div className="text-[11px] text-[var(--text4)] mt-0.5">
+          <span className="text-(--text) font-semibold text-sm">Local Terminal</span>
+          <div className="text-[11px] text-(--text4) mt-0.5">
             your machine
           </div>
         </div>
@@ -131,13 +131,13 @@ export default function LocalTerminalView() {
         {/* Theme picker */}
         <div className="flex items-center gap-1.5">
           <span
-            className="w-3 h-3 rounded-sm flex-shrink-0 border border-white/10"
+            className="w-3 h-3 rounded-xs shrink-0 border border-white/10"
             style={{ background: getTerminalTheme(terminalThemeId).xterm.background }}
           />
           <select
             value={terminalThemeId}
             onChange={e => handleThemeChange(e.target.value)}
-            className="h-7 max-w-[120px] rounded px-1.5 text-[11px] font-medium bg-[var(--bg2)] border border-[var(--border)] text-[var(--text2)] focus:outline-none focus:border-[#00c8a860] cursor-pointer"
+            className="h-7 max-w-[120px] rounded-sm px-1.5 text-[11px] font-medium bg-(--bg2) border border-(--border) text-(--text2) focus:outline-hidden focus:border-[#00c8a860] cursor-pointer"
           >
             {TERMINAL_THEMES.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
@@ -166,10 +166,10 @@ export default function LocalTerminalView() {
                   {tab.status === "starting" ? (
                     <div className="flex flex-col items-center justify-center h-full gap-3">
                       <div className="relative w-10 h-10">
-                        <div className="absolute inset-0 rounded-full border-2 border-[var(--border)]" />
+                        <div className="absolute inset-0 rounded-full border-2 border-(--border)" />
                         <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#00c8a8] animate-spin" />
                       </div>
-                      <p className="text-[var(--text3)] text-sm">Starting shell…</p>
+                      <p className="text-(--text3) text-sm">Starting shell…</p>
                     </div>
                   ) : tab.status === "exited" ? (
                     <div className="relative h-full">
@@ -186,7 +186,7 @@ export default function LocalTerminalView() {
                       {/* Overlay */}
                       <div className="absolute inset-0 flex items-center justify-center"
                         style={{ background: "rgba(8,8,15,0.75)", backdropFilter: "blur(2px)" }}>
-                        <div className="rounded-2xl border border-[var(--border)] p-8 flex flex-col items-center gap-4 max-w-xs w-full mx-4"
+                        <div className="rounded-2xl border border-(--border) p-8 flex flex-col items-center gap-4 max-w-xs w-full mx-4"
                           style={{ background: "var(--bg2)" }}>
                           <div className="w-10 h-10 rounded-full flex items-center justify-center"
                             style={{ background: "#ef444415", border: "1px solid #ef444430" }}>
@@ -196,8 +196,8 @@ export default function LocalTerminalView() {
                             </svg>
                           </div>
                           <div className="text-center">
-                            <p className="text-[var(--text)] font-semibold mb-1">Shell exited</p>
-                            <p className="text-[var(--text4)] text-[12px]">The shell process ended</p>
+                            <p className="text-(--text) font-semibold mb-1">Shell exited</p>
+                            <p className="text-(--text4) text-[12px]">The shell process ended</p>
                           </div>
                           <button
                             onClick={() => { setTabStatus(tab.id, "starting"); startTab(tab.id); }}
@@ -224,7 +224,7 @@ export default function LocalTerminalView() {
 
             {/* Tab bar */}
             <div
-              className="flex items-center border-t border-[var(--border)] flex-shrink-0 overflow-x-auto"
+              className="flex items-center border-t border-(--border) shrink-0 overflow-x-auto"
               style={{ background: "var(--bg1)", minHeight: 36 }}
             >
               {tabs.map(tab => {
@@ -236,26 +236,26 @@ export default function LocalTerminalView() {
                   <div
                     key={tab.id}
                     onClick={() => setActiveTabId(tab.id)}
-                    className={`group flex items-center gap-1.5 px-3 h-9 border-r border-[var(--border)] cursor-pointer flex-shrink-0 select-none transition-colors ${
-                      isActive ? "bg-[var(--bg2)]" : "hover:bg-[var(--bg2)]"
+                    className={`group flex items-center gap-1.5 px-3 h-9 border-r border-(--border) cursor-pointer shrink-0 select-none transition-colors ${
+                      isActive ? "bg-(--bg2)" : "hover:bg-(--bg2)"
                     }`}
                     style={{ borderTop: isActive ? `2px solid ${dotColor}` : "2px solid transparent" }}
                   >
                     <span
-                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${tab.status === "starting" ? "ping-pulsing" : ""}`}
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.status === "starting" ? "ping-pulsing" : ""}`}
                       style={{ background: dotColor }}
                     />
                     <span className={`text-[12px] font-medium max-w-[120px] truncate ${
-                      isActive ? "text-[var(--text)]" : "text-[var(--text3)] group-hover:text-[var(--text2)]"
+                      isActive ? "text-(--text)" : "text-(--text3) group-hover:text-(--text2)"
                     }`}>
                       {tab.name}
                     </span>
                     <button
                       onClick={e => closeTab(tab.id, e)}
-                      className={`flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] transition-all ${
+                      className={`shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] transition-all ${
                         isActive
-                          ? "text-[var(--text3)] hover:text-[var(--text)] hover:bg-[var(--border)] opacity-100"
-                          : "text-[var(--text5)] hover:text-[var(--text3)] opacity-0 group-hover:opacity-100"
+                          ? "text-(--text3) hover:text-(--text) hover:bg-(--border) opacity-100"
+                          : "text-(--text5) hover:text-(--text3) opacity-0 group-hover:opacity-100"
                       }`}
                     >✕</button>
                   </div>
@@ -265,7 +265,7 @@ export default function LocalTerminalView() {
               {/* New tab */}
               <button
                 onClick={addTab}
-                className="h-9 px-3 flex items-center text-[var(--text4)] hover:text-[#00c8a8] hover:bg-[var(--bg2)] transition-all flex-shrink-0"
+                className="h-9 px-3 flex items-center text-(--text4) hover:text-[#00c8a8] hover:bg-(--bg2) transition-all shrink-0"
                 title="New shell tab"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -294,8 +294,8 @@ function EmptyState({ onOpen }: { onOpen: () => void }) {
         </svg>
       </div>
       <div className="text-center">
-        <p className="text-[var(--text)] font-semibold mb-1">Local Terminal</p>
-        <p className="text-[var(--text3)] text-sm">Open a shell on this machine</p>
+        <p className="text-(--text) font-semibold mb-1">Local Terminal</p>
+        <p className="text-(--text3) text-sm">Open a shell on this machine</p>
       </div>
       <button
         onClick={onOpen}

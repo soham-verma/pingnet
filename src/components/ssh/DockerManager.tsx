@@ -110,7 +110,7 @@ function StateBadge({ state }: { state: string }) {
       style={{ color, background: `${color}18`, border: `1px solid ${color}30` }}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cat === "running" ? "animate-pulse" : ""}`}
+        className={`w-1.5 h-1.5 rounded-full shrink-0 ${cat === "running" ? "animate-pulse" : ""}`}
         style={{ background: color }}
       />
       {label}
@@ -138,7 +138,7 @@ function ActionBtn({
       onClick={onClick}
       disabled={disabled || loading}
       title={title}
-      className="px-2.5 py-1 rounded text-[11px] font-medium transition-all disabled:opacity-40"
+      className="px-2.5 py-1 rounded-sm text-[11px] font-medium transition-all disabled:opacity-40"
       style={
         danger
           ? { color: "#f87171", background: "#f8717112", border: "1px solid #f8717130" }
@@ -185,22 +185,22 @@ function OutputDrawer({
       }}
     >
       <div
-        className="flex items-center gap-2 px-4 py-2 border-b flex-shrink-0"
+        className="flex items-center gap-2 px-4 py-2 border-b shrink-0"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
-        <span className="text-[11px] font-semibold text-[var(--text)] flex-1 truncate">
+        <span className="text-[11px] font-semibold text-(--text) flex-1 truncate">
           {title}
         </span>
         <button
           onClick={onClose}
-          className="text-[var(--text4)] hover:text-[var(--text)] text-[12px] transition-colors"
+          className="text-(--text4) hover:text-(--text) text-[12px] transition-colors"
         >
           ✕
         </button>
       </div>
       <div
         ref={ref}
-        className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-[var(--text)] whitespace-pre-wrap"
+        className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-(--text) whitespace-pre-wrap"
         style={{ background: "var(--bg)" }}
       >
         {output || "(no output)"}
@@ -247,22 +247,22 @@ function SudoModal({
         {/* Icon */}
         <div className="flex items-center gap-3">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: "#f59e0b10", border: "1px solid #f59e0b30" }}
           >
-            <span className="text-[#f59e0b] text-base">🔐</span>
+            <span className="text-status-warn text-base">🔐</span>
           </div>
           <div>
-            <p className="text-[var(--text)] font-semibold text-sm">sudo required</p>
-            <p className="text-[11px] text-[var(--text3)]">
+            <p className="text-(--text) font-semibold text-sm">sudo required</p>
+            <p className="text-[11px] text-(--text3)">
               Docker needs elevated permissions on this host
             </p>
           </div>
         </div>
 
         {/* Explanation */}
-        <p className="text-[12px] text-[var(--text3)] leading-relaxed">
-          The current user is not in the <span className="font-mono text-[var(--text2)]">docker</span> group.
+        <p className="text-[12px] text-(--text3) leading-relaxed">
+          The current user is not in the <span className="font-mono text-(--text2)">docker</span> group.
           Enter the sudo password to run Docker commands as root.
           The password is sent over the existing encrypted SSH session and never stored.
         </p>
@@ -275,14 +275,14 @@ function SudoModal({
           value={pw}
           onChange={(e) => setPw(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") onCancel(); }}
-          className="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#f59e0b60] font-mono"
+          className="w-full bg-(--bg3) border border-(--border) rounded-lg px-3 py-2 text-[13px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-[#f59e0b60] font-mono"
         />
 
         {/* Actions */}
         <div className="flex gap-2">
           <button
             onClick={onCancel}
-            className="flex-1 py-2 rounded-xl text-[12px] font-medium text-[var(--text3)] hover:text-[var(--text)] transition-colors border border-[var(--border)]"
+            className="flex-1 py-2 rounded-xl text-[12px] font-medium text-(--text3) hover:text-(--text) transition-colors border border-(--border)"
           >
             Cancel
           </button>
@@ -387,14 +387,14 @@ function ComposeFilePicker({
       >
         {/* Header */}
         <div
-          className="flex items-center gap-2 px-4 py-3 border-b flex-shrink-0"
+          className="flex items-center gap-2 px-4 py-3 border-b shrink-0"
           style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
         >
-          <span className="text-[12px] font-semibold text-[var(--text)]">Browse compose files</span>
+          <span className="text-[12px] font-semibold text-(--text)">Browse compose files</span>
           <div className="flex-1" />
           <button
             onClick={onClose}
-            className="text-[var(--text4)] hover:text-[var(--text)] text-[12px] transition-colors"
+            className="text-(--text4) hover:text-(--text) text-[12px] transition-colors"
           >
             ✕
           </button>
@@ -402,21 +402,21 @@ function ComposeFilePicker({
 
         {/* Breadcrumb */}
         <div
-          className="flex items-center gap-1 px-3 py-2 border-b flex-shrink-0 overflow-x-auto"
+          className="flex items-center gap-1 px-3 py-2 border-b shrink-0 overflow-x-auto"
           style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
         >
           {breadcrumbs.map((seg, i) => {
             const path = "/" + breadcrumbs.slice(1, i + 1).join("/");
             const isLast = i === breadcrumbs.length - 1;
             return (
-              <span key={i} className="flex items-center gap-1 flex-shrink-0">
-                {i > 0 && <span className="text-[var(--text5)] text-[10px]">/</span>}
+              <span key={i} className="flex items-center gap-1 shrink-0">
+                {i > 0 && <span className="text-(--text5) text-[10px]">/</span>}
                 <button
                   onClick={() => !isLast && loadDir(path || "/")}
                   className={`text-[11px] font-mono px-1 py-0.5 rounded transition-colors ${
                     isLast
-                      ? "text-[var(--text)] font-semibold"
-                      : "text-[var(--text4)] hover:text-[#6366f1]"
+                      ? "text-(--text) font-semibold"
+                      : "text-(--text4) hover:text-accent"
                   }`}
                 >
                   {seg || "/"}
@@ -425,7 +425,7 @@ function ComposeFilePicker({
             );
           })}
           {loading && (
-            <span className="text-[10px] text-[var(--text4)] ml-2 animate-pulse">loading…</span>
+            <span className="text-[10px] text-(--text4) ml-2 animate-pulse">loading…</span>
           )}
         </div>
 
@@ -441,7 +441,7 @@ function ComposeFilePicker({
               {dir !== "/" && (
                 <button
                   onClick={goUp}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-[12px] text-[var(--text3)] hover:bg-[var(--bg3)] transition-colors border-b border-[var(--bg1)]"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-[12px] text-(--text3) hover:bg-(--bg3) transition-colors border-b border-(--bg1)"
                 >
                   <span className="text-base">↑</span>
                   <span className="font-mono">..</span>
@@ -457,7 +457,7 @@ function ComposeFilePicker({
                   <button
                     key={entry.path}
                     onClick={() => navigate(entry)}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors border-b border-[var(--bg1)]"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors border-b border-(--bg1)"
                     style={{
                       background: isSel ? "#6366f115" : undefined,
                     }}
@@ -465,15 +465,15 @@ function ComposeFilePicker({
                     onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLElement).style.background = ""; }}
                   >
                     {/* Icon */}
-                    <span className="flex-shrink-0 flex items-center">
+                    <span className="shrink-0 flex items-center">
                       {isDir ? (
-                        <FolderIcon size={14} className="text-[var(--text3)]" />
+                        <FolderIcon size={14} className="text-(--text3)" />
                       ) : compose ? (
                         <ComposeIcon size={14} className="text-[#00c8a8]" />
                       ) : yaml ? (
-                        <YamlFileIcon size={14} className="text-[var(--text2)]" />
+                        <YamlFileIcon size={14} className="text-(--text2)" />
                       ) : (
-                        <FileIcon size={14} className="text-[var(--text4)]" />
+                        <FileIcon size={14} className="text-(--text4)" />
                       )}
                     </span>
                     {/* Name */}
@@ -494,20 +494,20 @@ function ComposeFilePicker({
                     </span>
                     {/* Size for files */}
                     {!isDir && (
-                      <span className="text-[10px] text-[var(--text4)] ml-2 flex-shrink-0">
+                      <span className="text-[10px] text-(--text4) ml-2 shrink-0">
                         {entry.size < 1024
                           ? `${entry.size}B`
                           : `${Math.round(entry.size / 1024)}KB`}
                       </span>
                     )}
                     {isSel && (
-                      <span className="text-[10px] text-[#6366f1] font-semibold ml-1">✓</span>
+                      <span className="text-[10px] text-accent font-semibold ml-1">✓</span>
                     )}
                   </button>
                 );
               })}
               {entries.length === 0 && !loading && (
-                <p className="text-center text-[12px] text-[var(--text4)] py-8">Empty directory</p>
+                <p className="text-center text-[12px] text-(--text4) py-8">Empty directory</p>
               )}
             </div>
           )}
@@ -515,7 +515,7 @@ function ComposeFilePicker({
 
         {/* Footer */}
         <div
-          className="flex items-center gap-2 px-4 py-3 border-t flex-shrink-0"
+          className="flex items-center gap-2 px-4 py-3 border-t shrink-0"
           style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
         >
           <span
@@ -526,7 +526,7 @@ function ComposeFilePicker({
           </span>
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-[11px] text-[var(--text3)] border border-[var(--border)] hover:text-[var(--text)] transition-colors"
+            className="px-3 py-1.5 rounded-lg text-[11px] text-(--text3) border border-(--border) hover:text-(--text) transition-colors"
           >
             Cancel
           </button>
@@ -611,7 +611,7 @@ function ContainersTab({
     <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0"
+        className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
         <input
@@ -619,9 +619,9 @@ function ContainersTab({
           placeholder="Filter by name or image…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] transition-colors font-mono"
+          className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent transition-colors font-mono"
         />
-        <span className="text-[11px] text-[var(--text4)] whitespace-nowrap">
+        <span className="text-[11px] text-(--text4) whitespace-nowrap">
           {running}/{containers.length} running
         </span>
         <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -639,7 +639,7 @@ function ContainersTab({
               />
             </div>
           </span>
-          <span className="text-[11px] text-[var(--text3)]">Auto</span>
+          <span className="text-[11px] text-(--text3)">Auto</span>
         </label>
         <button
           onClick={() => { setLoading(true); fetchContainers().finally(() => setLoading(false)); }}
@@ -659,26 +659,26 @@ function ContainersTab({
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ background: "#ef444410", border: "1px solid #ef444425" }}
             >
-              <DockerLogoIcon size={18} className="text-[#ef4444]" />
+              <DockerLogoIcon size={18} className="text-status-fail" />
             </div>
             <div className="text-center">
-              <p className="text-[var(--text)] font-semibold mb-1">Docker unavailable</p>
-              <p className="text-[#6b3333] text-[12px] font-mono break-words max-w-xs">{error}</p>
+              <p className="text-(--text) font-semibold mb-1">Docker unavailable</p>
+              <p className="text-[#6b3333] text-[12px] font-mono wrap-break-word max-w-xs">{error}</p>
             </div>
           </div>
         ) : filtered.length === 0 && !loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--text4)]">
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-(--text4)">
             <DockerLogoIcon size={30} />
             <p className="text-sm">{filter ? `No containers match "${filter}"` : "No containers found"}</p>
           </div>
         ) : (
           <table className="w-full border-collapse">
             <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-              <tr className="text-left border-b border-[var(--border)]">
+              <tr className="text-left border-b border-(--border)">
                 {["Name", "Image", "Status", "Ports", "Actions"].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]"
+                    className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-(--text4)"
                   >
                     {h}
                   </th>
@@ -696,14 +696,14 @@ function ContainersTab({
                 return (
                   <tr
                     key={c.id}
-                    className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors"
+                    className="border-b border-(--bg2) hover:bg-(--bg2) transition-colors"
                   >
                     {/* Name */}
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <StateBadge state={c.state} />
                         <span
-                          className="text-[12px] font-mono text-[var(--text)] font-medium truncate max-w-[140px]"
+                          className="text-[12px] font-mono text-(--text) font-medium truncate max-w-[140px]"
                           title={name}
                         >
                           {name}
@@ -711,17 +711,17 @@ function ContainersTab({
                       </div>
                     </td>
                     {/* Image */}
-                    <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text3)] max-w-[180px]">
+                    <td className="px-4 py-2.5 text-[11px] font-mono text-(--text3) max-w-[180px]">
                       <span className="truncate block" title={c.image}>
                         {c.image}
                       </span>
                     </td>
                     {/* Status */}
-                    <td className="px-4 py-2.5 text-[11px] text-[var(--text3)] whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-[11px] text-(--text3) whitespace-nowrap">
                       {c.status}
                     </td>
                     {/* Ports */}
-                    <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)] max-w-[160px]">
+                    <td className="px-4 py-2.5 text-[11px] font-mono text-(--text4) max-w-[160px]">
                       <span title={c.ports}>{formatDockerPorts(c.ports)}</span>
                     </td>
                     {/* Actions */}
@@ -918,10 +918,10 @@ function ComposeTab({
     <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0"
+        className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
-        <span className="text-[11px] text-[var(--text3)] font-medium">
+        <span className="text-[11px] text-(--text3) font-medium">
           {projects.length} project{projects.length !== 1 ? "s" : ""}
         </span>
         <div className="flex-1" />
@@ -938,11 +938,11 @@ function ComposeTab({
       <div className="flex-1 overflow-y-auto relative">
         {error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
-            <ComposeIcon size={30} className="text-[var(--text4)]" />
+            <ComposeIcon size={30} className="text-(--text4)" />
             <div className="text-center">
-              <p className="text-[var(--text)] font-semibold mb-1">Docker Compose unavailable</p>
+              <p className="text-(--text) font-semibold mb-1">Docker Compose unavailable</p>
               <p className="text-[12px] text-[#6b3333] font-mono max-w-xs">{error}</p>
-              <p className="text-[11px] text-[var(--text4)] mt-2">Requires Docker Compose v2 (docker compose plugin)</p>
+              <p className="text-[11px] text-(--text4) mt-2">Requires Docker Compose v2 (docker compose plugin)</p>
             </div>
           </div>
         ) : (
@@ -952,18 +952,18 @@ function ComposeTab({
               className="rounded-xl p-4 border"
               style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
             >
-              <p className="text-[11px] font-semibold text-[var(--text2)] mb-2">Custom compose file</p>
+              <p className="text-[11px] font-semibold text-(--text2) mb-2">Custom compose file</p>
               <div className="flex gap-2">
                 <input
                   type="text"
                   placeholder="/path/to/docker-compose.yml"
                   value={customFile}
                   onChange={(e) => setCustomFile(e.target.value)}
-                  className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+                  className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
                 />
                 <button
                   onClick={() => setShowFilePicker(true)}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors"
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors"
                   style={{ color: "#6366f1", background: "#6366f112", border: "1px solid #6366f130" }}
                 >
                   <FolderIcon size={12} /> Browse
@@ -996,10 +996,10 @@ function ComposeTab({
 
             {/* Detected projects */}
             {projects.length === 0 && !loading ? (
-              <div className="flex flex-col items-center gap-2 py-8 text-[var(--text4)]">
+              <div className="flex flex-col items-center gap-2 py-8 text-(--text4)">
                 <ComposeIcon size={24} />
                 <p className="text-sm">No compose projects found</p>
-                <p className="text-[11px] text-[var(--text5)]">Use the custom file path above</p>
+                <p className="text-[11px] text-(--text5)">Use the custom file path above</p>
               </div>
             ) : (
               projects.map((proj) => {
@@ -1018,7 +1018,7 @@ function ComposeTab({
                       onClick={() => toggleExpanded(proj.name)}
                       style={{ borderLeft: `3px solid ${statusColor}` }}
                     >
-                      <span className="text-[12px] font-semibold text-[var(--text)] flex-1">
+                      <span className="text-[12px] font-semibold text-(--text) flex-1">
                         {proj.name}
                       </span>
                       <span
@@ -1027,10 +1027,10 @@ function ComposeTab({
                       >
                         {proj.status || "unknown"}
                       </span>
-                      <span className="text-[10px] text-[var(--text4)] truncate max-w-[200px]" title={proj.config_files}>
+                      <span className="text-[10px] text-(--text4) truncate max-w-[200px]" title={proj.config_files}>
                         {proj.config_files}
                       </span>
-                      <span className="text-[var(--text4)] text-[10px]">{isOpen ? "▾" : "▸"}</span>
+                      <span className="text-(--text4) text-[10px]">{isOpen ? "▾" : "▸"}</span>
                     </div>
 
                     {/* Project actions */}
@@ -1054,20 +1054,20 @@ function ComposeTab({
                     {isOpen && (
                       <div className="divide-y" style={{ borderColor: "var(--border)" }}>
                         {proj.services.length === 0 ? (
-                          <p className="px-4 py-3 text-[11px] text-[var(--text4)] italic">No services found</p>
+                          <p className="px-4 py-3 text-[11px] text-(--text4) italic">No services found</p>
                         ) : (
                           proj.services.map((svc) => {
                             const svcName = formatContainerName(svc.name);
                             return (
                               <div
                                 key={svc.id || svc.name}
-                                className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg2)] transition-colors"
+                                className="flex items-center gap-3 px-4 py-2.5 hover:bg-(--bg2) transition-colors"
                               >
                                 <StateBadge state={svc.state || "unknown"} />
-                                <span className="text-[12px] font-mono text-[var(--text)] flex-1 truncate">
+                                <span className="text-[12px] font-mono text-(--text) flex-1 truncate">
                                   {svcName}
                                 </span>
-                                <span className="text-[11px] text-[var(--text4)] truncate max-w-[140px]">
+                                <span className="text-[11px] text-(--text4) truncate max-w-[140px]">
                                   {svc.image}
                                 </span>
                                 <div className="flex gap-1">
@@ -1194,14 +1194,14 @@ function LogsTab({
     <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0 flex-wrap"
+        className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0 flex-wrap"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
         {/* Container selector */}
         <select
           value={containerId}
           onChange={(e) => { setContainerId(e.target.value); setFollow(false); }}
-          className="bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] focus:outline-none focus:border-[#6366f1] font-mono"
+          className="bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) focus:outline-hidden focus:border-accent font-mono"
         >
           {containers.length === 0 ? (
             <option value="">No containers</option>
@@ -1218,7 +1218,7 @@ function LogsTab({
         <select
           value={lines}
           onChange={(e) => setLines(Number(e.target.value))}
-          className="bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] focus:outline-none focus:border-[#6366f1]"
+          className="bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) focus:outline-hidden focus:border-accent"
         >
           <option value={50}>50 lines</option>
           <option value={100}>100 lines</option>
@@ -1239,7 +1239,7 @@ function LogsTab({
               />
             </div>
           </span>
-          <span className="text-[11px] text-[var(--text3)]">Follow</span>
+          <span className="text-[11px] text-(--text3)">Follow</span>
           {follow && (
             <span
               className="w-1.5 h-1.5 rounded-full animate-pulse"
@@ -1250,7 +1250,7 @@ function LogsTab({
 
         <div className="flex-1" />
 
-        {loading && <span className="text-[11px] text-[var(--text4)]">Loading…</span>}
+        {loading && <span className="text-[11px] text-(--text4)">Loading…</span>}
 
         <button
           onClick={() => { setLoading(true); fetchLogs().finally(() => setLoading(false)); }}
@@ -1281,11 +1281,11 @@ function LogsTab({
       {/* Container name bar */}
       {containerId && (
         <div
-          className="px-4 py-1.5 border-b flex items-center gap-2 flex-shrink-0"
+          className="px-4 py-1.5 border-b flex items-center gap-2 shrink-0"
           style={{ background: "var(--bg2)", borderColor: "var(--border)" }}
         >
-          <span className="text-[10px] uppercase tracking-widest text-[var(--text4)]">Container</span>
-          <span className="text-[11px] font-mono text-[var(--text2)]">{containerName(containerId)}</span>
+          <span className="text-[10px] uppercase tracking-widest text-(--text4)">Container</span>
+          <span className="text-[11px] font-mono text-(--text2)">{containerName(containerId)}</span>
           {follow && (
             <span className="text-[10px] text-[#00c8a8] ml-auto">● Live · polling 2s</span>
           )}
@@ -1296,23 +1296,23 @@ function LogsTab({
       {error ? (
         <div className="flex-1 flex items-center justify-center px-8">
           <div className="text-center">
-            <p className="text-[var(--text)] font-semibold mb-1">Failed to fetch logs</p>
-            <p className="text-[12px] text-[#6b3333] font-mono break-words max-w-xs">{error}</p>
+            <p className="text-(--text) font-semibold mb-1">Failed to fetch logs</p>
+            <p className="text-[12px] text-[#6b3333] font-mono wrap-break-word max-w-xs">{error}</p>
           </div>
         </div>
       ) : !containerId ? (
-        <div className="flex-1 flex items-center justify-center text-[var(--text4)] text-sm">
+        <div className="flex-1 flex items-center justify-center text-(--text4) text-sm">
           Select a container above
         </div>
       ) : logs === "" && !loading ? (
-        <div className="flex-1 flex items-center justify-center text-[var(--text4)] text-sm">
+        <div className="flex-1 flex items-center justify-center text-(--text4) text-sm">
           No log output
         </div>
       ) : (
         <div
           ref={logRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-[var(--text)] whitespace-pre-wrap leading-relaxed"
+          className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-(--text) whitespace-pre-wrap leading-relaxed"
           style={{ background: "var(--bg)" }}
         >
           {logs}
@@ -1426,14 +1426,14 @@ function VolumesTab({
             placeholder="Filter volumes…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+            className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
           />
           <input
             type="text"
             placeholder="New volume name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-40 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+            className="w-40 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
           />
           <ActionBtn label="Create" onClick={runCreate} loading={actionRunning === "create"} disabled={!!actionRunning || !newName.trim()} />
           <RefreshBtn loading={loading} onClick={() => { setLoading(true); fetchVolumes().finally(() => setLoading(false)); }} />
@@ -1447,18 +1447,18 @@ function VolumesTab({
     >
       <table className="w-full border-collapse">
         <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-          <tr className="text-left border-b border-[var(--border)]">
+          <tr className="text-left border-b border-(--border)">
             {["Name", "Driver", "Mountpoint", "Actions"].map((h) => (
-              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">{h}</th>
+              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-(--text4)">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {filtered.map((v) => (
-            <tr key={v.name} className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors">
-              <td className="px-4 py-2.5 text-[12px] font-mono text-[var(--text)]">{v.name}</td>
-              <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{v.driver}</td>
-              <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)] max-w-[240px] truncate" title={v.mountpoint}>{v.mountpoint}</td>
+            <tr key={v.name} className="border-b border-(--bg2) hover:bg-(--bg2) transition-colors">
+              <td className="px-4 py-2.5 text-[12px] font-mono text-(--text)">{v.name}</td>
+              <td className="px-4 py-2.5 text-[11px] text-(--text3)">{v.driver}</td>
+              <td className="px-4 py-2.5 text-[11px] font-mono text-(--text4) max-w-[240px] truncate" title={v.mountpoint}>{v.mountpoint}</td>
               <td className="px-4 py-2.5">
                 <div className="flex gap-1">
                   <ActionBtn label="Inspect" onClick={() => runInspect(v.name)} loading={actionRunning === `inspect:${v.name}`} disabled={!!actionRunning} />
@@ -1620,14 +1620,14 @@ function NetworksTab({
             placeholder="Filter networks…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+            className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
           />
           <input
             type="text"
             placeholder="New network name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-40 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+            className="w-40 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
           />
           <ActionBtn label="Create" onClick={runCreate} loading={actionRunning === "create"} disabled={!!actionRunning || !newName.trim()} />
           <RefreshBtn loading={loading} onClick={() => { setLoading(true); fetchNetworks().finally(() => setLoading(false)); }} />
@@ -1641,19 +1641,19 @@ function NetworksTab({
     >
       <table className="w-full border-collapse">
         <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-          <tr className="text-left border-b border-[var(--border)]">
+          <tr className="text-left border-b border-(--border)">
             {["Name", "Driver", "Scope", "ID", "Actions"].map((h) => (
-              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">{h}</th>
+              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-(--text4)">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {filtered.map((n) => (
-            <tr key={n.id} className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors">
-              <td className="px-4 py-2.5 text-[12px] font-mono text-[var(--text)]">{n.name}</td>
-              <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{n.driver}</td>
-              <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{n.scope}</td>
-              <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)]">{shortenDockerId(n.id)}</td>
+            <tr key={n.id} className="border-b border-(--bg2) hover:bg-(--bg2) transition-colors">
+              <td className="px-4 py-2.5 text-[12px] font-mono text-(--text)">{n.name}</td>
+              <td className="px-4 py-2.5 text-[11px] text-(--text3)">{n.driver}</td>
+              <td className="px-4 py-2.5 text-[11px] text-(--text3)">{n.scope}</td>
+              <td className="px-4 py-2.5 text-[11px] font-mono text-(--text4)">{shortenDockerId(n.id)}</td>
               <td className="px-4 py-2.5">
                 <div className="flex gap-1 flex-wrap">
                   <ActionBtn label="Inspect" onClick={() => runInspect(n.name)} loading={actionRunning === `inspect:${n.name}`} disabled={!!actionRunning} />
@@ -1662,7 +1662,7 @@ function NetworksTab({
                       <select
                         value={connectContainer}
                         onChange={(e) => setConnectContainer(e.target.value)}
-                        className="bg-[var(--bg3)] border border-[var(--border)] rounded px-2 py-1 text-[11px] text-[var(--text)] font-mono"
+                        className="bg-(--bg3) border border-(--border) rounded-sm px-2 py-1 text-[11px] text-(--text) font-mono"
                       >
                         <option value="">Container…</option>
                         {containers.map((c) => (
@@ -1694,7 +1694,7 @@ function NetworksTab({
                         e.target.value = "";
                       }}
                       disabled={!!actionRunning}
-                      className="bg-[var(--bg3)] border border-[var(--border)] rounded px-2 py-1 text-[10px] text-[var(--text3)] font-mono"
+                      className="bg-(--bg3) border border-(--border) rounded-sm px-2 py-1 text-[10px] text-(--text3) font-mono"
                       title="Disconnect container"
                     >
                       <option value="">Disconnect…</option>
@@ -1816,14 +1816,14 @@ function ImagesTab({
             placeholder="Filter images…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+            className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
           />
           <input
             type="text"
             placeholder="Pull image (e.g. nginx:latest)"
             value={pullRef}
             onChange={(e) => setPullRef(e.target.value)}
-            className="w-52 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] font-mono"
+            className="w-52 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent font-mono"
           />
           <ActionBtn label="Pull" onClick={runPull} loading={actionRunning === "pull"} disabled={!!actionRunning || !pullRef.trim()} />
           <RefreshBtn loading={loading} onClick={() => { setLoading(true); fetchImages().finally(() => setLoading(false)); }} />
@@ -1837,9 +1837,9 @@ function ImagesTab({
     >
       <table className="w-full border-collapse">
         <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-          <tr className="text-left border-b border-[var(--border)]">
+          <tr className="text-left border-b border-(--border)">
             {["Image", "ID", "Size", "Created", "Actions"].map((h) => (
-              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]">{h}</th>
+              <th key={h} className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-(--text4)">{h}</th>
             ))}
           </tr>
         </thead>
@@ -1847,11 +1847,11 @@ function ImagesTab({
           {filtered.map((img) => {
             const ref = imageRef(img);
             return (
-              <tr key={img.id + ref} className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors">
-                <td className="px-4 py-2.5 text-[12px] font-mono text-[var(--text)]">{ref}</td>
-                <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)]">{shortenDockerId(img.id)}</td>
-                <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">{img.size}</td>
-                <td className="px-4 py-2.5 text-[11px] text-[var(--text3)] whitespace-nowrap">{img.created_at}</td>
+              <tr key={img.id + ref} className="border-b border-(--bg2) hover:bg-(--bg2) transition-colors">
+                <td className="px-4 py-2.5 text-[12px] font-mono text-(--text)">{ref}</td>
+                <td className="px-4 py-2.5 text-[11px] font-mono text-(--text4)">{shortenDockerId(img.id)}</td>
+                <td className="px-4 py-2.5 text-[11px] text-(--text3)">{img.size}</td>
+                <td className="px-4 py-2.5 text-[11px] text-(--text3) whitespace-nowrap">{img.created_at}</td>
                 <td className="px-4 py-2.5">
                   <div className="flex gap-1">
                     <ActionBtn label="Inspect" onClick={() => runInspect(ref)} loading={actionRunning === `inspect:${ref}`} disabled={!!actionRunning} />
@@ -1911,7 +1911,7 @@ function ResourceListTab({
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       <div
-        className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0 flex-wrap"
+        className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0 flex-wrap"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
         {toolbar}
@@ -1920,11 +1920,11 @@ function ResourceListTab({
         {error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
             {emptyIcon}
-            <p className="text-[var(--text)] font-semibold">Docker unavailable</p>
+            <p className="text-(--text) font-semibold">Docker unavailable</p>
             <p className="text-[12px] text-[#6b3333] font-mono max-w-xs">{error}</p>
           </div>
         ) : filteredCount === 0 && !loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--text4)]">
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-(--text4)">
             {emptyIcon}
             <p className="text-sm">{emptyMessage}</p>
           </div>
@@ -2010,7 +2010,7 @@ function SystemTab({
             className="flex items-center justify-between px-4 py-2.5 border-b"
             style={{ borderColor: "var(--border)" }}
           >
-            <span className="text-[12px] font-semibold text-[var(--text)]">Docker disk usage</span>
+            <span className="text-[12px] font-semibold text-(--text)">Docker disk usage</span>
             <button
               onClick={fetchDf}
               disabled={dfLoading}
@@ -2023,11 +2023,11 @@ function SystemTab({
           {dfError ? (
             <p className="px-4 py-3 text-[12px] text-[#6b3333] font-mono">{dfError}</p>
           ) : df ? (
-            <pre className="px-4 py-3 font-mono text-[11px] text-[var(--text)] overflow-x-auto">
+            <pre className="px-4 py-3 font-mono text-[11px] text-(--text) overflow-x-auto">
               {df}
             </pre>
           ) : (
-            <p className="px-4 py-3 text-[11px] text-[var(--text4)]">Loading…</p>
+            <p className="px-4 py-3 text-[11px] text-(--text4)">Loading…</p>
           )}
         </div>
 
@@ -2037,28 +2037,28 @@ function SystemTab({
           style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
         >
           <div className="px-4 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
-            <span className="text-[12px] font-semibold text-[var(--text)]">Prune resources</span>
-            <p className="text-[11px] text-[var(--text4)] mt-0.5">Reclaim disk space by removing unused Docker resources</p>
+            <span className="text-[12px] font-semibold text-(--text)">Prune resources</span>
+            <p className="text-[11px] text-(--text4) mt-0.5">Reclaim disk space by removing unused Docker resources</p>
           </div>
           <div className="divide-y" style={{ borderColor: "var(--border)" }}>
             {PRUNE_ACTIONS.map(({ target, label, danger }) => (
               <div
                 key={target}
-                className="flex items-center justify-between px-4 py-2.5 hover:bg-[var(--bg2)] transition-colors"
+                className="flex items-center justify-between px-4 py-2.5 hover:bg-(--bg2) transition-colors"
               >
-                <span className="text-[12px] text-[var(--text2)]">{label}</span>
+                <span className="text-[12px] text-(--text2)">{label}</span>
                 {confirmPrune === target ? (
                   <div className="flex gap-2">
                     <button
                       onClick={() => runPrune(target, label)}
-                      className="text-[11px] px-3 py-1 rounded font-semibold transition-colors"
+                      className="text-[11px] px-3 py-1 rounded-sm font-semibold transition-colors"
                       style={{ color: "#ef4444", background: "#ef444412", border: "1px solid #ef444430" }}
                     >
                       Confirm
                     </button>
                     <button
                       onClick={() => setConfirmPrune(null)}
-                      className="text-[11px] px-3 py-1 rounded transition-colors"
+                      className="text-[11px] px-3 py-1 rounded-sm transition-colors"
                       style={{ color: "var(--text3)", border: "1px solid var(--border)" }}
                     >
                       Cancel
@@ -2068,7 +2068,7 @@ function SystemTab({
                   <button
                     onClick={() => setConfirmPrune(target)}
                     disabled={!!pruneRunning}
-                    className="text-[11px] px-3 py-1 rounded font-medium transition-colors disabled:opacity-40"
+                    className="text-[11px] px-3 py-1 rounded-sm font-medium transition-colors disabled:opacity-40"
                     style={
                       danger
                         ? { color: "#f87171", background: "#f8717112", border: "1px solid #f8717130" }
@@ -2166,10 +2166,10 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
 
   if (!sessionId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text4)]">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-(--text4)">
         <DockerLogoIcon size={36} />
         <p className="text-sm font-medium">No active SSH session</p>
-        <p className="text-[12px] text-[var(--text5)]">Open a terminal and connect first</p>
+        <p className="text-[12px] text-(--text5)">Open a terminal and connect first</p>
       </div>
     );
   }
@@ -2179,18 +2179,18 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div
-        className="flex items-center gap-3 px-4 py-2.5 border-b flex-shrink-0"
+        className="flex items-center gap-3 px-4 py-2.5 border-b shrink-0"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
         {/* Docker icon */}
         <div
-          className="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0"
+          className="w-6 h-6 flex items-center justify-center rounded-md shrink-0"
           style={{ background: "#2563eb15", border: "1px solid #2563eb25" }}
         >
           <DockerLogoIcon size={13} className="text-[#2563eb]" />
         </div>
-        <span className="text-[12px] font-semibold text-[var(--text)]">Docker</span>
-        <span className="text-[11px] text-[var(--text4)] hidden sm:inline">Remote Docker control over SSH</span>
+        <span className="text-[12px] font-semibold text-(--text)">Docker</span>
+        <span className="text-[11px] text-(--text4) hidden sm:inline">Remote Docker control over SSH</span>
 
         {/* Sudo indicator */}
         {sudoPassword ? (
@@ -2206,7 +2206,7 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
           <button
             onClick={() => setShowSudoModal(true)}
             title="Set sudo password for Docker commands"
-            className="text-[10px] px-2 py-0.5 rounded-full transition-colors text-[var(--text4)] hover:text-[var(--text3)]"
+            className="text-[10px] px-2 py-0.5 rounded-full transition-colors text-(--text4) hover:text-(--text3)"
             style={{ border: "1px solid var(--border)" }}
           >
             🔐 sudo
@@ -2216,10 +2216,10 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
 
       {/* Primary navigation */}
       <div
-        className="flex items-center gap-1 px-3 py-1.5 border-b flex-shrink-0"
+        className="flex items-center gap-1 px-3 py-1.5 border-b shrink-0"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
-        <div className="flex items-center gap-0.5 bg-[var(--bg2)] rounded-lg p-0.5 border border-[var(--border)]">
+        <div className="flex items-center gap-0.5 bg-(--bg2) rounded-lg p-0.5 border border-(--border)">
           {PRIMARY_TABS.map((t) => (
             <NavPill
               key={t.id}
@@ -2239,7 +2239,7 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
       {/* Secondary navigation — Resources */}
       {activePrimary === "resources" && (
         <div
-          className="flex items-center gap-1 px-3 py-1 border-b flex-shrink-0"
+          className="flex items-center gap-1 px-3 py-1 border-b shrink-0"
           style={{ background: "var(--bg)", borderColor: "var(--border)" }}
         >
           {RESOURCE_TABS.map((t) => (
@@ -2257,7 +2257,7 @@ export default function DockerManager({ sessionId, isActive, onSendToTerminal }:
       {/* Secondary navigation — System */}
       {activePrimary === "system" && (
         <div
-          className="flex items-center gap-1 px-3 py-1 border-b flex-shrink-0"
+          className="flex items-center gap-1 px-3 py-1 border-b shrink-0"
           style={{ background: "var(--bg)", borderColor: "var(--border)" }}
         >
           {SYSTEM_TABS.map((t) => (
@@ -2476,7 +2476,7 @@ function ContainersTabInner({
     <div className="absolute inset-0 flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0"
+        className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0"
         style={{ background: "var(--bg1)", borderColor: "var(--border)" }}
       >
         <input
@@ -2484,9 +2484,9 @@ function ContainersTabInner({
           placeholder="Filter by name or image…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[12px] text-[var(--text)] placeholder-[var(--text4)] focus:outline-none focus:border-[#6366f1] transition-colors font-mono"
+          className="flex-1 bg-(--bg3) border border-(--border) rounded-lg px-3 py-1.5 text-[12px] text-(--text) placeholder-(--text4) focus:outline-hidden focus:border-accent transition-colors font-mono"
         />
-        <span className="text-[11px] text-[var(--text4)] whitespace-nowrap">
+        <span className="text-[11px] text-(--text4) whitespace-nowrap">
           {running}/{containers.length} running
         </span>
         <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -2501,7 +2501,7 @@ function ContainersTabInner({
               />
             </div>
           </span>
-          <span className="text-[11px] text-[var(--text3)]">Auto</span>
+          <span className="text-[11px] text-(--text3)">Auto</span>
         </label>
         <button
           onClick={() => { setLoading(true); fetchContainers().finally(() => setLoading(false)); }}
@@ -2521,15 +2521,15 @@ function ContainersTabInner({
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ background: "#ef444410", border: "1px solid #ef444425" }}
             >
-              <DockerLogoIcon size={18} className="text-[#ef4444]" />
+              <DockerLogoIcon size={18} className="text-status-fail" />
             </div>
             <div className="text-center">
-              <p className="text-[var(--text)] font-semibold mb-1">Docker unavailable</p>
-              <p className="text-[12px] text-[#6b3333] font-mono break-words max-w-xs">{error}</p>
+              <p className="text-(--text) font-semibold mb-1">Docker unavailable</p>
+              <p className="text-[12px] text-[#6b3333] font-mono wrap-break-word max-w-xs">{error}</p>
             </div>
           </div>
         ) : filtered.length === 0 && !loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--text4)]">
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-(--text4)">
             <DockerLogoIcon size={30} />
             <p className="text-sm">
               {filter ? `No containers match "${filter}"` : "No containers found"}
@@ -2538,11 +2538,11 @@ function ContainersTabInner({
         ) : (
           <table className="w-full border-collapse">
             <thead className="sticky top-0" style={{ background: "var(--bg1)" }}>
-              <tr className="text-left border-b border-[var(--border)]">
+              <tr className="text-left border-b border-(--border)">
                 {["Name", "Image", "Status", "Ports", "Actions"].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[var(--text4)]"
+                    className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-(--text4)"
                   >
                     {h}
                   </th>
@@ -2559,26 +2559,26 @@ function ContainersTabInner({
                 return (
                   <tr
                     key={c.id}
-                    className="border-b border-[var(--bg2)] hover:bg-[var(--bg2)] transition-colors"
+                    className="border-b border-(--bg2) hover:bg-(--bg2) transition-colors"
                   >
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <StateBadge state={c.state} />
                         <span
-                          className="text-[12px] font-mono text-[var(--text)] font-medium truncate max-w-[140px]"
+                          className="text-[12px] font-mono text-(--text) font-medium truncate max-w-[140px]"
                           title={name}
                         >
                           {name}
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text3)] max-w-[180px]">
+                    <td className="px-4 py-2.5 text-[11px] font-mono text-(--text3) max-w-[180px]">
                       <span className="truncate block" title={c.image}>{c.image}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-[11px] text-[var(--text3)] whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-[11px] text-(--text3) whitespace-nowrap">
                       {c.status}
                     </td>
-                    <td className="px-4 py-2.5 text-[11px] font-mono text-[var(--text4)] max-w-[160px]">
+                    <td className="px-4 py-2.5 text-[11px] font-mono text-(--text4) max-w-[160px]">
                       <span title={c.ports}>{formatDockerPorts(c.ports)}</span>
                     </td>
                     <td className="px-4 py-2.5">

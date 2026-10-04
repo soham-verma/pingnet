@@ -15,12 +15,12 @@ export default function LatencyChart({ history, avg, max }: Props) {
   const maxVal = Math.max(...history.map((h) => h.latency ?? 0), 10);
 
   return (
-    <div className="rounded-xl border border-[var(--border)] p-5" style={{ background: "var(--bg2)" }}>
+    <div className="rounded-xl border border-(--border) p-5" style={{ background: "var(--bg2)" }}>
       <div className="flex items-center justify-between mb-4">
-        <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase">
+        <span className="text-[10px] tracking-widest text-(--text3) uppercase">
           Latency History
         </span>
-        <div className="flex items-center gap-4 text-[11px] text-[var(--text3)]">
+        <div className="flex items-center gap-4 text-[11px] text-(--text3)">
           {avg !== null && (
             <span>
               AVG <span className="text-[#00c8a8] font-mono ml-1">{Math.round(avg)}</span>
@@ -28,7 +28,7 @@ export default function LatencyChart({ history, avg, max }: Props) {
           )}
           {max !== null && (
             <span>
-              MAX <span className="text-[#f59e0b] font-mono ml-1">{Math.round(max)}</span>
+              MAX <span className="text-status-warn font-mono ml-1">{Math.round(max)}</span>
             </span>
           )}
         </div>
@@ -40,7 +40,7 @@ export default function LatencyChart({ history, avg, max }: Props) {
             return (
               <div
                 key={i}
-                className="flex-1 rounded-sm"
+                className="flex-1 rounded-xs"
                 style={{ height: "4px", backgroundColor: "var(--border)" }}
               />
             );
@@ -59,7 +59,7 @@ export default function LatencyChart({ history, avg, max }: Props) {
           return (
             <div
               key={i}
-              className="flex-1 rounded-sm transition-all"
+              className="flex-1 rounded-xs transition-all"
               style={{
                 height: `${barH}px`,
                 backgroundColor: color,

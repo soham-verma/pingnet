@@ -23,43 +23,43 @@ export default function DiagnosticConsole({ logs }: Props) {
 
   return (
     <div
-      className="rounded-xl border border-[var(--border)] flex flex-col"
+      className="rounded-xl border border-(--border) flex flex-col"
       style={{ background: "var(--bg)" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <span className="text-[10px] tracking-widest text-[var(--text3)] uppercase">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-(--border)">
+        <span className="text-[10px] tracking-widest text-(--text3) uppercase">
           Diagnostic Console
         </span>
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#ef4444] opacity-80" />
-          <span className="w-2 h-2 rounded-full bg-[#f59e0b] opacity-80" />
-          <span className="w-2 h-2 rounded-full bg-[#22c55e] opacity-80" />
+          <span className="w-2 h-2 rounded-full bg-status-fail opacity-80" />
+          <span className="w-2 h-2 rounded-full bg-status-warn opacity-80" />
+          <span className="w-2 h-2 rounded-full bg-status-ok opacity-80" />
         </div>
       </div>
 
       {/* Log output */}
       <div className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-[11px] min-h-[160px] max-h-[240px]">
         {logs.length === 0 ? (
-          <div className="text-[var(--text5)] italic">No activity yet. Run a ping to see output.</div>
+          <div className="text-(--text5) italic">No activity yet. Run a ping to see output.</div>
         ) : (
           logs.map((entry, i) => (
             <div key={i} className="flex items-start gap-3">
-              <span className="text-[var(--text5)] flex-shrink-0 tabular-nums">{entry.time}</span>
+              <span className="text-(--text5) shrink-0 tabular-nums">{entry.time}</span>
               <span
-                className="flex-shrink-0 font-semibold"
+                className="shrink-0 font-semibold"
                 style={{ color: levelColor[entry.level] }}
               >
                 {entry.level}:
               </span>
-              <span className="text-[var(--text2)] break-all">{entry.message}</span>
+              <span className="text-(--text2) break-all">{entry.message}</span>
             </div>
           ))
         )}
         {/* Blinking cursor */}
-        <div className="flex items-center gap-1 text-[var(--text3)]">
-          <span className="text-[var(--text3)]">$</span>
-          <span className="w-[6px] h-[12px] bg-[var(--text3)] inline-block animate-pulse" />
+        <div className="flex items-center gap-1 text-(--text3)">
+          <span className="text-(--text3)">$</span>
+          <span className="w-[6px] h-[12px] bg-(--text3) inline-block animate-pulse" />
         </div>
         <div ref={bottomRef} />
       </div>
